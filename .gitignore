@@ -1,0 +1,144 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Model files and checkpoints (Large files)
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+*.pb
+consolidated.*.pth
+tokenizer.model
+
+# Model directories
+Llama3.1-8B-Instruct/
+Llama3.2-3B-Instruct/
+${MODEL_FOLDER_PATH}/
+${TARGET_FOLDER}/
+-p/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# Large data files
+*.json.gz
+*.jsonl.gz
+*.csv.gz
+*.parquet
+WebQSP/data/
+data/
+uploads/
+
+# Compiled binaries and executables
+*.exe
+*.dll
+*.dylib
+*.so
+
+# Log files
+*.log
+logs/
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Large prediction/output files
+preds.json
+Pred.sem.json
+
+# Images and media (keep small ones but exclude large uploads)
+uploads/
+profile_pictures/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+!assets/*.png
+!assets/*.jpg
+!assets/*.jpeg
+!assets/*.gif
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large training data
+maze_dqn.pth
+*.chk
+checklist.chk
+*.pth
+# Apply .gitignore to already tracked files
+
