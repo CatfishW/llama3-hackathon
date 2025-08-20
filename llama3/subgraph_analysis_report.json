@@ -1,0 +1,319 @@
+{
+  "summary": {
+    "total_entities_analyzed": 5,
+    "total_unique_predicates": 90,
+    "total_triples": 2000
+  },
+  "entity_analysis": {
+    "'03 Bonnie & Clyde": {
+      "one_hop": {
+        "total_triples": 72,
+        "unique_predicates": 23,
+        "unique_subjects": 4,
+        "unique_objects": 36,
+        "literal_objects": 65,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "two_hop": {
+        "total_triples": 95,
+        "unique_predicates": 23,
+        "unique_subjects": 22,
+        "unique_objects": 41,
+        "literal_objects": 87,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "description": {
+        "total_triples": 0,
+        "unique_predicates": 0,
+        "unique_subjects": 0,
+        "unique_objects": 0,
+        "literal_objects": 0,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "literal": {
+        "total_triples": 60,
+        "unique_predicates": 23,
+        "unique_subjects": 2,
+        "unique_objects": 31,
+        "literal_objects": 60,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      }
+    },
+    "#thatPOWER": {
+      "one_hop": {
+        "total_triples": 42,
+        "unique_predicates": 18,
+        "unique_subjects": 3,
+        "unique_objects": 22,
+        "literal_objects": 40,
+        "description_predicates": 1,
+        "literal_predicates": 0
+      },
+      "two_hop": {
+        "total_triples": 67,
+        "unique_predicates": 21,
+        "unique_subjects": 20,
+        "unique_objects": 30,
+        "literal_objects": 65,
+        "description_predicates": 1,
+        "literal_predicates": 0
+      },
+      "description": {
+        "total_triples": 1,
+        "unique_predicates": 1,
+        "unique_subjects": 1,
+        "unique_objects": 1,
+        "literal_objects": 1,
+        "description_predicates": 1,
+        "literal_predicates": 0
+      },
+      "literal": {
+        "total_triples": 40,
+        "unique_predicates": 18,
+        "unique_subjects": 3,
+        "unique_objects": 20,
+        "literal_objects": 40,
+        "description_predicates": 1,
+        "literal_predicates": 0
+      }
+    },
+    "TV Episode": {
+      "one_hop": {
+        "total_triples": 41,
+        "unique_predicates": 1,
+        "unique_subjects": 41,
+        "unique_objects": 1,
+        "literal_objects": 41,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "two_hop": {
+        "total_triples": 43,
+        "unique_predicates": 2,
+        "unique_subjects": 41,
+        "unique_objects": 3,
+        "literal_objects": 43,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "description": {
+        "total_triples": 0,
+        "unique_predicates": 0,
+        "unique_subjects": 0,
+        "unique_objects": 0,
+        "literal_objects": 0,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "literal": {
+        "total_triples": 39,
+        "unique_predicates": 1,
+        "unique_subjects": 39,
+        "unique_objects": 1,
+        "literal_objects": 39,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      }
+    },
+    "#9 Dream": {
+      "one_hop": {
+        "total_triples": 36,
+        "unique_predicates": 14,
+        "unique_subjects": 1,
+        "unique_objects": 23,
+        "literal_objects": 35,
+        "description_predicates": 0,
+        "literal_predicates": 1
+      },
+      "two_hop": {
+        "total_triples": 58,
+        "unique_predicates": 17,
+        "unique_subjects": 23,
+        "unique_objects": 23,
+        "literal_objects": 57,
+        "description_predicates": 0,
+        "literal_predicates": 9
+      },
+      "description": {
+        "total_triples": 0,
+        "unique_predicates": 0,
+        "unique_subjects": 0,
+        "unique_objects": 0,
+        "literal_objects": 0,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "literal": {
+        "total_triples": 35,
+        "unique_predicates": 14,
+        "unique_subjects": 1,
+        "unique_objects": 22,
+        "literal_objects": 35,
+        "description_predicates": 0,
+        "literal_predicates": 1
+      }
+    },
+    "  Adventures by Disney - 5-Night Mediterranean Magic Cruise": {
+      "one_hop": {
+        "total_triples": 33,
+        "unique_predicates": 4,
+        "unique_subjects": 1,
+        "unique_objects": 33,
+        "literal_objects": 31,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "two_hop": {
+        "total_triples": 35,
+        "unique_predicates": 5,
+        "unique_subjects": 3,
+        "unique_objects": 33,
+        "literal_objects": 33,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "description": {
+        "total_triples": 0,
+        "unique_predicates": 0,
+        "unique_subjects": 0,
+        "unique_objects": 0,
+        "literal_objects": 0,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      },
+      "literal": {
+        "total_triples": 31,
+        "unique_predicates": 4,
+        "unique_subjects": 1,
+        "unique_objects": 31,
+        "literal_objects": 31,
+        "description_predicates": 0,
+        "literal_predicates": 0
+      }
+    }
+  },
+  "global_statistics": {
+    "subgraph_type_distribution": {
+      "one_hop": {
+        "total_triples": 224,
+        "entities_with_data": 5
+      },
+      "two_hop": {
+        "total_triples": 298,
+        "entities_with_data": 5
+      },
+      "description": {
+        "total_triples": 1,
+        "entities_with_data": 1
+      },
+      "literal": {
+        "total_triples": 205,
+        "entities_with_data": 5
+      }
+    }
+  },
+  "predicate_analysis": {
+    "total_predicates": 90,
+    "predicate_counts": {
+      "common.topic.notable_for": 45,
+      "common.topic.notable_types": 91,
+      "common.topic.subject_of": 2,
+      "travel.tour_operator.travel_destinations": 56,
+      "book.journal_article.journal_publication": 1,
+      "book.written_work.author": 5,
+      "book.written_work.subjects": 11,
+      "time.event.locations": 2,
+      "film.film_festival_event.festival": 1,
+      "book.book.editions": 2,
+      "base.schemastaging.context_name.pronunciation": 1,
+      "fictional_universe.fictional_character.based_on": 1,
+      "fictional_universe.fictional_character.gender": 1,
+      "fictional_universe.fictional_character.occupation": 2,
+      "film.film_character.portrayed_in_films": 10,
+      "tv.tv_character.appeared_in_tv_episodes": 1,
+      "people.person.gender": 4,
+      "people.person.sibling_s": 2,
+      "film.cinematographer.film": 1,
+      "film.director.film": 1,
+      "film.producer.film": 1,
+      "film.writer.film": 1,
+      "freebase.valuenotation.has_value": 3,
+      "freebase.valuenotation.is_reviewed": 8,
+      "people.person.nationality": 2,
+      "people.person.place_of_birth": 2,
+      "common.image.appears_in_topic_gallery": 1,
+      "common.image.size": 1,
+      "film.film.country": 3,
+      "film.film.language": 3,
+      "film.film.starring": 4,
+      "tv.tv_program.tv_producer": 1,
+      "music.recording.contributions": 3,
+      "music.recording.artist": 27,
+      "music.recording.featured_artists": 11,
+      "music.recording.releases": 29,
+      "music.recording.tracks": 23,
+      "law.us_patent.inventor": 1,
+      "law.us_patent.patent_office": 1,
+      "music.recording.canonical_version": 10,
+      "music.recording.song": 11,
+      "music.composition.composer": 14,
+      "music.composition.language": 4,
+      "music.composition.lyricist": 5,
+      "music.composition.recordings": 18,
+      "music.recording.producer": 4,
+      "music.single.versions": 17,
+      "common.resource.annotations": 1453,
+      "music.album.album_content_type": 4,
+      "music.album.artist": 6,
+      "music.album.featured_artists": 5,
+      "music.album.primary_release": 4,
+      "music.album.release_type": 4,
+      "music.album.releases": 4,
+      "music.album.compositions": 2,
+      "music.album.contributor": 3,
+      "award.award_nominated_work.award_nominations": 2,
+      "common.topic.article": 3,
+      "music.composition.recorded_as_album": 2,
+      "base.popstra.product.sold_to": 2,
+      "base.webvideo.internet_video_series.genre": 1,
+      "tv.tv_program.genre": 2,
+      "tv.tv_program.languages": 1,
+      "media_common.quotation.author": 13,
+      "base.kwebbase.kwsentence.dates": 1,
+      "base.kwebbase.kwsentence.kwtopic": 1,
+      "base.kwebbase.kwsentence.next_sentence": 1,
+      "base.kwebbase.kwsentence.previous_sentence": 1,
+      "common.topic.image": 2,
+      "people.deceased_person.cause_of_death": 3,
+      "people.deceased_person.place_of_burial": 1,
+      "people.deceased_person.place_of_death": 2,
+      "people.family_member.family": 1,
+      "people.person.parents": 1,
+      "people.person.profession": 2,
+      "people.person.religion": 1,
+      "royalty.monarch.royal_line": 1,
+      "location.administrative_division.country": 1,
+      "location.location.containedby": 1,
+      "location.location.events": 1,
+      "common.webpage.resource": 1,
+      "base.popstra.restaurant.restaurant_choice": 1,
+      "book.written_work.original_language": 1,
+      "film.film.personal_appearances": 5,
+      "media_common.quotation.subjects": 1,
+      "common.topic.webpage": 3,
+      "music.composition.form": 3,
+      "music.composition.part_of": 3,
+      "base.popstra.party.celebrities": 1,
+      "film.actor.film": 1
+    },
+    "predicate_types": {
+      "description": 5,
+      "literal": 36,
+      "relation": 1959
+    }
+  }
+}

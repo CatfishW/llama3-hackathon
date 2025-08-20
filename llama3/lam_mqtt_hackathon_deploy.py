@@ -60,6 +60,10 @@ class LlamaModel(ModelInterface):
                         top_p=top_p,
                 )
             except Exception as chat_error:
+                # Save the original dialog for debugging purposes
+                debug_filename = f"debug_dialog_{uuid.uuid4()}.json"
+                with open(debug_filename, "w") as f:
+                    json.dump(dialog, f, indent=2)
                 logging.warning(f"[LlamaModel] Original dialog failed: {chat_error}")
                 logging.info("[LlamaModel] Attempting with debug dialog...")
                 

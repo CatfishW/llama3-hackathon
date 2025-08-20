@@ -220,3 +220,49 @@ Assets live under `Hackathon/assets/`. The game includes path visualization and 
 ## Acknowledgements
 
 This code includes a minimal Llama 3 reference implementation and additional integrations for demos and evaluation.
+
+## Knowledge Graph Utilities (New Shell Helpers)
+
+To streamline common KG workflows, helper shell scripts were added under `scripts/` (Unix bash). On Windows you can still invoke the underlying Python directly or run these via Git Bash / WSL. Each script is thin and well‑commented.
+
+Scripts:
+
+- `scripts/kg_build.sh` – Build triples + alias map from parquet shards (`build_knowledge_graph.py`).
+- `scripts/kg_query.sh` – Quick subject search / head inspection (`kg_loader.py`).
+- `scripts/kg_subgraph_classify.sh` – Single-entity subgraph classification (`subgraph_classifier.py`).
+- `scripts/kg_subgraph_enhanced.sh` – Batch / similarity / predicate analytics (`enhanced_subgraph_classifier.py`).
+- `scripts/kg_question_retrieval.sh` – Question → candidate entities / predicates (`question_retrieval.py`).
+
+Ensure dependencies first:
+
+```powershell
+pip install -r requirements.txt pandas pyarrow
+```
+
+Example (PowerShell direct Python):
+
+```powershell
+python build_knowledge_graph.py --input_dir RoGWebQSPData --output_prefix rogkg --jsonl
+python kg_loader.py --triples rogkg_triples.tsv.gz --show-triples 5
+python subgraph_classifier.py --triples rogkg_triples.tsv.gz --entity "Berlin" --max-display 5
+python enhanced_subgraph_classifier.py --triples rogkg_triples.tsv.gz --batch-top 20 --report subgraph_report.json
+python question_retrieval.py --triples rogkg_triples.tsv.gz --question "What country is Berlin in?" --top-n-related 25
+```
+
+Example (bash, e.g. Git Bash / WSL):
+
+```bash
+bash scripts/kg_build.sh RoGWebQSPData rogkg --jsonl
+bash scripts/kg_query.sh rogkg_triples.tsv.gz --search Berlin
+bash scripts/kg_subgraph_classify.sh rogkg_triples.tsv.gz "Berlin" --export berlin_subgraphs.json
+bash scripts/kg_subgraph_enhanced.sh rogkg_triples.tsv.gz --batch-top 30 --csv subgraph_stats.csv
+bash scripts/kg_question_retrieval.sh rogkg_triples.tsv.gz "What country is Berlin in?" --top-n-related 25
+```
+
+Outputs (default prefixes):
+
+- `rogkg_triples.tsv.gz` – Tab separated triples.
+- `rogkg_alias_map.json` – ID → textual label map.
+- Optional JSONL / reports as requested (`--jsonl`, `--report`, `--csv`).
+
+Feel free to adapt these scripts for Windows `.ps1` equivalents if desired.
