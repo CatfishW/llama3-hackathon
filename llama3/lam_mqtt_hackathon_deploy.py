@@ -13,6 +13,8 @@ import fire
 import paho.mqtt.client as mqtt
 from concurrent.futures import ThreadPoolExecutor
 from llama import Dialog, Llama
+import re
+from collections import deque
 # Model interface and implementations
 class ModelInterface(ABC):
     @abstractmethod
@@ -60,8 +62,10 @@ class LlamaModel(ModelInterface):
                         top_p=top_p,
                 )
             except Exception as chat_error:
-                # Save the original dialog for debugging purposes
-                debug_filename = f"debug_dialog_{uuid.uuid4()}.json"
+                # Save the original dialog for debugging purposes, save under a folder
+                debug_folder = "debug_dialogs"
+                os.makedirs(debug_folder, exist_ok=True)
+                debug_filename = f"{debug_folder}/debug_dialog_{uuid.uuid4()}.json"
                 with open(debug_filename, "w") as f:
                     json.dump(dialog, f, indent=2)
                 logging.warning(f"[LlamaModel] Original dialog failed: {chat_error}")
@@ -303,17 +307,7 @@ class MazeSessionManager:
             dialog.append({"role": "assistant", "content": response_text})
 
             # Parse JSON guidance
-            try:
-                # strip markdown fences if present
-                txt = response_text.strip()
-                if txt.startswith("```json"):
-                    txt = txt[len("```json"):].strip()
-                if txt.endswith("```"):
-                    txt = txt[:-3].strip()
-                guidance = json.loads(txt)
-            except Exception as e:
-                logging.warning(f"[Session {session_id}] JSON parse error: {e}; sending error to client")
-                guidance = {"error": f"Parse error: {e}", "hint": response_text.strip()[:200]}
+            guidance = self._robust_parse_guidance(response_text, state, breaks_remain, session_id)
 
             # Enforce break limits
             if "break_wall" in guidance:
@@ -328,6 +322,178 @@ class MazeSessionManager:
             guidance["breaks_remaining"] = self.breaks_left[session_id]
 
         return session_id, guidance
+
+    # ─── Guidance Parsing Helpers ────────────────────────────────────────────
+    def _robust_parse_guidance(self, response_text: str, state: dict, breaks_remain: int, session_id: str):
+        """Attempt to parse the model response into a guidance dict.
+
+        Falls back to extracting the first JSON object substring, then finally
+        constructs a deterministic guidance object with a computed path using BFS.
+        Always ensures a 'path' field is present to satisfy client expectations.
+        """
+        raw = response_text.strip()
+
+        # Remove markdown fences
+        if raw.startswith("```json"):
+            raw = raw[len("```json"):].strip()
+        if raw.startswith("```") and not raw.startswith("```json"):
+            # generic fenced block
+            raw = raw[3:].strip()
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+
+        # First direct attempt
+        for attempt in [raw]:
+            try:
+                guidance = json.loads(attempt)
+                if isinstance(guidance, dict):
+                    return self._finalize_guidance(guidance, state, breaks_remain, session_id, source="direct")
+            except Exception:
+                pass
+
+        # Try to extract first JSON object via brace matching
+        extracted = self._extract_first_json_object(raw)
+        if extracted:
+            try:
+                guidance = json.loads(extracted)
+                if isinstance(guidance, dict):
+                    return self._finalize_guidance(guidance, state, breaks_remain, session_id, source="extracted")
+            except Exception as e:
+                logging.debug(f"[Session {session_id}] Extracted JSON failed to parse: {e}")
+
+        logging.warning(f"[Session {session_id}] Unable to parse model JSON; using fallback path computation")
+        fallback = {"hint": raw[:160] + ("…" if len(raw) > 160 else "")}
+        return self._finalize_guidance(fallback, state, breaks_remain, session_id, source="fallback")
+
+    def _extract_first_json_object(self, text: str):
+        """Extract the first top-level JSON object substring by balancing braces."""
+        start = text.find('{')
+        if start == -1:
+            return None
+        depth = 0
+        for i in range(start, len(text)):
+            ch = text[i]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i+1]
+        return None
+
+    def _finalize_guidance(self, guidance: dict, state: dict, breaks_remain: int, session_id: str, source: str):
+        """Ensure mandatory fields (path) exist; compute if absent or invalid."""
+        path = guidance.get("path")
+        if not self._is_valid_path(path):
+            try:
+                computed_path, break_wall = self._compute_path_with_breaks(state, breaks_remain)
+                guidance["path"] = computed_path
+                # Only propose break if model didn't already and it's useful
+                if break_wall and "break_wall" not in guidance and breaks_remain > 0:
+                    guidance["break_wall"] = break_wall
+                logging.info(f"[Session {session_id}] Path {'computed' if path is None else 'replaced'} via {source} (len={len(guidance['path'])})")
+            except Exception as e:
+                logging.error(f"[Session {session_id}] Failed to compute fallback path: {e}")
+                guidance.setdefault("error", f"No valid path and fallback failed: {e}")
+                guidance.setdefault("path", [])
+        return guidance
+
+    def _is_valid_path(self, path):
+        if not isinstance(path, list) or not path:
+            return False
+        for p in path:
+            if not (isinstance(p, list) or isinstance(p, tuple)):
+                return False
+            if len(p) != 2:
+                return False
+            if not all(isinstance(v, int) for v in p):
+                return False
+        return True
+
+    def _compute_path_with_breaks(self, state: dict, breaks_remain: int):
+        """BFS shortest path allowing up to breaks_remain wall breaks.
+
+        Returns (path, suggested_break_wall). If a path exists without using a break,
+        suggested_break_wall will be None. If no path exists but one break could help,
+        we heuristically suggest a wall adjacent to the shortest frontier.
+        """
+        grid = state.get("visible_map") or []
+        start = state.get("player_pos")
+        goal = state.get("exit_pos")
+        if not (isinstance(grid, list) and start and goal):
+            raise ValueError("Invalid state for path computation")
+
+        h = len(grid)
+        w = len(grid[0]) if h else 0
+        if h == 0 or w == 0:
+            raise ValueError("Empty grid")
+
+        sx, sy = start
+        gx, gy = goal
+
+        def in_bounds(x, y):
+            return 0 <= y < h and 0 <= x < w
+
+        # State: (x, y, breaks_used)
+        q = deque([(sx, sy, 0)])
+        parent = {(sx, sy, 0): None}
+        visited = set([(sx, sy, 0)])
+        dirs = [(1,0),(-1,0),(0,1),(0,-1)]
+        goal_state = None
+
+        while q:
+            x, y, b = q.popleft()
+            if (x, y) == (gx, gy):
+                goal_state = (x, y, b)
+                break
+            for dx, dy in dirs:
+                nx, ny = x+dx, y+dy
+                if not in_bounds(nx, ny):
+                    continue
+                cell = grid[ny][nx]
+                if cell == 1:  # floor
+                    state_key = (nx, ny, b)
+                    if state_key not in visited:
+                        visited.add(state_key)
+                        parent[state_key] = (x, y, b)
+                        q.append(state_key)
+                elif cell == 0 and b < breaks_remain:  # wall, we can break
+                    state_key = (nx, ny, b+1)
+                    if state_key not in visited:
+                        visited.add(state_key)
+                        parent[state_key] = (x, y, b)
+                        q.append(state_key)
+
+        if goal_state is None:
+            # No path even with breaks: suggest a wall adjacent to start towards goal as heuristic
+            suggestion = None
+            if breaks_remain > 0:
+                best_dist = float('inf')
+                for dx, dy in dirs:
+                    nx, ny = sx+dx, sy+dy
+                    if in_bounds(nx, ny) and grid[ny][nx] == 0:
+                        dist = abs(nx - gx) + abs(ny - gy)
+                        if dist < best_dist:
+                            best_dist = dist
+                            suggestion = [nx, ny]
+            return [], suggestion
+
+        # Reconstruct path
+        rev = []
+        cur = goal_state
+        while cur is not None:
+            x, y, b = cur
+            rev.append([x, y])
+            cur = parent[cur]
+        rev.reverse()
+
+        # Determine if we used a break and which wall to suggest next (none if already used optimal)
+        used_breaks = goal_state[2]
+        suggestion = None
+        if used_breaks == 0 and breaks_remain > 0:
+            # We didn't need a break; maybe suggest none.
+            suggestion = None
+        return rev, suggestion
 
     def set_global_prompt(self, new_prompt: str, reset_existing: bool = False):
         """Update the global system prompt. Optionally reset all sessions to use it."""
