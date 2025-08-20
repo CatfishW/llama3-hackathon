@@ -1,6 +1,5 @@
 # lam_mqtt_hackathon_deploy.py
 
-import time
 import uuid
 import json
 import logging
@@ -13,7 +12,6 @@ import fire
 import paho.mqtt.client as mqtt
 from concurrent.futures import ThreadPoolExecutor
 from llama import Dialog, Llama
-import re
 from collections import deque
 # Model interface and implementations
 class ModelInterface(ABC):
@@ -44,50 +42,39 @@ class LlamaModel(ModelInterface):
     
     def generate_response(self, dialog, max_gen_len, temperature, top_p):
         try:
-            logging.info(f"[LlamaModel] Generating response with dialog: {dialog}...")
+            logging.info(f"[LlamaModel] Generating response (pre-simplification)...")
 
-            # Validate and sanitize dialog format
+            # 1. Validate & sanitize
             try:
                 dialog = self.validate_and_sanitize_dialog(dialog)
-                logging.info(f"[LlamaModel] Dialog validation passed. Dialog has {len(dialog)} messages.")
             except Exception as validation_error:
-                logging.error(f"[LlamaModel] Dialog validation failed: {validation_error}")
                 raise ValueError(f"Invalid dialog format: {validation_error}")
 
+            # 2. Always simplify (compression of large maps)
+            simplified_dialog = self._simplify_dialog(dialog)
+            if simplified_dialog is not dialog:
+                logging.info("[LlamaModel] Dialog simplified (map compressed)")
+
+            # 3. Single generation attempt
             try:
                 results = self.generator.chat_completion(
-                        [dialog],
-                        max_gen_len=max_gen_len,
-                        temperature=temperature,
-                        top_p=top_p,
+                    [simplified_dialog],
+                    max_gen_len=max_gen_len,
+                    temperature=temperature,
+                    top_p=top_p,
                 )
-            except Exception as chat_error:
-                # Save the original dialog for debugging purposes, save under a folder
-                debug_folder = "debug_dialogs"
-                os.makedirs(debug_folder, exist_ok=True)
-                debug_filename = f"{debug_folder}/debug_dialog_{uuid.uuid4()}.json"
-                with open(debug_filename, "w") as f:
-                    json.dump(dialog, f, indent=2)
-                logging.warning(f"[LlamaModel] Original dialog failed: {chat_error}")
-                logging.info("[LlamaModel] Attempting with debug dialog...")
-                
-                # Create a simple debug dialog
-                debug_dialog = [
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Respond with a simple JSON object containing 'path': [[0,0]], 'hint': 'debug mode'"}
-                ]
-                
+            except Exception as gen_err:
+                # Persist simplified dialog for debugging then raise
                 try:
-                    results = self.generator.chat_completion(
-                            [debug_dialog],
-                            max_gen_len=max_gen_len,
-                            temperature=temperature,
-                            top_p=top_p,
-                    )
-                    logging.info("[LlamaModel] Debug dialog succeeded, original dialog had issues")
-                except Exception as debug_error:
-                    logging.error(f"[LlamaModel] Debug dialog also failed: {debug_error}")
-                    raise RuntimeError(f"Both original and debug dialogs failed: original={chat_error}, debug={debug_error}")
+                    debug_folder = "debug_dialogs"
+                    os.makedirs(debug_folder, exist_ok=True)
+                    debug_filename = os.path.join(debug_folder, f"debug_dialog_{uuid.uuid4()}.json")
+                    with open(debug_filename, "w") as f:
+                        json.dump(simplified_dialog, f, indent=2)
+                    logging.error(f"[LlamaModel] Generation failed (saved {debug_filename}): {gen_err}")
+                except Exception:
+                    logging.error(f"[LlamaModel] Generation failed (also failed saving debug): {gen_err}")
+                raise RuntimeError(f"chat_completion failed: {gen_err}")
             
             # Validate response structure
             if not results:
@@ -179,6 +166,68 @@ class LlamaModel(ModelInterface):
             })
         
         return sanitized_dialog
+
+    def _simplify_dialog(self, dialog):
+        """Produce a lighter-weight dialog by compressing large JSON maps in the last user message.
+
+        Replaces 'visible_map' with a compressed structure 'visible_map_compressed'.
+        """
+        try:
+            changed = False
+            simplified = []
+            for msg in dialog:
+                if msg.get("role") != "user":
+                    simplified.append(msg)
+                    continue
+                content = msg.get("content", "")
+                data = None
+                if isinstance(content, str) and len(content) < 300000:
+                    try:
+                        data = json.loads(content)
+                    except Exception:
+                        pass
+                if isinstance(data, dict) and isinstance(data.get("visible_map"), list):
+                    vm = data["visible_map"]
+                    h = len(vm)
+                    w = len(vm[0]) if h else 0
+                    row_strings = ["".join(str(c) for c in row) for row in vm]
+
+                    def rle(s):
+                        out = []
+                        last = None
+                        count = 0
+                        for ch in s:
+                            if ch == last:
+                                count += 1
+                            else:
+                                if last is not None:
+                                    out.append(f"{last}{count}")
+                                last = ch
+                                count = 1
+                        if last is not None:
+                            out.append(f"{last}{count}")
+                        r = "|".join(out)
+                        return r if len(r) < len(s) else s
+
+                    compressed_rows = [rle(rs) for rs in row_strings]
+                    data["visible_map_compressed"] = {
+                        "width": w,
+                        "height": h,
+                        "rows": compressed_rows,
+                        "encoding": "char-run"
+                    }
+                    data.pop("visible_map", None)
+                    simplified.append({
+                        "role": "user",
+                        "content": json.dumps(data, ensure_ascii=False)
+                    })
+                    changed = True
+                else:
+                    simplified.append(msg)
+            return simplified if changed else dialog
+        except Exception as e:
+            logging.warning(f"[LlamaModel] _simplify_dialog error: {e}")
+            return dialog
 
 class QwQModel(ModelInterface):
     def __init__(self, model_name, max_seq_len, quantization=None):
@@ -304,64 +353,52 @@ class MazeSessionManager:
                 guidance = {"error": f"LLM error: {e}", "prompt": sample, "breaks_remaining": breaks_remain}
                 return session_id, guidance
 
+            # Append assistant response and parse into guidance JSON
             dialog.append({"role": "assistant", "content": response_text})
 
-            # Parse JSON guidance
             guidance = self._robust_parse_guidance(response_text, state, breaks_remain, session_id)
 
             # Enforce break limits
             if "break_wall" in guidance:
                 if breaks_remain > 0:
-                    # decrement
                     self.breaks_left[session_id] -= 1
                 else:
-                    # remove break_wall field if no breaks left
                     guidance.pop("break_wall", None)
 
-            # Always include updated breaks remaining
             guidance["breaks_remaining"] = self.breaks_left[session_id]
 
         return session_id, guidance
 
     # ─── Guidance Parsing Helpers ────────────────────────────────────────────
     def _robust_parse_guidance(self, response_text: str, state: dict, breaks_remain: int, session_id: str):
-        """Attempt to parse the model response into a guidance dict.
-
-        Falls back to extracting the first JSON object substring, then finally
-        constructs a deterministic guidance object with a computed path using BFS.
-        Always ensures a 'path' field is present to satisfy client expectations.
-        """
         raw = response_text.strip()
-
-        # Remove markdown fences
+        # Strip fences
         if raw.startswith("```json"):
             raw = raw[len("```json"):].strip()
         if raw.startswith("```") and not raw.startswith("```json"):
-            # generic fenced block
             raw = raw[3:].strip()
         if raw.endswith("```"):
             raw = raw[:-3].strip()
 
-        # First direct attempt
-        for attempt in [raw]:
+        # Attempt direct parse then extracted object
+        for attempt in (raw,):
             try:
-                guidance = json.loads(attempt)
-                if isinstance(guidance, dict):
-                    return self._finalize_guidance(guidance, state, breaks_remain, session_id, source="direct")
+                obj = json.loads(attempt)
+                if isinstance(obj, dict):
+                    return self._finalize_guidance(obj, state, breaks_remain, session_id, source="direct")
             except Exception:
                 pass
 
-        # Try to extract first JSON object via brace matching
         extracted = self._extract_first_json_object(raw)
         if extracted:
             try:
-                guidance = json.loads(extracted)
-                if isinstance(guidance, dict):
-                    return self._finalize_guidance(guidance, state, breaks_remain, session_id, source="extracted")
+                obj = json.loads(extracted)
+                if isinstance(obj, dict):
+                    return self._finalize_guidance(obj, state, breaks_remain, session_id, source="extracted")
             except Exception as e:
-                logging.debug(f"[Session {session_id}] Extracted JSON failed to parse: {e}")
+                logging.debug(f"[Session {session_id}] Extracted JSON parse fail: {e}")
 
-        logging.warning(f"[Session {session_id}] Unable to parse model JSON; using fallback path computation")
+        logging.warning(f"[Session {session_id}] Falling back to computed path (parse failed)")
         fallback = {"hint": raw[:160] + ("…" if len(raw) > 160 else "")}
         return self._finalize_guidance(fallback, state, breaks_remain, session_id, source="fallback")
 
