@@ -696,7 +696,7 @@ def main(
             if msg.topic == TEMPLATE_TOPIC or msg.topic.startswith(f"{TEMPLATE_TOPIC}/"):
                 try:
                     payload = json.loads(msg.payload.decode("utf-8")) if msg.payload else {}
-                    new_prompt = payload.get("prompt_template") or payload.get("system_prompt")
+                    new_prompt = payload.get("prompt_template") or payload.get("system_prompt") or payload.get("template")
                     if not new_prompt:
                         logging.warning("[Template] Missing 'template' in payload")
                         return
