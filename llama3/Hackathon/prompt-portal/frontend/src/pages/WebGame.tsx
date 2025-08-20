@@ -123,10 +123,26 @@ import { useNavigate } from 'react-router-dom'
   const [germCount, setGermCount] = useState(5)
   const [status, setStatus] = useState('')
   // New UI toggles
-  const [showLamPanel, setShowLamPanel] = useState(true)
+  // (In-canvas LAM panel removed; external panel supersedes it)
+  const [showLamPanel] = useState(false)
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [paused, setPaused] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  // External LAM details UI
+  const [showLamDetails, setShowLamDetails] = useState(true)
+  const [lamExpanded, setLamExpanded] = useState(false)
+  const [lamData, setLamData] = useState<{hint:string; path:Vec2[]; breaks:number; error:string; raw:any; rawMessage:any; updatedAt:number}>({ hint:'', path:[], breaks:0, error:'', raw:{}, rawMessage:{}, updatedAt:0 })
+  // LAM flow monitor state
+  type LamFlowEvent = { id:number; publishAt:number; receivedAt?:number; latencyMs?:number; actionsDeclared:string[]; actionsApplied:Array<{action:string; at:number; detail?:any}>; hintExcerpt?:string; error?:string }
+  const [lamFlow, setLamFlow] = useState<LamFlowEvent[]>([])
+  const publishSeqRef = useRef(0)
+  const pendingFlowRef = useRef<LamFlowEvent | null>(null)
+  // Panel visibility & layout
+  const [showLamFlowPanel, setShowLamFlowPanel] = useState(true)
+  const [lamFlowPos, setLamFlowPos] = useState({ x: 16, y: 140 })
+  const [lamFlowWidth, setLamFlowWidth] = useState(340)
+  const [lamDetailsPos, setLamDetailsPos] = useState<{x:number;y:number}|null>(null)
+  const dragInfoRef = useRef<{ panel: null | 'flow' | 'details' | 'flow-resize'; offX: number; offY: number; startW?: number }>({ panel: null, offX:0, offY:0 })
 
   // Game state
   const tile = 24
@@ -143,6 +159,7 @@ import { useNavigate } from 'react-router-dom'
     germs: [] as { pos: Vec2; dir: Vec2; speed: number }[],
     oxygenCollected: 0,
     startTime: 0,
+  started: false,
     gameOver: false,
     win: false,
     lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '' },
@@ -154,7 +171,10 @@ import { useNavigate } from 'react-router-dom'
     hitFlash: 0,
     particles: [] as Array<{x:number;y:number;r:number;spd:number;alpha:number}>,
     germStepFlip: false,
-    emotion: 'neutral' as 'neutral'|'happy'|'scared'|'tired'|'excited'
+  emotion: 'neutral' as 'neutral'|'happy'|'scared'|'tired'|'excited',
+  // New wall break FX
+  wallBreakParts: [] as Array<{x:number;y:number;vx:number;vy:number;life:number;ttl:number}>,
+  cameraShake: 0
   })
 
   const width = cols * tile
@@ -262,6 +282,80 @@ import { useNavigate } from 'react-router-dom'
       ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r*0.6, 0, 0, Math.PI*2); ctx.fill()
     }
   }
+
+    // Wall break helper (adds debris + shake)
+  function breakWall(bx: number, by: number) {
+      const s = stateRef.current
+      if (bx==null || by==null) return
+      let x = bx, y = by
+      const inBounds = (xx:number,yy:number)=> yy>=0 && yy<s.grid.length && xx>=0 && xx<s.grid[0].length
+      // Track reasons for debug (dev only)
+      let reason = ''
+      // Restrict to 8-neighborhood around player; redirect far requests to closest intended neighbor
+      const px = s.player.x, py = s.player.y
+      if (Math.abs(bx-px) > 1 || Math.abs(by-py) > 1) {
+        let dx = Math.sign(bx - px), dy = Math.sign(by - py)
+        if (dx===0 && dy===0) dx = 1 // default
+        const candidates: Array<[number,number]> = []
+        candidates.push([px+dx, py+dy])
+        if (dx!==0 && dy!==0) { candidates.push([px+dx, py]); candidates.push([px, py+dy]) }
+        for (let oy=-1; oy<=1; oy++) for (let ox=-1; ox<=1; ox++) if (!(ox===0&&oy===0)) candidates.push([px+ox, py+oy])
+        const pick = candidates.find(([cx,cy]) => inBounds(cx,cy) && s.grid[cy][cx] === 1)
+        if (pick) { x = pick[0]; y = pick[1]; reason = 'restricted_to_neighbor' } else { console.debug('[breakWall] out-of-range request; no neighbor wall', { original:[bx,by] }); return }
+      }
+      // If out of bounds try swapped (server might send row,col)
+      if (!inBounds(x,y) && inBounds(y,x)) {
+        reason = 'swapped_out_of_bounds';
+        x = by; y = bx
+      }
+      // If both interpretations in-bounds but chosen cell not a wall while swapped is a wall, prefer swapped
+      if (inBounds(x,y) && inBounds(y,x) && s.grid[y][x] !== 1 && s.grid[bx]?.[by] !== 1 && s.grid[by]?.[bx] === 1) {
+        reason = 'swapped_wall_detected';
+        x = by; y = bx
+      }
+      if (!inBounds(x,y)) { console.debug('[breakWall] rejected: OOB', { bx, by }); return }
+      // If selected cell not a wall, attempt intelligent recovery: if swapped is wall use it, else search 4-neighbors for a wall
+      if (s.grid[y][x] !== 1) {
+        // Neighbor search (server may have given a path cell adjacent to intended wall)
+        const neigh = [ [x+1,y],[x-1,y],[x,y+1],[x,y-1] ]
+        const wallNeigh = neigh.find(([nx,ny]) => inBounds(nx,ny) && s.grid[ny][nx] === 1)
+        if (wallNeigh) {
+          reason = reason || 'adjacent_wall_used'
+          x = wallNeigh[0]; y = wallNeigh[1]
+        } else {
+          // Nothing to break
+          return
+        }
+      }
+      // Avoid breaking critical start/exit cells even if walls (safety)
+      if ((x===1&&y===1) || (x===s.exit.x && y===s.exit.y)) return
+      s.grid[y][x] = 0
+      const pieces = 14 + randInt(8)
+      for (let i=0;i<pieces;i++) {
+        const ang = Math.random()*Math.PI*2
+        const spd = 0.8 + Math.random()*2.2
+        s.wallBreakParts.push({
+          x: x*tile + tile/2 + (Math.random()*4 - 2),
+          y: y*tile + tile/2 + (Math.random()*4 - 2),
+          vx: Math.cos(ang)*spd,
+          vy: Math.sin(ang)*spd - 1.2*Math.random(),
+          life: 0,
+          ttl: 600 + randInt(500)
+        })
+      }
+      s.cameraShake = Math.min(12, s.cameraShake + 8)
+  // Replace old popup with new falling text (5s)
+  ;(s as any).fallTexts = (s as any).fallTexts || []
+  ;(s as any).fallTexts.push({ x: x*tile + tile/2, y: y*tile + tile/2, vx: (Math.random()*2-1)*0.4, vy: -0.4 - Math.random()*0.4, t0: performance.now(), ttl: 5000, text: 'Wall Broken!' })
+      // Highlight broken location briefly
+      s.highlight.set(key(x,y), performance.now()+2500)
+  if (reason) console.debug('[breakWall] success', { original: [bx,by], final:[x,y], reason })
+  else console.debug('[breakWall] success', { original: [bx,by], final:[x,y] })
+      if ((pendingFlowRef as any)?.current) {
+        (pendingFlowRef as any).current.actionsApplied.push({ action:'break_wall', at: performance.now(), detail:{ from:[bx,by], final:[x,y], reason } })
+        setLamFlow(f=>[...f])
+      }
+    }
 
   function drawPlayer(ctx: CanvasRenderingContext2D, s: any, t: number) {
     const cx = s.player.x*tile + tile/2
@@ -402,7 +496,7 @@ import { useNavigate } from 'react-router-dom'
     ws.onclose = () => setConnected(false)
     ws.onmessage = (evt) => {
       try {
-        const data = JSON.parse(evt.data)
+  const data = JSON.parse(evt.data)
         const hint: HintMsg = data.hint || {}
         const s = stateRef.current
         // Handle multiple possible error shapes
@@ -418,10 +512,38 @@ import { useNavigate } from 'react-router-dom'
         }
         s.lam.hint = hint.hint || ''
         s.lam.path = (hint.path || []).map(([x,y]) => ({x,y}))
-        s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
+  s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
+  // Maintain React state copy for external panel (include raw envelope and timestamp)
+  setLamData({ hint: s.lam.hint, path: s.lam.path.slice(), breaks: s.lam.breaks, error: s.lam.error, raw: hint, rawMessage: data, updatedAt: Date.now() })
+        // Flow monitor: record first receipt event & declared actions
+        if (pendingFlowRef.current && !pendingFlowRef.current.receivedAt) {
+          const evtF = pendingFlowRef.current
+          evtF.receivedAt = performance.now()
+          evtF.latencyMs = evtF.receivedAt - evtF.publishAt
+          const decl:string[] = []
+          const r:any = hint
+          if (r.break_wall) decl.push('break_wall')
+          if (Array.isArray(r.break_walls) && r.break_walls.length) decl.push('break_walls')
+          if (r.speed_boost_ms) decl.push('speed_boost')
+          if (r.slow_germs_ms) decl.push('slow_germs')
+          if (r.freeze_germs_ms) decl.push('freeze_germs')
+          if (r.teleport_player) decl.push('teleport_player')
+          if (r.spawn_oxygen) decl.push('spawn_oxygen')
+          if (r.move_exit) decl.push('move_exit')
+          if (r.highlight_zone) decl.push('highlight_zone')
+          if (r.toggle_autopilot!==undefined) decl.push('toggle_autopilot')
+          if (r.reveal_map!==undefined) decl.push('reveal_map')
+          evtF.actionsDeclared = decl
+          evtF.hintExcerpt = (hint.hint||'').slice(0,140)
+          evtF.error = s.lam.error || undefined
+          setLamFlow(f=>[...f])
+        }
         if (hint.break_wall) {
           const [bx, by] = hint.break_wall
-          if (by>=0 && by<s.grid.length && bx>=0 && bx<s.grid[0].length) s.grid[by][bx] = 0
+          breakWall(bx, by)
+        }
+        if ((anyHint.breakWall) && Array.isArray(anyHint.breakWall) && anyHint.breakWall.length===2) {
+          const [bx, by] = anyHint.breakWall; breakWall(bx, by)
         }
         // New actions
         const now = performance.now()
@@ -444,7 +566,7 @@ import { useNavigate } from 'react-router-dom'
           }
         }
         if (Array.isArray(hint.break_walls)) {
-          for (const [bx,by] of hint.break_walls) if (s.grid[by]?.[bx]===1) s.grid[by][bx]=0
+          for (const [bx,by] of hint.break_walls) breakWall(bx, by)
         }
         if (Array.isArray(hint.highlight_zone)) {
           const until = now + (hint.highlight_ms ?? 5000)
@@ -495,6 +617,7 @@ import { useNavigate } from 'react-router-dom'
       germs,
       oxygenCollected: 0,
       startTime: performance.now(),
+  started: true,
       gameOver: false,
       win: false,
       lam: { hint: '', path: [], breaks: 0, error: '' },
@@ -505,7 +628,9 @@ import { useNavigate } from 'react-router-dom'
       hitFlash: 0,
       particles: Array.from({length: 80}, ()=>({ x: Math.random()*width, y: Math.random()*height, r: 6+Math.random()*18, spd: 0.3+Math.random()*0.8, alpha: 0.06+Math.random()*0.12 })),
       germStepFlip: false,
-      emotion: 'neutral'
+  emotion: 'neutral',
+  wallBreakParts: [],
+  cameraShake: 0
     }
 
     setStatus('')
@@ -523,6 +648,11 @@ import { useNavigate } from 'react-router-dom'
     lastPublishRef.current = now
 
     const s = stateRef.current
+    // Server (lam_mqtt_hackathon_deploy.py) expects visible_map semantics: 1 = floor/passable, 0 = wall.
+    // Our client grid uses 0 = path, 1 = wall. Convert before publishing so LAM pathfinding works.
+    const visibleMap = (s.grid && s.grid.length)
+      ? s.grid.map(row => row.map(c => c === 0 ? 1 : 0))
+      : []
     const body = {
       session_id: sessionId,
       template_id: templateId,
@@ -530,7 +660,7 @@ import { useNavigate } from 'react-router-dom'
         sessionId,
         player_pos: [s.player.x, s.player.y],
         exit_pos: [s.exit.x, s.exit.y],
-        visible_map: s.grid,
+        visible_map: visibleMap,
         oxygenPellets: s.oxy.map(p => ({ x: p.x, y: p.y })),
         germs: s.germs.map(g => ({ x: g.pos.x, y: g.pos.y })),
         tick: Date.now(),
@@ -539,13 +669,44 @@ import { useNavigate } from 'react-router-dom'
       }
     }
     try { await api.post('/api/mqtt/publish_state', body) } catch (e) { /* ignore */ }
+  // Flow monitor: start a new pending event awaiting LAM response
+  const evt: LamFlowEvent = { id: ++publishSeqRef.current, publishAt: performance.now(), actionsDeclared: [], actionsApplied: [] }
+  pendingFlowRef.current = evt
+  setLamFlow(f => [...f.slice(-14), evt])
   }, [sessionId, templateId])
+
+  // Initialize lamDetailsPos after mount (so we know window width)
+  useEffect(()=>{
+    if (lamDetailsPos==null) {
+      const baseW = lamExpanded ? 460 : 320
+      setLamDetailsPos({ x: Math.max(16, (window.innerWidth - baseW - 16)), y: 140 })
+    }
+  }, [lamDetailsPos, lamExpanded])
+
+  // Global mouse handlers for dragging/resizing panels
+  useEffect(()=>{
+    function onMove(e:MouseEvent){
+      if (!dragInfoRef.current.panel) return
+      if (dragInfoRef.current.panel === 'flow') {
+        setLamFlowPos(pos => ({ x: e.clientX - dragInfoRef.current.offX, y: e.clientY - dragInfoRef.current.offY }))
+      } else if (dragInfoRef.current.panel === 'details') {
+        setLamDetailsPos(pos => pos? { x: e.clientX - dragInfoRef.current.offX, y: e.clientY - dragInfoRef.current.offY } : pos)
+      } else if (dragInfoRef.current.panel === 'flow-resize') {
+        const delta = e.clientX - dragInfoRef.current.offX
+        setLamFlowWidth(w => Math.min(600, Math.max(260, (dragInfoRef.current.startW||w) + delta)))
+      }
+    }
+    function onUp(){ dragInfoRef.current.panel = null }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
 
   // Periodic publisher: every 15s while game is running
   useEffect(() => {
     const id = setInterval(() => {
       const s = stateRef.current
-      if (templateId && s.startTime && !s.gameOver) {
+  if (templateId && s.started && !s.gameOver) {
         publishState(true)
       }
     }, 15000)
@@ -558,7 +719,7 @@ import { useNavigate } from 'react-router-dom'
     const down = (e: KeyboardEvent) => { 
       keysRef.current[e.key] = true
       if (e.key.toLowerCase() === 't') setAutoPilot(v => !v)
-      if (e.key.toLowerCase() === 'h') setShowLamPanel(v=>!v)
+  // 'H' previously toggled in-canvas LAM panel; removed.
       if (e.key.toLowerCase() === 'm') setShowMenu(v=>!v)
       if (e.key.toLowerCase() === 'p') setPaused(v=>!v)
       if (e.key.toLowerCase() === 'n') setShowMiniMap(v=>!v)
@@ -590,6 +751,7 @@ import { useNavigate } from 'react-router-dom'
     function updateOnce() {
       const s = stateRef.current
       const now = performance.now()
+  if (!s.started) return
 
       // compute effects
       const speedActive = now < s.effects.speedBoostUntil
@@ -663,6 +825,29 @@ import { useNavigate } from 'react-router-dom'
 
       // fade hit flash
       if (s.hitFlash>0) s.hitFlash = Math.max(0, s.hitFlash - 0.1)
+
+      // update wall debris
+      if (s.wallBreakParts.length) {
+        s.wallBreakParts = s.wallBreakParts.filter(p => {
+          p.life += stepMs
+          p.x += p.vx
+            p.y += p.vy
+          p.vy += 0.04 // gravity-ish
+          return p.life < p.ttl
+        })
+      }
+      // update falling texts
+      if ((s as any).fallTexts?.length) {
+        ;(s as any).fallTexts = (s as any).fallTexts.filter((ft:any)=>{
+          const age = now - ft.t0
+          ft.vy += 0.05
+          ft.x += ft.vx * (stepMs/16)
+          ft.y += ft.vy * (stepMs/16)
+          return age < ft.ttl && ft.y < height + 40
+        })
+      }
+      // decay camera shake
+      if (s.cameraShake>0) s.cameraShake *= 0.88
     }
 
     function draw() {
@@ -670,9 +855,19 @@ import { useNavigate } from 'react-router-dom'
       const ctx = canvas.getContext('2d'); if (!ctx) return
       const s = stateRef.current
       ctx.clearRect(0,0,canvas.width, canvas.height)
-
-      drawVignette(ctx)
-      drawPlasma(ctx)
+      // Camera shake transform
+      const shakeMag = s.cameraShake
+      if (shakeMag>0) {
+        ctx.save()
+        const offX = (Math.random()*2-1)*shakeMag
+        const offY = (Math.random()*2-1)*shakeMag
+        ctx.translate(offX, offY)
+        drawVignette(ctx)
+        drawPlasma(ctx)
+      } else {
+        drawVignette(ctx)
+        drawPlasma(ctx)
+      }
 
       // grid with textures
       const tex = texturesRef.current
@@ -713,6 +908,19 @@ import { useNavigate } from 'react-router-dom'
       // player (RBC-like)
       drawPlayer(ctx, s, t)
 
+      // debris (after player so appears above floor but below HUD overlays)
+      if (s.wallBreakParts.length) {
+        for (const p of s.wallBreakParts) {
+          const lifeRatio = p.life / p.ttl
+          const alpha = 1 - lifeRatio
+          const pr = 3 + 3*(1-lifeRatio)
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = '#5a1f1f'
+          ctx.beginPath(); ctx.arc(p.x, p.y, pr, 0, Math.PI*2); ctx.fill()
+          ctx.globalAlpha = 1
+        }
+      }
+
       // Popups
       const now = performance.now()
       s.fxPopups = s.fxPopups.filter(p => now - p.t0 < p.ttl)
@@ -724,34 +932,27 @@ import { useNavigate } from 'react-router-dom'
         ctx.fillText(p.text, p.x*tile + tile/2 - 28, p.y*tile + yOff)
         ctx.globalAlpha = 1
       }
+      // Falling wall break texts
+      const fallTexts = (s as any).fallTexts || []
+      for (const ft of fallTexts) {
+        const age = now - ft.t0
+        const ratio = age / ft.ttl
+        const alpha = 1 - ratio
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = '#ffd1d1'
+        ctx.font = 'bold 16px Inter'
+        ctx.fillText(ft.text, ft.x - 50, ft.y)
+        ctx.globalAlpha = 1
+      }
 
       // HUD
-      const elapsed = (performance.now() - s.startTime)/1000
-      const score = Math.round(s.oxygenCollected*100 - elapsed*5)
+  const elapsed = s.started ? (performance.now() - s.startTime)/1000 : 0
+  const score = s.started ? Math.round(s.oxygenCollected*100 - elapsed*5) : 0
       ctx.fillStyle = '#fff'; ctx.font = '16px Inter, system-ui, sans-serif'
       ctx.fillText(`O₂: ${s.oxygenCollected}  Time: ${elapsed.toFixed(1)}s  Score: ${score}`, 10, 22)
 
       // LAM Panel (toggle)
-      if (showLamPanel) {
-        const panelX = width - 240, panelY = 12, panelW = 230, panelH = 146
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(panelX, panelY, panelW, panelH)
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.strokeRect(panelX, panelY, panelW, panelH)
-        if (s.lam.error) {
-          ctx.fillStyle = '#ff6b6b'; ctx.font = 'bold 14px Inter';
-          const msg = `Error: ${s.lam.error}`
-          const words = msg.split(' '); let line = ''; let y = panelY + 22
-          for (const w of words) {
-            const test = line ? line + ' ' + w : w
-            const wdt = ctx.measureText(test).width
-            if (wdt > panelW - 20) { ctx.fillText(line, panelX+10, y); line = w; y += 18 } else { line = test }
-          }
-          if (line) ctx.fillText(line, panelX+10, y)
-        } else {
-          ctx.fillStyle = '#fde047'; ctx.font = '15px Inter'; ctx.fillText(`LAM: ${s.lam.hint||'...'}`, panelX+10, panelY+22)
-        }
-        ctx.fillStyle = '#fff'; ctx.font = '14px Inter'; ctx.fillText(`Breaks: ${s.lam.breaks ?? 0}`, panelX+10, panelY+44)
-        if (s.lam.path?.length) ctx.fillText(`Next: ${s.lam.path[0].x},${s.lam.path[0].y}`, panelX+10, panelY+64)
-      }
+  // (In-canvas LAM panel removed)
 
       // Mini-map
       drawMiniMap(ctx, s)
@@ -774,11 +975,19 @@ import { useNavigate } from 'react-router-dom'
         ctx.fillStyle = '#fff'; ctx.font = '28px Inter';
         ctx.fillText(s.win ? 'You Win!' : 'Game Over', width/2-80, height/2 - 10)
       }
+      if (!s.started) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,width,height)
+        ctx.fillStyle = '#fff'; ctx.font = '24px Inter';
+        ctx.fillText('Click Start Game to Begin', width/2 - 170, height/2)
+      }
+
+  // restore after shake
+  if (shakeMag>0) ctx.restore()
     }
 
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [autoPilot, cols, rows, germCount, publishState, width, height, paused, showLamPanel, showMiniMap])
+  }, [autoPilot, cols, rows, germCount, publishState, width, height, paused, showMiniMap])
 
   // UI styles
   const containerStyle = useMemo(() => ({ maxWidth: '1200px', margin: '0 auto', padding: '20px' }), [])
@@ -837,7 +1046,7 @@ import { useNavigate } from 'react-router-dom'
             <div>
               <label style={{ display:'block', marginBottom:6 }}>Panels</label>
               <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-                <label><input type="checkbox" checked={showLamPanel} onChange={e=>setShowLamPanel(e.target.checked)} /> Show LAM</label>
+                {/* In-canvas LAM panel removed */}
                 <label><input type="checkbox" checked={showMiniMap} onChange={e=>setShowMiniMap(e.target.checked)} /> Mini-map</label>
               </div>
             </div>
@@ -879,6 +1088,142 @@ import { useNavigate } from 'react-router-dom'
           MQTT topics: publishes maze/state; listens on maze/hint/{'{sessionId}'} via backend bridge.
         </div>
       </div>
+      {/* External LAM Output Panel */}
+      {showLamDetails && lamDetailsPos && (
+        <div
+          style={{ position:'fixed', left:lamDetailsPos.x, top:lamDetailsPos.y, width: lamExpanded? 460: 320, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(165deg, rgba(15,15,25,0.85) 0%, rgba(55,25,65,0.78) 100%)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:16, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)', zIndex:50, cursor:'move' }}
+          onMouseDown={e=>{ dragInfoRef.current.panel='details'; dragInfoRef.current.offX = e.clientX - lamDetailsPos.x; dragInfoRef.current.offY = e.clientY - lamDetailsPos.y }}
+        >
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+            <strong style={{ fontSize:15, letterSpacing:'.5px' }}>LAM Intelligence Output</strong>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={()=>setLamExpanded(e=>!e)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'4px 8px', borderRadius:6, cursor:'pointer', fontSize:11 }}>{lamExpanded? 'Collapse':'Expand'}</button>
+              <button onClick={()=>setShowLamDetails(false)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'4px 8px', borderRadius:6, cursor:'pointer', fontSize:11 }}>Hide</button>
+            </div>
+          </div>
+          {lamData.error && <div style={{ background:'linear-gradient(135deg, rgba(255,60,60,0.15), rgba(120,30,30,0.25))', border:'1px solid rgba(255,90,90,0.4)', padding:8, borderRadius:10, fontSize:12, marginBottom:10 }}><strong style={{ color:'#ffb3b3' }}>Error:</strong> {lamData.error}</div>}
+          <div style={{ fontSize:12, lineHeight:1.5, display:'flex', flexDirection:'column', gap:10 }}>
+            <section>
+              <div style={{ fontWeight:600, marginBottom:4, letterSpacing:'.5px', fontSize:12, opacity:.85 }}>Hint</div>
+              <div style={{ whiteSpace:'pre-wrap', background:'rgba(255,255,255,0.06)', padding:8, borderRadius:10 }}>{lamData.hint || '—'}</div>
+            </section>
+            <section>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <div style={{ fontWeight:600, letterSpacing:'.5px', opacity:.85 }}>Path <span style={{ opacity:.6 }}>({lamData.path.length})</span></div>
+                {lamData.path.length>0 && <div style={{ fontSize:11, opacity:.7 }}>Next: ({lamData.path[0].x},{lamData.path[0].y})</div>}
+              </div>
+              <div style={{ fontFamily:'monospace', fontSize:11, maxHeight: lamExpanded? 220: 80, overflow:'auto', padding:'6px 8px', background:'rgba(255,255,255,0.07)', borderRadius:8, lineHeight:1.35 }}>
+                {lamData.path.length? lamData.path.map((p,i)=> (i && i%8===0? `\n(${p.x},${p.y})`:`(${p.x},${p.y})`)).join(' → ') : '—'}
+              </div>
+            </section>
+            <section>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Breaks</span>: {lamData.breaks}</div>
+                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Autopilot</span>: {autoPilot? 'On':'Off'}</div>
+                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Updated</span>: {lamData.updatedAt? `${((Date.now()-lamData.updatedAt)/1000).toFixed(1)}s ago`:'—'}</div>
+              </div>
+            </section>
+            <section>
+              <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Detected Actions</div>
+              {(() => {
+                const r = lamData.raw || {}
+                const keys: string[] = []
+                const push = (k:string,c:boolean)=>{ if(c) keys.push(k) }
+                push('break_wall', !!r.break_wall)
+                push('break_walls', Array.isArray(r.break_walls) && r.break_walls.length>0)
+                push('speed_boost', !!r.speed_boost_ms)
+                push('slow_germs', !!r.slow_germs_ms)
+                push('freeze_germs', !!r.freeze_germs_ms)
+                push('teleport_player', !!r.teleport_player)
+                push('spawn_oxygen', Array.isArray(r.spawn_oxygen) && r.spawn_oxygen.length>0)
+                push('move_exit', !!r.move_exit)
+                push('highlight_zone', Array.isArray(r.highlight_zone) && r.highlight_zone.length>0)
+                push('toggle_autopilot', r.toggle_autopilot!==undefined)
+                push('reveal_map', r.reveal_map!==undefined)
+                return <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>{keys.length? keys.map(k=> <span key={k} style={{ background:'linear-gradient(135deg,#433,#655)', padding:'4px 8px', borderRadius:14, fontSize:11 }}>{k}</span>) : <span style={{ opacity:.6 }}>None</span>}</div>
+              })()}
+            </section>
+            {lamExpanded && (
+              <section>
+                <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Raw Hint JSON</div>
+                <pre style={{ margin:0, fontSize:11, lineHeight:1.3, maxHeight:200, overflow:'auto', background:'rgba(255,255,255,0.05)', padding:8, border:'1px solid rgba(255,255,255,0.12)', borderRadius:10 }}>{JSON.stringify(lamData.raw, null, 2)}</pre>
+              </section>
+            )}
+            {lamExpanded && (
+              <section>
+                <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Raw Message Envelope</div>
+                <pre style={{ margin:0, fontSize:11, lineHeight:1.3, maxHeight:200, overflow:'auto', background:'rgba(255,255,255,0.05)', padding:8, border:'1px solid rgba(255,255,255,0.12)', borderRadius:10 }}>{JSON.stringify(lamData.rawMessage, null, 2)}</pre>
+              </section>
+            )}
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.raw, null, 2))} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Hint JSON</button>
+              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.path, null, 2))} style={{ background:'linear-gradient(45deg,#0ea5e9,#2563eb)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Path</button>
+              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.rawMessage, null, 2))} style={{ background:'linear-gradient(45deg,#64748b,#475569)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Envelope</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!showLamDetails && (
+        <div style={{ position:'fixed', left:16, top:16, zIndex:40 }}>
+          <button onClick={()=>setShowLamDetails(true)} style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Show LAM Output</button>
+        </div>
+      )}
+      {/* LAM Flow Timeline Panel */}
+      {showLamFlowPanel && (
+      <div
+        style={{ position:'fixed', left:lamFlowPos.x, top:lamFlowPos.y, width:lamFlowWidth, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(160deg, rgba(10,20,30,0.85), rgba(40,15,55,0.8))', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:14, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55)', zIndex:50, cursor:'move' }}
+        onMouseDown={e=>{ dragInfoRef.current.panel='flow'; dragInfoRef.current.offX = e.clientX - lamFlowPos.x; dragInfoRef.current.offY = e.clientY - lamFlowPos.y }}
+      >
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+          <strong style={{ fontSize:13, letterSpacing:'.5px' }}>LAM Prompt → Response Flow</strong>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={()=>setLamFlow([])} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', padding:'3px 8px', borderRadius:6, cursor:'pointer', fontSize:10 }}>Clear</button>
+            <button onClick={()=>setShowLamFlowPanel(false)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', padding:'3px 8px', borderRadius:6, cursor:'pointer', fontSize:10 }}>Hide</button>
+          </div>
+        </div>
+        <div style={{ fontSize:10, opacity:.7, marginBottom:8 }}>Each state publish tracked until hint arrives; shows latency & action application timeline.</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {[...lamFlow].slice().reverse().map(evt => {
+            const lat = evt.latencyMs!=null? `${evt.latencyMs.toFixed(0)} ms` : '—'
+            return (
+              <div key={evt.id} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'8px 10px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                  <div style={{ fontWeight:600, fontSize:11 }}>Publish #{evt.id}</div>
+                  <div style={{ fontSize:10, opacity:.65 }}>{lat}</div>
+                </div>
+                <div style={{ fontSize:10, lineHeight:1.4 }}>
+                  <div><span style={{ opacity:.6 }}>Declared:</span> {evt.actionsDeclared.length? evt.actionsDeclared.join(', ') : '—'}</div>
+                  <div><span style={{ opacity:.6 }}>Applied:</span> {evt.actionsApplied.length? evt.actionsApplied.map(a=>a.action).join(', ') : '—'}</div>
+                  <div><span style={{ opacity:.6 }}>Hint:</span> {evt.hintExcerpt || '—'}</div>
+                  {evt.error && <div style={{ color:'#ff9d9d' }}><span style={{ opacity:.6 }}>Error:</span> {evt.error}</div>}
+                </div>
+                {evt.actionsApplied.length>0 && (
+                  <div style={{ marginTop:6, display:'grid', gap:4 }}>
+                    {evt.actionsApplied.map((a,i)=> {
+                      const dt = evt.receivedAt? (a.at - evt.receivedAt) : 0
+                      return <div key={i} style={{ background:'rgba(255,255,255,0.05)', padding:'3px 6px', borderRadius:6, display:'flex', justifyContent:'space-between', fontSize:10 }}>
+                        <span style={{ fontFamily:'monospace' }}>{a.action}</span>
+                        <span style={{ opacity:.6 }}>{dt.toFixed(0)}ms</span>
+                      </div>
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {/* Resize handle */}
+        <div
+          style={{ position:'absolute', right:4, top:0, bottom:0, width:10, cursor:'ew-resize' }}
+          onMouseDown={e=>{ e.stopPropagation(); dragInfoRef.current.panel='flow-resize'; dragInfoRef.current.offX = e.clientX; dragInfoRef.current.startW = lamFlowWidth }}
+        />
+      </div>
+      )}
+      {!showLamFlowPanel && (
+        <div style={{ position:'fixed', left:16, top:16, zIndex:40 }}>
+          <button onClick={()=>setShowLamFlowPanel(true)} style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Show Flow</button>
+        </div>
+      )}
     </div>
   )
  }
