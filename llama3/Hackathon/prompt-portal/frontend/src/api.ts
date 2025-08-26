@@ -94,6 +94,12 @@ export const settingsAPI = {
   exportData: () => api.get('/api/settings/export')
 }
 
+// Leaderboard API
+export const leaderboardAPI = {
+  submitScore: (data: any) => api.post('/api/leaderboard/submit', data),
+  getLeaderboard: (limit: number = 20) => api.get(`/api/leaderboard/?limit=${limit}`)
+}
+
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
   const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`

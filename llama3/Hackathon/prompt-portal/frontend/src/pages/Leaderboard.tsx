@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { leaderboardAPI } from '../api'
 
 type Entry = {
   rank: number
@@ -14,11 +14,38 @@ export default function Leaderboard() {
   const [items, setItems] = useState<Entry[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Theme state
+  const [theme, setTheme] = useState<'default' | 'orange'>(() => {
+    const saved = localStorage.getItem('webgame-theme')
+    return (saved === 'orange' || saved === 'default') ? saved : 'default'
+  })
+
+  // Persist theme changes
+  useEffect(() => {
+    localStorage.setItem('webgame-theme', theme)
+  }, [theme])
+
+  // Theme configuration
+  const themeConfig = {
+    default: {
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      buttonPrimary: 'linear-gradient(45deg,#4ecdc4,#44a08d)',
+      avatarGradient: 'linear-gradient(45deg, #4ecdc4, #44a08d)'
+    },
+    orange: {
+      background: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 50%, #f7931e 100%)',
+      buttonPrimary: 'linear-gradient(45deg,#ff8c42,#ff6b35)',
+      avatarGradient: 'linear-gradient(45deg, #ff8c42, #ff6b35)'
+    }
+  }
+
+  const currentTheme = themeConfig[theme]
 
   async function load() {
     try {
       setLoading(true)
-      const res = await api.get('/api/leaderboard?limit=50')
+      const res = await leaderboardAPI.getLeaderboard(50)
       setItems(res.data)
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to load leaderboard')
@@ -103,15 +130,37 @@ export default function Leaderboard() {
   }
 
   return (
-    <div style={containerStyle}>
-      <div style={headerStyle}>
-        <h1 style={{ fontSize: '3rem', fontWeight: '700', marginBottom: '20px' }}>
-          🏆 Leaderboard
-        </h1>
-        <p style={{ fontSize: '1.2rem', opacity: '0.8', maxWidth: '600px', margin: '0 auto' }}>
-          Top performing prompt templates ranked by player scores and performance metrics
-        </p>
-      </div>
+    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
+      <div style={containerStyle}>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h1 style={{ fontSize: '3rem', fontWeight: '700', margin: 0 }}>
+              🏆 Leaderboard
+            </h1>
+            {/* Theme Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '14px', opacity: 0.9 }}>Theme:</span>
+              <select 
+                value={theme} 
+                onChange={(e) => setTheme(e.target.value as 'default' | 'orange')}
+                style={{ 
+                  padding: '4px 8px', 
+                  borderRadius: '6px', 
+                  background: 'rgba(255,255,255,0.1)', 
+                  color: '#fff', 
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  fontSize: '14px'
+                }}
+              >
+                <option value="default" style={{ background: '#333' }}>Default Blue</option>
+                <option value="orange" style={{ background: '#333' }}>Orange Sunset</option>
+              </select>
+            </div>
+          </div>
+          <p style={{ fontSize: '1.2rem', opacity: '0.8', maxWidth: '600px', margin: '0 auto' }}>
+            Top performing prompt templates ranked by player scores and performance metrics
+          </p>
+        </div>
 
       {err && (
         <div style={{
@@ -197,7 +246,7 @@ export default function Leaderboard() {
                           width: '32px',
                           height: '32px',
                           borderRadius: '50%',
-                          background: 'linear-gradient(45deg, #4ecdc4, #44a08d)',
+                          background: currentTheme.avatarGradient,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -264,7 +313,7 @@ export default function Leaderboard() {
           onClick={load}
           disabled={loading}
           style={{
-            background: 'rgba(78, 205, 196, 0.8)',
+            background: currentTheme.buttonPrimary,
             color: 'white',
             border: 'none',
             padding: '12px 24px',
@@ -277,13 +326,13 @@ export default function Leaderboard() {
           }}
           onMouseOver={(e) => {
             if (!loading) {
-              e.currentTarget.style.background = 'rgba(78, 205, 196, 1)'
+              e.currentTarget.style.background = theme === 'orange' ? '#ff8c42' : 'rgba(78, 205, 196, 1)'
               e.currentTarget.style.transform = 'translateY(-2px)'
             }
           }}
           onMouseOut={(e) => {
             if (!loading) {
-              e.currentTarget.style.background = 'rgba(78, 205, 196, 0.8)'
+              e.currentTarget.style.background = currentTheme.buttonPrimary
               e.currentTarget.style.transform = 'translateY(0)'
             }
           }}
@@ -292,6 +341,7 @@ export default function Leaderboard() {
           {loading ? 'Refreshing...' : 'Refresh Leaderboard'}
         </button>
       </div>
+    </div>
     </div>
   )
 }

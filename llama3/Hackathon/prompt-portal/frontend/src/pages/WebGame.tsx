@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api'
+import { api, leaderboardAPI } from '../api'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 
 // ===== Types =====
  type Vec2 = { x: number; y: number }
@@ -114,6 +115,10 @@ import { useNavigate } from 'react-router-dom'
 
  // ===== Component =====
  export default function WebGame() {
+  // Auth context
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  
   // UI state
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateId, setTemplateId] = useState<number | null>(null)
@@ -122,6 +127,19 @@ import { useNavigate } from 'react-router-dom'
   const [autoPilot, setAutoPilot] = useState(false)
   const [germCount, setGermCount] = useState(5)
   const [status, setStatus] = useState('')
+  // Score submission state
+  const [scoreSubmitted, setScoreSubmitted] = useState(false)
+  const [gameOverTrigger, setGameOverTrigger] = useState(0)
+  // Theme state
+  const [theme, setTheme] = useState<'default' | 'orange'>(() => {
+    const saved = localStorage.getItem('webgame-theme')
+    return (saved === 'orange' || saved === 'default') ? saved : 'default'
+  })
+
+  // Persist theme changes
+  useEffect(() => {
+    localStorage.setItem('webgame-theme', theme)
+  }, [theme])
   // New UI toggles
   // (In-canvas LAM panel removed; external panel supersedes it)
   const [showLamPanel] = useState(false)
@@ -581,8 +599,53 @@ import { useNavigate } from 'react-router-dom'
     wsRef.current?.close(); wsRef.current = null
   }, [])
 
+  // Submit score to leaderboard
+  const submitScore = useCallback(async () => {
+    if (!user || !templateId || scoreSubmitted) return
+    
+    const s = stateRef.current
+    if (!s.gameOver) return
+    
+    try {
+      const elapsed = (performance.now() - s.startTime) / 1000
+      const baseScore = s.oxygenCollected * 100 - elapsed * 5
+      const winBonus = s.win ? 1000 : 0 // Big bonus for winning
+      const finalScore = Math.round(baseScore + winBonus)
+      
+      await leaderboardAPI.submitScore({
+        template_id: templateId,
+        session_id: sessionId,
+        score: finalScore,
+        survival_time: elapsed,
+        oxygen_collected: s.oxygenCollected,
+        germs: germCount
+      })
+      
+      setScoreSubmitted(true)
+      setStatus(`Score ${finalScore} submitted to leaderboard!`)
+      
+      // Clear status after 3 seconds
+      setTimeout(() => setStatus(''), 3000)
+    } catch (error) {
+      console.error('Failed to submit score:', error)
+      setStatus('Failed to submit score to leaderboard')
+      setTimeout(() => setStatus(''), 3000)
+    }
+  }, [user, templateId, sessionId, germCount, scoreSubmitted])
+
+  // Watch for game over to submit score
+  useEffect(() => {
+    if (gameOverTrigger > 0 && !scoreSubmitted && user && templateId) {
+      submitScore()
+    }
+  }, [gameOverTrigger, submitScore, scoreSubmitted, user, templateId])
+
   // Start a new game
   const startGame = useCallback(() => {
+    // Reset score submission flag
+    setScoreSubmitted(false)
+    setGameOverTrigger(0)
+    
     const grid = generateMaze(cols, rows)
 
     // Ensure start area open
@@ -814,10 +877,16 @@ import { useNavigate } from 'react-router-dom'
 
       // collisions
       if (s.germs.some(g => g.pos.x === s.player.x && g.pos.y === s.player.y)) {
-        s.gameOver = true; s.win = false
+        if (!s.gameOver) {
+          s.gameOver = true; s.win = false
+          setGameOverTrigger(prev => prev + 1)
+        }
       }
       if (s.player.x === s.exit.x && s.player.y === s.exit.y) {
-        s.gameOver = true; s.win = true
+        if (!s.gameOver) {
+          s.gameOver = true; s.win = true
+          setGameOverTrigger(prev => prev + 1)
+        }
       }
 
       // fade highlights
@@ -971,9 +1040,33 @@ import { useNavigate } from 'react-router-dom'
       }
 
       if (s.gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0,0,width,height)
-        ctx.fillStyle = '#fff'; ctx.font = '28px Inter';
-        ctx.fillText(s.win ? 'You Win!' : 'Game Over', width/2-80, height/2 - 10)
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0,0,width,height)
+        ctx.fillStyle = '#fff'; ctx.font = '32px Inter';
+        const winText = s.win ? 'You Win!' : 'Game Over'
+        ctx.fillText(winText, width/2 - ctx.measureText(winText).width/2, height/2 - 60)
+        
+        // Show final score
+        ctx.font = '20px Inter';
+        const scoreText = `Final Score: ${score}`
+        ctx.fillText(scoreText, width/2 - ctx.measureText(scoreText).width/2, height/2 - 20)
+        
+        // Show game stats
+        ctx.font = '16px Inter';
+        const statsText = `Oxygen: ${s.oxygenCollected} | Time: ${elapsed.toFixed(1)}s | Germs: ${germCount}`
+        ctx.fillText(statsText, width/2 - ctx.measureText(statsText).width/2, height/2 + 10)
+        
+        // Show submission status
+        if (user && templateId) {
+          ctx.font = '14px Inter';
+          ctx.fillStyle = scoreSubmitted ? '#4ade80' : '#fbbf24';
+          const statusText = scoreSubmitted ? 'Score submitted to leaderboard!' : 'Submitting score...'
+          ctx.fillText(statusText, width/2 - ctx.measureText(statusText).width/2, height/2 + 40)
+        } else if (!user) {
+          ctx.font = '14px Inter';
+          ctx.fillStyle = '#f87171';
+          const loginText = 'Login to submit your score to leaderboard'
+          ctx.fillText(loginText, width/2 - ctx.measureText(loginText).width/2, height/2 + 40)
+        }
       }
       if (!s.started) {
         ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,width,height)
@@ -992,22 +1085,83 @@ import { useNavigate } from 'react-router-dom'
   // UI styles
   const containerStyle = useMemo(() => ({ maxWidth: '1200px', margin: '0 auto', padding: '20px' }), [])
   const panelStyle = useMemo(() => ({ background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }), [])
-  const buttonStyle = useCallback((variant: 'primary'|'danger'|'secondary'|'success') => ({
-    background: {
-      primary: 'linear-gradient(45deg,#4ecdc4,#44a08d)',
-      danger: 'linear-gradient(45deg,#ff6b6b,#ee5a52)',
-      secondary: 'rgba(255,255,255,0.2)',
-      success: 'linear-gradient(45deg,#4caf50,#45a049)'
-    }[variant],
-    color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600
+  
+  // Theme configuration
+  const themeConfig = useMemo(() => ({
+    default: {
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      canvasBorder: 'rgba(255,255,255,0.15)',
+      canvasBackground: 'rgba(0,0,0,0.25)',
+      canvasShadow: '0 20px 60px rgba(220,38,38,0.25), inset 0 0 80px rgba(127,29,29,0.35)',
+      buttonPrimary: 'linear-gradient(45deg,#4ecdc4,#44a08d)',
+      buttonDanger: 'linear-gradient(45deg,#ff6b6b,#ee5a52)',
+      buttonSuccess: 'linear-gradient(45deg,#4caf50,#45a049)',
+      buttonSecondary: 'rgba(255,255,255,0.2)',
+      leaderboardButton: 'linear-gradient(45deg,#fbbf24,#f59e0b)',
+      restartButton: 'linear-gradient(45deg,#f59e0b,#ef4444)',
+      exitButton: 'linear-gradient(45deg,#6366f1,#7c3aed)'
+    },
+    orange: {
+      background: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 50%, #f7931e 100%)',
+      canvasBorder: 'rgba(255,255,255,0.2)',
+      canvasBackground: 'rgba(139,69,19,0.2)',
+      canvasShadow: '0 20px 60px rgba(255,140,0,0.25), inset 0 0 80px rgba(139,69,19,0.35)',
+      buttonPrimary: 'linear-gradient(45deg,#ff8c42,#ff6b35)',
+      buttonDanger: 'linear-gradient(45deg,#ff4757,#ff3742)',
+      buttonSuccess: 'linear-gradient(45deg,#2ed573,#1e90ff)',
+      buttonSecondary: 'rgba(255,255,255,0.25)',
+      leaderboardButton: 'linear-gradient(45deg,#ffa726,#ff9800)',
+      restartButton: 'linear-gradient(45deg,#ff7043,#ff5722)',
+      exitButton: 'linear-gradient(45deg,#8e24aa,#7b1fa2)'
+    }
   }), [])
 
-  const navigate = useNavigate()
+  const currentTheme = themeConfig[theme]
+
+  const buttonStyle = useCallback((variant: 'primary'|'danger'|'secondary'|'success') => ({
+    background: {
+      primary: currentTheme.buttonPrimary,
+      danger: currentTheme.buttonDanger,
+      secondary: currentTheme.buttonSecondary,
+      success: currentTheme.buttonSuccess
+    }[variant],
+    color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600
+  }), [currentTheme])
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
       <div style={containerStyle}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: '10px 0 16px' }}>Play in Browser</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: '10px 0' }}>Play in Browser</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Theme Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '14px', opacity: 0.9 }}>Theme:</span>
+              <select 
+                value={theme} 
+                onChange={(e) => setTheme(e.target.value as 'default' | 'orange')}
+                style={{ 
+                  padding: '4px 8px', 
+                  borderRadius: '6px', 
+                  background: 'rgba(255,255,255,0.1)', 
+                  color: '#fff', 
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  fontSize: '14px'
+                }}
+              >
+                <option value="default" style={{ background: '#333' }}>Default Blue</option>
+                <option value="orange" style={{ background: '#333' }}>Orange Sunset</option>
+              </select>
+            </div>
+            <div style={{ fontSize: '14px', opacity: 0.9 }}>
+              {user ? (
+                <span style={{ color: '#4ade80' }}>✓ Logged in as {user.email} - Scores will be saved</span>
+              ) : (
+                <span style={{ color: '#fbbf24' }}>⚠ Not logged in - Scores won't be saved to leaderboard</span>
+              )}
+            </div>
+          </div>
+        </div>
         <div style={panelStyle as any}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div>
@@ -1061,15 +1215,16 @@ import { useNavigate } from 'react-router-dom'
           <div style={{ marginTop: 12, display:'flex', gap: 10, flexWrap:'wrap' }}>
             <button onClick={startGame} style={buttonStyle('primary') as any}><i className="fas fa-play"/> Start Game</button>
             <button onClick={()=>publishState(true)} style={buttonStyle('secondary') as any}>Publish State</button>
-            <button onClick={()=>startGame()} style={{ background:'linear-gradient(45deg,#f59e0b,#ef4444)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Restart</button>
-            <button onClick={()=>navigate('/dashboard')} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Exit to Dashboard</button>
+            <button onClick={()=>startGame()} style={{ background: currentTheme.restartButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Restart</button>
+            <button onClick={()=>navigate('/leaderboard')} style={{ background: currentTheme.leaderboardButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>🏆 Leaderboard</button>
+            <button onClick={()=>navigate('/dashboard')} style={{ background: currentTheme.exitButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Exit to Dashboard</button>
             <span style={{ opacity:.85 }}>{status}</span>
           </div>
           <div style={{ marginTop: 6, opacity: .8 }}>Controls: Arrow keys / WASD. T to toggle autopilot. Hints come from LAM via MQTT. Walls may break.</div>
         </div>
 
         {/* Canvas with glow and border */}
-        <div style={{ border: '1px solid rgba(255,255,255,0.15)', borderRadius: 16, overflow:'hidden', background:'rgba(0,0,0,0.25)', boxShadow:'0 20px 60px rgba(220,38,38,0.25), inset 0 0 80px rgba(127,29,29,0.35)' }}>
+        <div style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow }}>
           <canvas ref={canvasRef} width={width} height={height} style={{ width: width+'px', height: height+'px', display:'block', margin:'0 auto', background:'#0b0507' }} />
         </div>
         {/* Legend for indicators */}
