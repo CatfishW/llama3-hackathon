@@ -90,6 +90,10 @@ cd ../frontend
 print_step "Installing Node.js dependencies..."
 npm install --legacy-peer-deps
 
+# Install additional build dependencies
+print_step "Installing build dependencies..."
+npm install --save-dev terser
+
 # Fix TypeScript configuration for compatibility
 print_step "Fixing TypeScript configuration..."
 cat > tsconfig.json << 'EOF'
@@ -117,13 +121,13 @@ EOF
 # Create production environment file
 print_step "Configuring frontend environment..."
 cat > .env.production << EOF
-VITE_API_BASE=http://$SERVER_IP:8000
-VITE_WS_BASE=ws://$SERVER_IP:8000
+VITE_API_BASE=http://173.61.35.162:8000
+VITE_WS_BASE=ws://173.61.35.162:8000
 EOF
 
 cat > .env.local << EOF
-VITE_API_BASE=http://$SERVER_IP:8000
-VITE_WS_BASE=ws://$SERVER_IP:8000
+VITE_API_BASE=http://173.61.35.162:8000
+VITE_WS_BASE=ws://173.61.35.162:8000
 EOF
 
 echo -e "${GREEN}Frontend environment configured!${NC}"
@@ -131,16 +135,20 @@ echo -e "${GREEN}Frontend environment configured!${NC}"
 # Build frontend for production
 print_step "Building frontend..."
 npm run build || {
-    print_warning "Initial build failed, trying with build fix..."
-    chmod +x fix-build.sh 2>/dev/null || true
-    if [ -f "fix-build.sh" ]; then
-        ./fix-build.sh
-    else
-        # Inline fix
-        rm -rf node_modules package-lock.json
+    print_warning "Initial build failed, trying fixes..."
+    
+    # Install terser if missing
+    print_step "Installing terser..."
+    npm install --save-dev terser
+    
+    # Try building again
+    npm run build || {
+        print_warning "Still failing, cleaning and reinstalling..."
+        rm -rf node_modules package-lock.json dist
         npm install --legacy-peer-deps --force
+        npm install --save-dev terser
         npm run build
-    fi
+    }
 }
 
 print_step "Starting services with PM2..."
@@ -210,9 +218,9 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
-echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:5173${NC}"
-echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:8000${NC}"
-echo -e "📚 API Docs: ${GREEN}http://$SERVER_IP:8000/docs${NC}"
+echo -e "🌐 Frontend URL: ${GREEN}http://173.61.35.162:5173${NC}"
+echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:8000${NC}"
+echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:8000/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  pm2 status                    # Check service status"

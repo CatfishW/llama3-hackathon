@@ -1,8 +1,53 @@
 # Frontend Build Fix - Quick Manual Steps
 
-If you're getting TypeScript build errors, follow these steps:
+If you're getting TypeScript build errors or Terser issues, follow these steps:
 
-## Step 1: Fix TypeScript Configuration
+## Quick Fix (Run this first!)
+
+```bash
+cd frontend
+chmod +x quick-fix.sh
+./quick-fix.sh
+npm run build
+```
+
+## Manual Step-by-Step Fix
+
+### Step 1: Install Missing Terser Dependency
+
+```bash
+npm install --save-dev terser
+```
+
+### Step 2: Fix Vite Configuration
+
+Replace the content of `vite.config.ts` with:
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: { 
+    port: 5173,
+    host: true
+  },
+  preview: {
+    port: 5173,
+    host: true
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: false  // Disable minification to avoid terser issues
+  }
+})
+```
+
+### Step 3: Fix TypeScript Configuration
+
+### Step 3: Fix TypeScript Configuration
 
 Replace the content of `tsconfig.json` with:
 
@@ -28,20 +73,21 @@ Replace the content of `tsconfig.json` with:
 }
 ```
 
-## Step 2: Clean and Reinstall Dependencies
+### Step 4: Clean and Reinstall Dependencies
 
 ```bash
 # Remove old dependencies
 rm -rf node_modules package-lock.json dist
 
-# Reinstall with legacy peer deps
+# Reinstall with legacy peer deps and terser
 npm install --legacy-peer-deps
+npm install --save-dev terser
 
 # Try building
 npm run build
 ```
 
-## Step 3: Alternative Commands
+### Step 5: Alternative Commands
 
 If the above doesn't work, try:
 

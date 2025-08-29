@@ -45,6 +45,10 @@ rm -rf dist/ node_modules/ package-lock.json
 print_step "Installing dependencies with legacy peer deps..."
 npm install --legacy-peer-deps
 
+# Install terser specifically
+print_step "Installing terser for minification..."
+npm install --save-dev terser
+
 print_step "Checking for TypeScript configuration issues..."
 if npx tsc --noEmit; then
     echo -e "${GREEN}✅ TypeScript configuration is valid${NC}"
