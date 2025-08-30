@@ -7,7 +7,7 @@ This guide will get your Prompt Portal running on a cloud server in under 10 min
 - Ubuntu 20.04+ cloud server
 - SSH access with sudo privileges
 - 2GB+ RAM, 10GB+ storage
-- Open ports: 22, 80, 443, 8000, 1883
+- Firewall access (ports will be configured automatically)
 
 ## Option 1: One-Command Deployment (Recommended)
 
@@ -56,7 +56,18 @@ This will:
 - Set up Nginx reverse proxy
 - Configure SSL with Let's Encrypt
 - Set up monitoring and backups
-- Configure firewall
+- Configure firewall automatically
+
+## Manual Firewall Configuration (If Needed)
+
+If you need to configure the firewall manually:
+
+```bash
+chmod +x setup-firewall.sh
+./setup-firewall.sh
+```
+
+Or see the detailed guide: [FIREWALL_SETUP.md](FIREWALL_SETUP.md)
 
 ## Post-Deployment
 

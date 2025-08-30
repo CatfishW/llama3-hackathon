@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Prompt Portal - Quick Development Deployment Script
-# This script sets up the application for development/testing on a cloud server
+# Prompt Portal - Simplified Deployment Script
+# This script sets up the application assuming environments are already installed
+# Prerequisites: Python3, Node.js, npm, git should already be installed
 
 set -e  # Exit on any error
 
@@ -13,9 +14,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Configuration - Change these ports if 8000 or 5173 are not available
+BACKEND_PORT=8080
+FRONTEND_PORT=3000
+
 # Get server IP
 SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
+echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
 
 # Function to print colored output
 print_step() {
@@ -36,27 +42,48 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-print_step "Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+print_step "Checking if PM2 is installed..."
+if ! command -v pm2 &> /dev/null; then
+    print_step "Installing PM2 for process management..."
+    sudo npm install -g pm2
+else
+    echo -e "${GREEN}PM2 is already installed${NC}"
+fi
 
-print_step "Installing required packages..."
-sudo apt install -y python3 python3-pip python3-venv nodejs npm git curl
+print_step "Checking firewall configuration..."
+if command -v ufw &> /dev/null; then
+    print_step "UFW is available, configuring firewall..."
+    # Set default policies
+    sudo ufw --force reset
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
 
-print_step "Installing PM2 for process management..."
-sudo npm install -g pm2
+    # Allow SSH (important to not lock yourself out)
+    sudo ufw allow ssh
+    sudo ufw allow 22/tcp
+
+    # Allow HTTP and HTTPS
+    sudo ufw allow 80/tcp
+    sudo ufw allow 443/tcp
+
+    # Allow application ports
+    sudo ufw allow $FRONTEND_PORT/tcp comment "Frontend (Vite dev server)"
+    sudo ufw allow $BACKEND_PORT/tcp comment "Backend API (FastAPI)"
+
+    # Allow MQTT if needed
+    sudo ufw allow 1883/tcp comment "MQTT broker"
+
+    # Enable firewall
+    sudo ufw --force enable
+
+    print_step "Firewall configured successfully!"
+    sudo ufw status
+else
+    print_warning "UFW not available, skipping firewall configuration"
+fi
 
 print_step "Setting up backend..."
 cd backend
-
-# Create virtual environment
-print_step "Creating Python virtual environment..."
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install Python dependencies
-print_step "Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
 
 # Setup environment file
 print_step "Configuring backend environment..."
@@ -68,7 +95,8 @@ if [ ! -f .env ]; then
     
     # Update environment file with server IP
     sed -i "s/SECRET_KEY=change_me_to_a_random_long_string/SECRET_KEY=$SECRET_KEY/" .env
-    sed -i "s/CORS_ORIGINS=http:\/\/localhost:5173/CORS_ORIGINS=http:\/\/$SERVER_IP:5173,http:\/\/$SERVER_IP/" .env
+    sed -i "s/CORS_ORIGINS=http:\/\/localhost:5173/CORS_ORIGINS=http:\/\/173.61.35.162:$FRONTEND_PORT,http:\/\/173.61.35.162/" .env
+    
     
     echo -e "${GREEN}Backend environment configured!${NC}"
 else
@@ -88,11 +116,17 @@ cd ../frontend
 
 # Install Node.js dependencies
 print_step "Installing Node.js dependencies..."
-npm install --legacy-peer-deps
+if [ ! -d "node_modules" ]; then
+    npm install --legacy-peer-deps
+else
+    print_warning "Node modules already exist, skipping installation..."
+fi
 
-# Install additional build dependencies
-print_step "Installing build dependencies..."
-npm install --save-dev terser
+# Install additional build dependencies if needed
+if ! npm list terser &> /dev/null; then
+    print_step "Installing build dependencies..."
+    npm install --save-dev terser
+fi
 
 # Fix TypeScript configuration for compatibility
 print_step "Fixing TypeScript configuration..."
@@ -121,13 +155,13 @@ EOF
 # Create production environment file
 print_step "Configuring frontend environment..."
 cat > .env.production << EOF
-VITE_API_BASE=http://173.61.35.162:8000
-VITE_WS_BASE=ws://173.61.35.162:8000
+VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
+VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
 EOF
 
 cat > .env.local << EOF
-VITE_API_BASE=http://173.61.35.162:8000
-VITE_WS_BASE=ws://173.61.35.162:8000
+VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
+VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
 EOF
 
 echo -e "${GREEN}Frontend environment configured!${NC}"
@@ -156,20 +190,24 @@ print_step "Starting services with PM2..."
 # Start backend with PM2
 cd ../backend
 pm2 delete prompt-portal-backend 2>/dev/null || true
-pm2 start "source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000" --name prompt-portal-backend --interpreter bash
+pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend
 
 # Start frontend with PM2
 cd ../frontend
 pm2 delete prompt-portal-frontend 2>/dev/null || true
-pm2 start "npm run preview -- --host 0.0.0.0 --port 5173" --name prompt-portal-frontend
+pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend
 
 # Save PM2 configuration
 pm2 save
 pm2 startup | tail -1 | sudo bash || true
 
 print_step "Creating monitoring scripts..."
-sudo mkdir -p /opt/scripts
-sudo mkdir -p /opt/backups
+if [ ! -d "/opt/scripts" ]; then
+    sudo mkdir -p /opt/scripts
+fi
+if [ ! -d "/opt/backups" ]; then
+    sudo mkdir -p /opt/backups
+fi
 
 # Create backup script
 sudo tee /opt/scripts/backup.sh > /dev/null << 'EOF'
@@ -218,9 +256,9 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
-echo -e "🌐 Frontend URL: ${GREEN}http://173.61.35.162:5173${NC}"
-echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:8000${NC}"
-echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:8000/docs${NC}"
+echo -e "🌐 Frontend URL: ${GREEN}http://173.61.35.162:$FRONTEND_PORT${NC}"
+echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:$BACKEND_PORT${NC}"
+echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:$BACKEND_PORT/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  pm2 status                    # Check service status"
@@ -229,7 +267,8 @@ echo "  pm2 logs prompt-portal-frontend # View frontend logs"
 echo "  pm2 restart all               # Restart all services"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
-echo "- Make sure ports 5173 and 8000 are open in your firewall"
+echo "- Firewall has been configured automatically"
+echo "- Ports 22 (SSH), 80 (HTTP), 443 (HTTPS), $FRONTEND_PORT (Frontend), $BACKEND_PORT (Backend), and 1883 (MQTT) are open"
 echo "- Backend secret key has been generated automatically"
 echo "- Database is initialized and ready to use"
 echo "- Automated backups run daily at 2 AM"
