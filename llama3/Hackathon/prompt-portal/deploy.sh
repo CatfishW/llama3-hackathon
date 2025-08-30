@@ -88,7 +88,31 @@ cd backend
 # Setup environment file
 print_step "Configuring backend environment..."
 if [ ! -f .env ]; then
-    cp .env.example .env
+    if [ -f .env.example ]; then
+        # Try to copy with proper permissions
+        if cp .env.example .env 2>/dev/null; then
+            echo -e "${GREEN}Copied .env.example to .env${NC}"
+        else
+            print_warning "Permission denied copying .env.example, creating new .env file..."
+            # Create new .env file if copy fails
+            cat > .env << 'EOF'
+SECRET_KEY=change_me_to_a_random_long_string
+DATABASE_URL=sqlite:///./app.db
+CORS_ORIGINS=http://localhost:5173
+EOF
+        fi
+    else
+        print_warning ".env.example not found, creating default .env file..."
+        # Create default .env file
+        cat > .env << 'EOF'
+SECRET_KEY=change_me_to_a_random_long_string
+DATABASE_URL=sqlite:///./app.db
+CORS_ORIGINS=http://localhost:5173
+EOF
+    fi
+    
+    # Make sure .env is writable
+    chmod 644 .env 2>/dev/null || true
     
     # Generate a random secret key
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -96,7 +120,6 @@ if [ ! -f .env ]; then
     # Update environment file with server IP
     sed -i "s/SECRET_KEY=change_me_to_a_random_long_string/SECRET_KEY=$SECRET_KEY/" .env
     sed -i "s/CORS_ORIGINS=http:\/\/localhost:5173/CORS_ORIGINS=http:\/\/173.61.35.162:$FRONTEND_PORT,http:\/\/173.61.35.162/" .env
-    
     
     echo -e "${GREEN}Backend environment configured!${NC}"
 else
