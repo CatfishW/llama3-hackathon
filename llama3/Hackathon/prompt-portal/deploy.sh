@@ -15,8 +15,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration - Change these ports if 8000 or 5173 are not available
-BACKEND_PORT=8080
-FRONTEND_PORT=3000
+BACKEND_PORT=3000
+FRONTEND_PORT=3001
 
 # Get server IP
 SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
@@ -36,11 +36,6 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    print_error "Please don't run this script as root"
-    exit 1
-fi
 
 print_step "Checking if PM2 is installed..."
 if ! command -v pm2 &> /dev/null; then
