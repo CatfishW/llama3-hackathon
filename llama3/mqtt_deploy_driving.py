@@ -474,8 +474,8 @@ def main(
         logger.info(f"{model_type} model initialized successfully")
 
         # System prompt
-        SETTING = "You are question answerer, physicis in specific, output concise and accurate answers or feedbacks based on user input"
-        
+        SETTING = "You are question answerer, physicis in specific, output concise and accurate answers or feedbacks based on user input. YOUR OUTPUT SHOULD BE NO MORE THAN 50 WORDS."
+
         SYSTEM_PROMPT = SETTING
         
         # Create session manager with our model
@@ -525,15 +525,29 @@ def main(
                 
                 # Handle user messages
                 if topic.startswith(MQTT_USER_TOPIC):
-                    # Extract session ID from topic
+                    # Expected patterns:
+                    #   1) New:  <MQTT_USER_TOPIC>/<session_id>
+                    #   2) Legacy (no session id): <MQTT_USER_TOPIC>
+                    # We'll NOT treat the literal 'user_input' segment as a session id anymore.
                     parts = topic.split('/')
-                    if len(parts) >= 3:
-                        session_id = parts[2]
+                    base_parts = MQTT_USER_TOPIC.split('/')
+                    if parts[:len(base_parts)] == base_parts and len(parts) == len(base_parts) + 1:
+                        session_id = parts[len(base_parts)]  # Correct session id segment
+                    elif parts == base_parts:
+                        # Legacy / malformed client publishing without a session id -> ignore & warn
+                        logger.warning(
+                            "Received user_input message without session id. Topic '%s'. "
+                            "Discarding message. Clients must publish to '%s/<session_id>'." % (topic, MQTT_USER_TOPIC)
+                        )
+                        return
                     else:
-                        # Fallback for old clients without session ID
-                        session_id = "default"
-                    
-                    logger.info(f"Received message from session {session_id}: {payload[:30]}...")
+                        # Unexpected pattern
+                        logger.warning(
+                            "Unexpected user_input topic structure '%s'. Discarding message." % topic
+                        )
+                        return
+
+                    logger.info(f"Received message for session {session_id}: {payload[:60]}...")
                     
                     # Set message priority (lower number = higher priority)
                     # Custom priority logic - shorter messages get higher priority
