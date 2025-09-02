@@ -1,10 +1,12 @@
 import { FormEvent, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { useNavigate, Link } from 'react-router-dom'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function Login() {
   const { login } = useAuth()
   const nav = useNavigate()
+  const isMobile = useIsMobile()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -28,14 +30,14 @@ export default function Login() {
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 'calc(100vh - 80px)',
-    padding: '40px 20px'
+    padding: isMobile ? '24px 16px 56px' : '40px 20px'
   }
 
   const formStyle = {
     background: 'rgba(255, 255, 255, 0.1)',
     backdropFilter: 'blur(10px)',
     borderRadius: '20px',
-    padding: '40px',
+    padding: isMobile ? '28px 22px' : '40px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     width: '100%',
     maxWidth: '450px',
@@ -44,12 +46,12 @@ export default function Login() {
 
   const inputStyle = {
     width: '100%',
-    padding: '15px 20px',
+    padding: isMobile ? '13px 16px':'15px 20px',
     borderRadius: '10px',
     border: '1px solid rgba(255, 255, 255, 0.3)',
     background: 'rgba(255, 255, 255, 0.1)',
     color: 'white',
-    fontSize: '1rem',
+    fontSize: isMobile ? '.95rem':'1rem',
     marginTop: '8px',
     transition: 'all 0.3s ease'
   }
@@ -67,9 +69,9 @@ export default function Login() {
     background: 'linear-gradient(45deg, #4ecdc4, #44a08d)',
     color: 'white',
     border: 'none',
-    padding: '15px 20px',
+    padding: isMobile ? '13px 18px':'15px 20px',
     borderRadius: '10px',
-    fontSize: '1.1rem',
+    fontSize: isMobile ? '1rem':'1.1rem',
     fontWeight: '600',
     cursor: loading ? 'not-allowed' : 'pointer',
     transition: 'all 0.3s ease',
@@ -90,12 +92,12 @@ export default function Login() {
   return (
     <div style={containerStyle}>
       <form onSubmit={onSubmit} style={formStyle}>
-        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '15px' }}>🔐</div>
-          <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '10px' }}>
+        <div style={{ textAlign: 'center', marginBottom: isMobile ? '22px':'30px' }}>
+          <div style={{ fontSize: isMobile ? '2.4rem':'3rem', marginBottom: '15px' }}>🔐</div>
+          <h2 style={{ fontSize: isMobile ? '1.7rem':'2rem', fontWeight: '700', marginBottom: '10px' }}>
             Welcome Back
           </h2>
-          <p style={{ opacity: '0.8', fontSize: '1rem' }}>
+          <p style={{ opacity: '0.8', fontSize: isMobile ? '.95rem':'1rem' }}>
             Sign in to continue to your dashboard
           </p>
         </div>
@@ -184,7 +186,7 @@ export default function Login() {
         </button>
 
         <div style={{ textAlign: 'center', marginTop: '25px' }}>
-          <p style={{ opacity: '0.8', fontSize: '0.95rem' }}>
+          <p style={{ opacity: '0.8', fontSize: isMobile ? '.85rem': '0.95rem' }}>
             Don't have an account?{' '}
             <Link
               to="/register"

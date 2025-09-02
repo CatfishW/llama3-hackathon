@@ -1,9 +1,11 @@
 import TemplateForm from '../components/TemplateForm'
 import { api } from '../api'
 import { useNavigate } from 'react-router-dom'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function NewTemplate() {
   const nav = useNavigate()
+  const isMobile = useIsMobile()
   async function onSubmit(data: any) {
     await api.post('/api/templates', data)
     nav('/templates')
@@ -12,7 +14,7 @@ export default function NewTemplate() {
   const containerStyle = {
     maxWidth: '900px',
     margin: '0 auto',
-    padding: '40px 20px',
+    padding: isMobile ? '28px 14px 60px' : '40px 20px',
     minHeight: 'calc(100vh - 200px)'
   }
 
@@ -22,7 +24,7 @@ export default function NewTemplate() {
   }
 
   const titleStyle = {
-    fontSize: '2.5rem',
+    fontSize: isMobile ? '2rem':'2.5rem',
     fontWeight: '700',
     color: 'white',
     marginBottom: '10px',
@@ -33,7 +35,7 @@ export default function NewTemplate() {
   }
 
   const subtitleStyle = {
-    fontSize: '1.1rem',
+    fontSize: isMobile ? '1rem':'1.1rem',
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '400'
   }

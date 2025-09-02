@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { leaderboardAPI } from '../api'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 type Entry = {
   rank: number
@@ -14,6 +15,7 @@ export default function Leaderboard() {
   const [items, setItems] = useState<Entry[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const isMobile = useIsMobile()
   
   // Theme state
   const [theme, setTheme] = useState<'default' | 'orange'>(() => {
@@ -59,21 +61,22 @@ export default function Leaderboard() {
   const containerStyle = {
     maxWidth: '1200px',
     margin: '0 auto',
-    padding: '40px 20px'
+    padding: isMobile ? '24px 12px 56px' : '40px 20px'
   }
 
   const headerStyle = {
     textAlign: 'center' as const,
-    marginBottom: '40px'
+    marginBottom: isMobile ? '28px' : '40px'
   }
 
-  const tableContainerStyle = {
+  const tableContainerStyle: any = {
     background: 'rgba(255, 255, 255, 0.1)',
     backdropFilter: 'blur(10px)',
     borderRadius: '15px',
-    padding: '30px',
+    padding: isMobile ? '18px 14px' : '30px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
-    overflowX: 'auto' as const
+    overflowX: 'auto' as const,
+    WebkitOverflowScrolling: 'touch'
   }
 
   const tableStyle = {
@@ -83,18 +86,20 @@ export default function Leaderboard() {
   }
 
   const thStyle = {
-    padding: '15px 20px',
+    padding: isMobile ? '10px 12px' : '15px 20px',
     textAlign: 'left' as const,
     borderBottom: '2px solid rgba(255, 255, 255, 0.2)',
-    fontSize: '1.1rem',
+    fontSize: isMobile ? '.85rem' : '1.1rem',
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)'
+    color: 'rgba(255, 255, 255, 0.9)',
+    whiteSpace: isMobile ? 'nowrap' : 'normal'
   }
 
   const tdStyle = {
-    padding: '15px 20px',
+    padding: isMobile ? '10px 12px' : '15px 20px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    fontSize: '1rem'
+    fontSize: isMobile ? '.85rem' : '1rem',
+    whiteSpace: isMobile ? 'nowrap' : 'normal'
   }
 
   const getRankIcon = (rank: number) => {
@@ -130,11 +135,11 @@ export default function Leaderboard() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
+  <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
       <div style={containerStyle}>
         <div style={headerStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h1 style={{ fontSize: '3rem', fontWeight: '700', margin: 0 }}>
+      <h1 style={{ fontSize: isMobile ? '2.2rem':'3rem', fontWeight: '700', margin: 0, lineHeight:1.15 }}>
               🏆 Leaderboard
             </h1>
             {/* Theme Switcher */}
@@ -157,7 +162,7 @@ export default function Leaderboard() {
               </select>
             </div>
           </div>
-          <p style={{ fontSize: '1.2rem', opacity: '0.8', maxWidth: '600px', margin: '0 auto' }}>
+          <p style={{ fontSize: isMobile ? '1rem':'1.2rem', opacity: '0.8', maxWidth: '640px', margin: '0 auto', lineHeight:1.45 }}>
             Top performing prompt templates ranked by player scores and performance metrics
           </p>
         </div>
@@ -184,6 +189,9 @@ export default function Leaderboard() {
         </div>
       ) : (
         <div style={tableContainerStyle}>
+          {isMobile && items.length>0 && (
+            <div style={{ fontSize: '.7rem', opacity:.65, marginBottom:8, textAlign:'right' }}>Swipe horizontally ↔ to see all columns</div>
+          )}
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <i className="fas fa-trophy" style={{ fontSize: '3rem', marginBottom: '20px', opacity: '0.5' }}></i>

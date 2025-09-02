@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import TemplateForm from '../components/TemplateForm'
 import { api } from '../api'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 type Template = {
   id: number
@@ -19,6 +20,7 @@ export default function TemplateEdit() {
   const { id } = useParams()
   const nav = useNavigate()
   const [item, setItem] = useState<Template | null>(null)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     (async () => {
@@ -35,7 +37,7 @@ export default function TemplateEdit() {
   const containerStyle = {
     maxWidth: '900px',
     margin: '0 auto',
-    padding: '40px 20px',
+    padding: isMobile ? '28px 14px 60px' : '40px 20px',
     minHeight: 'calc(100vh - 200px)'
   }
 
@@ -45,7 +47,7 @@ export default function TemplateEdit() {
   }
 
   const titleStyle = {
-    fontSize: '2.5rem',
+    fontSize: isMobile ? '2rem':'2.5rem',
     fontWeight: '700',
     color: 'white',
     marginBottom: '10px',
@@ -56,7 +58,7 @@ export default function TemplateEdit() {
   }
 
   const subtitleStyle = {
-    fontSize: '1.1rem',
+    fontSize: isMobile ? '1rem':'1.1rem',
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '400'
   }

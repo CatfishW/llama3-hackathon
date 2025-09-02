@@ -114,7 +114,13 @@ import { useAuth } from '../auth/AuthContext'
  }
 
  // ===== Component =====
- export default function WebGame() {
+export default function WebGame() {
+  // ===== Mobile / Responsive Detection =====
+  const isMobile = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const ua = navigator.userAgent || ''
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || window.innerWidth < 900
+  }, [])
   // Auth context
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -147,7 +153,7 @@ import { useAuth } from '../auth/AuthContext'
   const [paused, setPaused] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   // External LAM details UI
-  const [showLamDetails, setShowLamDetails] = useState(true)
+  const [showLamDetails, setShowLamDetails] = useState(() => !isMobile) // default hidden on mobile
   const [lamExpanded, setLamExpanded] = useState(false)
   const [lamData, setLamData] = useState<{hint:string; path:Vec2[]; breaks:number; error:string; raw:any; rawMessage:any; updatedAt:number}>({ hint:'', path:[], breaks:0, error:'', raw:{}, rawMessage:{}, updatedAt:0 })
   // LAM flow monitor state
@@ -156,7 +162,7 @@ import { useAuth } from '../auth/AuthContext'
   const publishSeqRef = useRef(0)
   const pendingFlowRef = useRef<LamFlowEvent | null>(null)
   // Panel visibility & layout
-  const [showLamFlowPanel, setShowLamFlowPanel] = useState(true)
+  const [showLamFlowPanel, setShowLamFlowPanel] = useState(() => !isMobile)
   const [lamFlowPos, setLamFlowPos] = useState({ x: 16, y: 140 })
   const [lamFlowWidth, setLamFlowWidth] = useState(340)
   const [lamDetailsPos, setLamDetailsPos] = useState<{x:number;y:number}|null>(null)
@@ -197,6 +203,79 @@ import { useAuth } from '../auth/AuthContext'
 
   const width = cols * tile
   const height = rows * tile
+
+  // ===== Responsive Canvas Scaling (CSS pixel size separate from internal resolution) =====
+  const [canvasScale, setCanvasScale] = useState(1)
+  useEffect(() => {
+    function computeScale() {
+      if (typeof window === 'undefined') return
+      // Target: fit within viewport width minus padding, and height below header
+      const pad = 32
+      const availW = window.innerWidth - pad
+      const headerH = 320 // rough upper bound for control panel; adjust dynamically later
+      const availH = window.innerHeight - headerH
+      const s = Math.min(1, availW / width, availH / height)
+      setCanvasScale(s <= 0 ? 1 : s)
+    }
+    computeScale()
+    window.addEventListener('resize', computeScale)
+    window.addEventListener('orientationchange', computeScale)
+    return () => { window.removeEventListener('resize', computeScale); window.removeEventListener('orientationchange', computeScale) }
+  }, [width, height])
+
+  // ===== Touch / Mobile Controls =====
+  const dirKeyMap: Record<string, string> = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' }
+  const holdDirsRef = useRef<Set<string>>(new Set())
+  const swipeStartRef = useRef<{x:number;y:number; t:number}|null>(null)
+
+  const pressDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
+    const key = dirKeyMap[dir]
+    keysRef.current[key] = true
+    holdDirsRef.current.add(key)
+    // Any manual input disables autopilot (mobile expectation)
+    setAutoPilot(false)
+  }, [])
+  const releaseDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
+    const key = dirKeyMap[dir]
+    keysRef.current[key] = false
+    holdDirsRef.current.delete(key)
+  }, [])
+  const tapDir = useCallback((dir:'up'|'down'|'left'|'right') => {
+    // Short simulated tap for swipe translation
+    pressDir(dir); setTimeout(()=>releaseDir(dir), 120)
+  }, [pressDir, releaseDir])
+
+  // Swipe gesture on canvas wrapper
+  const canvasWrapperRef = useRef<HTMLDivElement|null>(null)
+  useEffect(()=>{
+    if (!isMobile) return
+    const el = canvasWrapperRef.current
+    if (!el) return
+    const THRESH = 24
+    function onTouchStart(e:TouchEvent){
+      if (!e.touches.length) return
+      const t = e.touches[0]
+      swipeStartRef.current = { x: t.clientX, y: t.clientY, t: performance.now() }
+    }
+    function onTouchEnd(e:TouchEvent){
+      if (!swipeStartRef.current) return
+      const start = swipeStartRef.current
+      swipeStartRef.current = null
+      if (e.changedTouches.length===0) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - start.x
+      const dy = t.clientY - start.y
+      if (Math.hypot(dx,dy) < THRESH) return
+      if (Math.abs(dx) > Math.abs(dy)) {
+        tapDir(dx>0? 'right':'left')
+      } else {
+        tapDir(dy>0? 'down':'up')
+      }
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchend', onTouchEnd)
+    return ()=>{ el.removeEventListener('touchstart', onTouchStart); el.removeEventListener('touchend', onTouchEnd) }
+  }, [isMobile, tapDir])
 
   // Texture cache for performance
   const texturesRef = useRef<{ wall: HTMLCanvasElement|null; floor: HTMLCanvasElement|null; floorAlt: HTMLCanvasElement|null }>({ wall: null, floor: null, floorAlt: null })
@@ -1129,7 +1208,7 @@ import { useAuth } from '../auth/AuthContext'
   }), [currentTheme])
 
   return (
-    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
+    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white', WebkitUserSelect:'none', userSelect:'none', touchAction:'none' }}>
       <div style={containerStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: '10px 0' }}>Play in Browser</h1>
@@ -1224,8 +1303,35 @@ import { useAuth } from '../auth/AuthContext'
         </div>
 
         {/* Canvas with glow and border */}
-        <div style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow }}>
-          <canvas ref={canvasRef} width={width} height={height} style={{ width: width+'px', height: height+'px', display:'block', margin:'0 auto', background:'#0b0507' }} />
+        <div ref={canvasWrapperRef} style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow, width: width*canvasScale, height: height*canvasScale, margin: '0 auto', position:'relative', touchAction:'none' }}>
+          <canvas
+            ref={canvasRef}
+            width={width}
+            height={height}
+            style={{ width: width*canvasScale, height: height*canvasScale, display:'block', background:'#0b0507' }}
+          />
+          {isMobile && (
+            <div style={{ position:'absolute', left:4, bottom:4, right:4, display:'flex', justifyContent:'space-between', gap:12, pointerEvents:'none' }}>
+              {/* D-Pad */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,56px)', gridTemplateRows:'repeat(3,56px)', gap:4, opacity:0.95, pointerEvents:'auto' }}>
+                <div></div>
+                <button aria-label="Move Up" onPointerDown={()=>pressDir('up')} onPointerUp={()=>releaseDir('up')} onPointerLeave={()=>releaseDir('up')} style={mobileBtnStyle()}>▲</button>
+                <div></div>
+                <button aria-label="Move Left" onPointerDown={()=>pressDir('left')} onPointerUp={()=>releaseDir('left')} onPointerLeave={()=>releaseDir('left')} style={mobileBtnStyle()}>◀</button>
+                <button aria-label="Auto Pilot" onClick={()=>setAutoPilot(a=>!a)} style={mobileCenterBtnStyle(autoPilot)}>{autoPilot? 'AUTO':'MAN'}</button>
+                <button aria-label="Move Right" onPointerDown={()=>pressDir('right')} onPointerUp={()=>releaseDir('right')} onPointerLeave={()=>releaseDir('right')} style={mobileBtnStyle()}>▶</button>
+                <div></div>
+                <button aria-label="Move Down" onPointerDown={()=>pressDir('down')} onPointerUp={()=>releaseDir('down')} onPointerLeave={()=>releaseDir('down')} style={mobileBtnStyle()}>▼</button>
+                <div></div>
+              </div>
+              {/* Action Buttons */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10, pointerEvents:'auto' }}>
+                <button onClick={()=>setPaused(p=>!p)} style={pillBtnStyle()}>{paused? 'Resume':'Pause'}</button>
+                <button onClick={()=>startGame()} style={pillBtnStyle(currentTheme.buttonPrimary)}>Restart</button>
+                <button onClick={()=>setShowMiniMap(m=>!m)} style={pillBtnStyle()}>{showMiniMap? 'Hide Map':'Show Map'}</button>
+              </div>
+            </div>
+          )}
         </div>
         {/* Legend for indicators */}
         <div style={{ display:'flex', alignItems:'center', gap:16, marginTop:8, opacity:.9 }}>
@@ -1244,7 +1350,7 @@ import { useAuth } from '../auth/AuthContext'
         </div>
       </div>
       {/* External LAM Output Panel */}
-      {showLamDetails && lamDetailsPos && (
+  {showLamDetails && lamDetailsPos && (
         <div
           style={{ position:'fixed', left:lamDetailsPos.x, top:lamDetailsPos.y, width: lamExpanded? 460: 320, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(165deg, rgba(15,15,25,0.85) 0%, rgba(55,25,65,0.78) 100%)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:16, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)', zIndex:50, cursor:'move' }}
           onMouseDown={e=>{ dragInfoRef.current.panel='details'; dragInfoRef.current.offX = e.clientX - lamDetailsPos.x; dragInfoRef.current.offY = e.clientY - lamDetailsPos.y }}
@@ -1324,7 +1430,7 @@ import { useAuth } from '../auth/AuthContext'
         </div>
       )}
       {/* LAM Flow Timeline Panel */}
-      {showLamFlowPanel && (
+  {showLamFlowPanel && (
       <div
         style={{ position:'fixed', left:lamFlowPos.x, top:lamFlowPos.y, width:lamFlowWidth, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(160deg, rgba(10,20,30,0.85), rgba(40,15,55,0.8))', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:14, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55)', zIndex:50, cursor:'move' }}
         onMouseDown={e=>{ dragInfoRef.current.panel='flow'; dragInfoRef.current.offX = e.clientX - lamFlowPos.x; dragInfoRef.current.offY = e.clientY - lamFlowPos.y }}
@@ -1382,3 +1488,14 @@ import { useAuth } from '../auth/AuthContext'
     </div>
   )
  }
+
+// ===== Reusable mobile button styles (module scope so they're stable) =====
+function mobileBtnStyle(){
+  return { width:56, height:56, borderRadius:12, border:'1px solid rgba(255,255,255,0.25)', background:'rgba(0,0,0,0.45)', color:'#fff', fontSize:22, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600, backdropFilter:'blur(4px)', boxShadow:'0 4px 12px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
+}
+function mobileCenterBtnStyle(active:boolean){
+  return { width:56, height:56, borderRadius:28, border:'2px solid '+(active? '#4ade80':'rgba(255,255,255,0.35)'), background: active? 'linear-gradient(135deg,#059669,#10b981)':'rgba(0,0,0,0.55)', color:'#fff', fontSize:11, letterSpacing:'.5px', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, lineHeight:1.1, padding:4, textAlign:'center', backdropFilter:'blur(6px)', boxShadow: active? '0 0 14px -2px rgba(16,185,129,0.7)':'0 4px 12px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
+}
+function pillBtnStyle(grad?:string){
+  return { minWidth:120, padding:'12px 16px', borderRadius:30, border:'1px solid rgba(255,255,255,0.25)', background: grad || 'rgba(0,0,0,0.55)', color:'#fff', fontSize:14, fontWeight:600, backdropFilter:'blur(6px)', boxShadow:'0 4px 10px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 type Template = {
   id: number
@@ -15,13 +16,14 @@ type Template = {
 }
 
 export default function Templates() {
+  const isMobile = useIsMobile()
   const [items, setItems] = useState<Template[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   // Criteria panel toggle
-  const [showCriteria, setShowCriteria] = useState(true)
+  const [showCriteria, setShowCriteria] = useState(() => !window.matchMedia || window.innerWidth > 900) // hide large panels by default on mobile
   // Metrics panel toggle
-  const [showMetrics, setShowMetrics] = useState(true)
+  const [showMetrics, setShowMetrics] = useState(() => !window.matchMedia || window.innerWidth > 900)
   // Track which metric nodes are expanded
   const [openMetrics, setOpenMetrics] = useState<Set<number>>(new Set())
   const toggleMetric = (i: number) => {
@@ -389,14 +391,14 @@ export default function Templates() {
   const containerStyle = {
     maxWidth: '1200px',
     margin: '0 auto',
-    padding: '40px 20px'
+    padding: isMobile ? '24px 12px 56px' : '40px 20px'
   }
 
   const headerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '40px',
+    marginBottom: isMobile ? '28px':'40px',
     flexWrap: 'wrap' as const,
     gap: '20px'
   }
@@ -421,8 +423,8 @@ export default function Templates() {
 
   const criteriaGridStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: '16px'
+    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: isMobile ? '12px':'16px'
   }
 
   const pillStyle = {
@@ -486,11 +488,11 @@ export default function Templates() {
       {/* Header */}
       <div style={headerStyle}>
         <div>
-          <h1 style={{ fontSize: '2.5rem', fontWeight: '700', marginBottom: '10px' }}>
+          <h1 style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', marginBottom: '10px', lineHeight:1.2 }}>
             <i className="fas fa-file-code" style={{ marginRight: '15px' }}></i>
             My Templates
           </h1>
-          <p style={{ opacity: '0.8', fontSize: '1.1rem' }}>
+          <p style={{ opacity: '0.8', fontSize: isMobile ? '1rem':'1.1rem' }}>
             Manage your prompt templates for the LAM Maze Game
           </p>
         </div>
@@ -532,7 +534,7 @@ export default function Templates() {
               <i className="fas fa-lightbulb"></i>
               Design Criteria
             </div>
-            <h2 style={{ margin: '10px 0 4px', fontSize: '1.6rem', fontWeight: 700 }}>
+            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem':'1.6rem', fontWeight: 700, lineHeight:1.25 }}>
               What makes a good LAM prompt template (beyond final score)
             </h2>
             <p style={{ opacity: 0.8, margin: 0 }}>
@@ -637,7 +639,7 @@ export default function Templates() {
               <i className="fas fa-calculator"></i>
               Quantified Metrics & Formulas
             </div>
-            <h2 style={{ margin: '10px 0 4px', fontSize: '1.6rem', fontWeight: 700 }}>
+            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem':'1.6rem', fontWeight: 700, lineHeight:1.25 }}>
               Measure template quality beyond end score
             </h2>
             <p style={{ opacity: 0.8, margin: 0 }}>
