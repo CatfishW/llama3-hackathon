@@ -195,6 +195,8 @@ export default function WebGame() {
   started: false,
     gameOver: false,
     win: false,
+  endTime: undefined as number | undefined,
+  finalScore: undefined as number | undefined,
     lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '' },
     // Effects & visuals
     effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
@@ -695,8 +697,9 @@ export default function WebGame() {
     if (!s.gameOver) return
     
     try {
-      const elapsed = (performance.now() - s.startTime) / 1000
-      const baseScore = s.oxygenCollected * 100 - elapsed * 5
+  const elapsed = s.endTime ? (s.endTime - s.startTime) / 1000 : (performance.now() - s.startTime) / 1000
+  // Use frozen finalScore if available, else compute current
+  const baseScore = s.finalScore != null ? s.finalScore : (s.oxygenCollected * 100 - elapsed * 5)
       const winBonus = s.win ? 1000 : 0 // Big bonus for winning
       const finalScore = Math.round(baseScore + winBonus)
       
@@ -771,6 +774,8 @@ export default function WebGame() {
   started: true,
       gameOver: false,
       win: false,
+  endTime: undefined,
+  finalScore: undefined,
       lam: { hint: '', path: [], breaks: 0, error: '' },
       effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
       highlight: new Map(),
@@ -967,12 +972,18 @@ export default function WebGame() {
       if (s.germs.some(g => g.pos.x === s.player.x && g.pos.y === s.player.y)) {
         if (!s.gameOver) {
           s.gameOver = true; s.win = false
+          s.endTime = performance.now()
+          const elapsedSec = (s.endTime - s.startTime)/1000
+          s.finalScore = Math.round(s.oxygenCollected*100 - elapsedSec*5)
           setGameOverTrigger(prev => prev + 1)
         }
       }
       if (s.player.x === s.exit.x && s.player.y === s.exit.y) {
         if (!s.gameOver) {
           s.gameOver = true; s.win = true
+          s.endTime = performance.now()
+          const elapsedSec = (s.endTime - s.startTime)/1000
+          s.finalScore = Math.round(s.oxygenCollected*100 - elapsedSec*5)
           setGameOverTrigger(prev => prev + 1)
         }
       }
@@ -1102,9 +1113,9 @@ export default function WebGame() {
         ctx.globalAlpha = 1
       }
 
-      // HUD
-  const elapsed = s.started ? (performance.now() - s.startTime)/1000 : 0
-  const score = s.started ? Math.round(s.oxygenCollected*100 - elapsed*5) : 0
+      // HUD (freeze after game over)
+  const elapsed = s.started ? (s.gameOver && s.endTime ? (s.endTime - s.startTime)/1000 : (performance.now() - s.startTime)/1000) : 0
+  const score = s.started ? (s.gameOver && s.finalScore!=null ? s.finalScore : Math.round(s.oxygenCollected*100 - elapsed*5)) : 0
       ctx.fillStyle = '#fff'; ctx.font = '16px Inter, system-ui, sans-serif'
       ctx.fillText(`O₂: ${s.oxygenCollected}  Time: ${elapsed.toFixed(1)}s  Score: ${score}`, 10, 22)
 
@@ -1135,7 +1146,7 @@ export default function WebGame() {
         
         // Show final score
         ctx.font = '20px Inter';
-        const scoreText = `Final Score: ${score}`
+  const scoreText = `Final Score: ${score}`
         ctx.fillText(scoreText, width/2 - ctx.measureText(scoreText).width/2, height/2 - 20)
         
         // Show game stats
