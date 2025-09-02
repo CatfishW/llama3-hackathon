@@ -11,6 +11,14 @@ export default function Navbar() {
   const [sessionId, setSessionId] = useState<string>('')
   const [publishing, setPublishing] = useState(false)
   const [status, setStatus] = useState<string>('')
+  const [mobile, setMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth < 880 : false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(()=>{
+    function onResize(){ setMobile(window.innerWidth < 880) }
+    window.addEventListener('resize', onResize)
+    return ()=> window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -68,7 +76,23 @@ export default function Navbar() {
     gap: '10px'
   }
 
-  const navLinksStyle = {
+  const navLinksStyle: any = mobile ? {
+    display: menuOpen ? 'flex':'none',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 14,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '100%',
+    background: 'rgba(15,15,30,0.92)',
+    backdropFilter: 'blur(14px)',
+    padding: '18px 18px 28px',
+    borderBottom: '1px solid rgba(255,255,255,0.15)',
+    boxShadow: '0 18px 40px -10px rgba(0,0,0,0.45)',
+    maxHeight: '78vh',
+    overflowY: 'auto'
+  } : {
     display: 'flex',
     gap: '30px',
     alignItems: 'center'
@@ -77,13 +101,16 @@ export default function Navbar() {
   const linkStyle = (active: boolean) => ({
     color: 'white',
     textDecoration: 'none',
-    fontSize: '1rem',
-    fontWeight: '500',
-    padding: '8px 16px',
-    borderRadius: '20px',
-    transition: 'all 0.3s ease',
-    background: active ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
-    border: active ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent'
+    fontSize: mobile ? '0.95rem':'1rem',
+    fontWeight: 500,
+    padding: mobile ? '10px 14px':'8px 16px',
+    borderRadius: 18,
+    transition: 'all 0.25s ease',
+    background: active ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255,255,255,0.06)',
+    border: active ? '1px solid rgba(255, 255, 255, 0.35)' : '1px solid rgba(255,255,255,0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
   })
 
   const buttonStyle = {
@@ -106,21 +133,37 @@ export default function Navbar() {
 
   return (
     <nav style={navStyle}>
-      <div style={containerStyle}>
+      <div style={{ ...containerStyle, position:'relative' }}>
         <Link to="/" style={logoStyle}>
           <i className="fas fa-puzzle-piece"></i>
           LAM Maze Platform
         </Link>
+        {mobile && user && (
+          <button
+            aria-label={menuOpen? 'Close menu':'Open menu'}
+            aria-expanded={menuOpen}
+            onClick={()=>setMenuOpen(o=>!o)}
+            style={{ background:'rgba(0,0,0,0.35)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', padding:'10px 14px', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}
+          >
+            <i className={`fas ${menuOpen? 'fa-times':'fa-bars'}`}></i>
+            <span style={{ fontSize:'.85rem', letterSpacing:'.5px' }}>{menuOpen? 'Close':'Menu'}</span>
+          </button>
+        )}
 
         <div style={navLinksStyle}>
           {user ? (
             <>
+              {mobile && (
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:4 }}>
+                  <div style={{ fontSize:'.75rem', textTransform:'uppercase', opacity:.6, letterSpacing:'.8px', fontWeight:600 }}>Navigation</div>
+                </div>
+              )}
               <Link
                 to="/dashboard"
                 style={linkStyle(isActive('/dashboard'))}
                 onMouseOver={(e) => {
                   if (!isActive('/dashboard')) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'
                   }
                 }}
                 onMouseOut={(e) => {
@@ -150,30 +193,34 @@ export default function Navbar() {
                 Play
               </Link>
 
-              {/* Quick template publish controls */}
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <select
-                  value={selectedId}
-                  onChange={(e)=> setSelectedId(e.target.value ? parseInt(e.target.value) : '')}
-                  style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '6px 10px' }}
-                  title="Select template"
-                >
-                  <option value="">Select template…</option>
-                  {templates.map(t => (
-                    <option key={t.id} value={t.id} style={{ background:'#333' }}>{t.title}</option>
-                  ))}
-                </select>
-                <input
-                  value={sessionId}
-                  onChange={(e)=>setSessionId(e.target.value)}
-                  placeholder="session-id (optional)"
-                  style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '6px 10px' }}
-                  title="Target a running Play session"
-                />
-                <button onClick={publishTemplate} disabled={!selectedId || publishing} style={{ ...buttonStyle, opacity: (!selectedId || publishing) ? 0.6 : 1 }} title="Publish template to LAM">
-                  <i className="fas fa-upload" style={{ marginRight: 6 }} /> {publishing ? 'Publishing…' : 'Publish'}
-                </button>
-                {status && <span style={{ color:'#fff', opacity:.8 }}>{status}</span>}
+              {/* Quick template publish controls (responsive) */}
+              <div style={{ display:'flex', flexDirection: mobile? 'column':'row', alignItems: mobile? 'stretch':'center', gap: mobile? 10:8, background: mobile? 'rgba(255,255,255,0.05)':'transparent', padding: mobile? '12px 14px':0, borderRadius: mobile? 16:0, width: mobile? '100%':'auto' }}>
+                <div style={{ display:'flex', gap:8, flex:1 }}>
+                  <select
+                    value={selectedId}
+                    onChange={(e)=> setSelectedId(e.target.value ? parseInt(e.target.value) : '')}
+                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '10px 12px', flex:1, fontSize: mobile? '.9rem':'1rem' }}
+                    title="Select template"
+                  >
+                    <option value="">Select template…</option>
+                    {templates.map(t => (
+                      <option key={t.id} value={t.id} style={{ background:'#222' }}>{t.title}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={sessionId}
+                    onChange={(e)=>setSessionId(e.target.value)}
+                    placeholder="session id (opt)"
+                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '10px 12px', flex:1, fontSize: mobile? '.9rem':'1rem' }}
+                    title="Target a running Play session"
+                  />
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <button onClick={publishTemplate} disabled={!selectedId || publishing} style={{ ...buttonStyle, opacity: (!selectedId || publishing) ? 0.5 : 1, padding: mobile? '12px 18px':'10px 20px', width: mobile? '100%':'auto', fontSize: mobile? '.85rem':'0.9rem', display:'flex', alignItems:'center', justifyContent:'center' }} title="Publish template to LAM">
+                    <i className="fas fa-upload" style={{ marginRight: 6 }} /> {publishing ? 'Publishing…' : 'Publish'}
+                  </button>
+                  {status && <span style={{ color:'#fff', opacity:.75, fontSize:'.75rem' }}>{status}</span>}
+                </div>
               </div>
 
               <Link
@@ -262,17 +309,18 @@ export default function Navbar() {
                 Test
               </Link>
               
-              {/* User Menu Dropdown */}
-              <div style={{ position: 'relative', marginLeft: '10px' }}>
-                <div style={authLinksStyle}>
+              {/* User Menu */}
+              <div style={{ position: 'relative', marginLeft: mobile? 0 : '10px', width: mobile? '100%':'auto' }}>
+                <div style={{ ...authLinksStyle, width: mobile? '100%':'auto', justifyContent: mobile? 'space-between':'flex-start' }}>
                   <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
                     gap: '10px',
-                    padding: '8px 12px',
-                    borderRadius: '20px',
+                    padding: mobile? '10px 14px':'8px 12px',
+                    borderRadius: mobile? 16 : '20px',
                     background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    flex: mobile? 1 : 'unset'
                   }}>
                     <div style={{
                       width: '32px',

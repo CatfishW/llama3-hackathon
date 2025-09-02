@@ -1208,7 +1208,7 @@ export default function WebGame() {
   }), [currentTheme])
 
   return (
-    <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white', WebkitUserSelect:'none', userSelect:'none', touchAction:'none' }}>
+  <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white', WebkitUserSelect:'none', userSelect:'none' }}>
       <div style={containerStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: '10px 0' }}>Play in Browser</h1>
@@ -1303,7 +1303,7 @@ export default function WebGame() {
         </div>
 
         {/* Canvas with glow and border */}
-        <div ref={canvasWrapperRef} style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow, width: width*canvasScale, height: height*canvasScale, margin: '0 auto', position:'relative', touchAction:'none' }}>
+  <div ref={canvasWrapperRef} style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow, width: width*canvasScale, height: height*canvasScale, margin: '0 auto', position:'relative', touchAction:'none' }}>
           <canvas
             ref={canvasRef}
             width={width}
@@ -1330,6 +1330,11 @@ export default function WebGame() {
                 <button onClick={()=>startGame()} style={pillBtnStyle(currentTheme.buttonPrimary)}>Restart</button>
                 <button onClick={()=>setShowMiniMap(m=>!m)} style={pillBtnStyle()}>{showMiniMap? 'Hide Map':'Show Map'}</button>
               </div>
+            </div>
+          )}
+          {isMobile && (
+            <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.45)', color:'#fff', fontSize:10, padding:'4px 8px', borderRadius:12, pointerEvents:'none', letterSpacing:.5 }}>
+              Swipe inside board to move • Scroll outside to page
             </div>
           )}
         </div>
