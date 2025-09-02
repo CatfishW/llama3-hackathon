@@ -124,10 +124,13 @@ export default function Friends() {
     if (!confirm('Remove this friend?')) return
     
     try {
-      await api.delete(`/api/friends/${userId}`)
+      await api.delete(`/api/friends/remove/${userId}`)
       loadFriends()
-    } catch (e) {
+      setShowAlert({ type: 'success', message: 'Friend removed successfully!' })
+    } catch (e: any) {
       console.error('Failed to remove friend', e)
+      const message = e.response?.data?.detail || 'Failed to remove friend'
+      setShowAlert({ type: 'error', message })
     }
   }
 

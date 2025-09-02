@@ -96,7 +96,7 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        <Link to="/test" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/play" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div 
             style={cardStyle}
             onMouseOver={(e) => {
