@@ -35,9 +35,21 @@ export default function Settings() {
   const [passwordChanging, setPasswordChanging] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     loadSettings()
+  }, [])
+
+  useEffect(()=>{ 
+    const upd=()=>setIsMobile(window.innerWidth<720); 
+    upd(); 
+    window.addEventListener('resize',upd); 
+    window.addEventListener('orientationchange',upd); 
+    return ()=>{
+      window.removeEventListener('resize',upd); 
+      window.removeEventListener('orientationchange',upd)
+    } 
   }, [])
 
   async function loadSettings() {
@@ -120,26 +132,26 @@ export default function Settings() {
   const containerStyle = {
     maxWidth: '800px',
     margin: '0 auto',
-    padding: '40px 20px'
+    padding: isMobile? '28px 14px':'40px 20px'
   }
 
   const cardStyle = {
     background: 'rgba(255, 255, 255, 0.1)',
     backdropFilter: 'blur(10px)',
     borderRadius: '15px',
-    padding: '30px',
+    padding: isMobile? '22px 18px':'30px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     marginBottom: '25px'
   }
 
   const inputStyle = {
     width: '100%',
-    padding: '12px 16px',
+    padding: isMobile? '10px 14px':'12px 16px',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.3)',
     background: 'rgba(255, 255, 255, 0.1)',
     color: 'white',
-    fontSize: '1rem',
+    fontSize: isMobile? '.95rem':'1rem',
     marginTop: '8px'
   }
 

@@ -167,6 +167,15 @@ export default function WebGame() {
   const [lamFlowWidth, setLamFlowWidth] = useState(340)
   const [lamDetailsPos, setLamDetailsPos] = useState<{x:number;y:number}|null>(null)
   const dragInfoRef = useRef<{ panel: null | 'flow' | 'details' | 'flow-resize'; offX: number; offY: number; startW?: number }>({ panel: null, offX:0, offY:0 })
+  // Mobile control opacity (user-adjustable)
+  const [mobileControlsOpacity, setMobileControlsOpacity] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0.95
+    const saved = localStorage.getItem('mobile-controls-opacity')
+    const v = saved ? parseFloat(saved) : 0.95
+    return isNaN(v) ? 0.95 : clamp(v, 0.2, 1)
+  })
+  useEffect(()=> { localStorage.setItem('mobile-controls-opacity', String(mobileControlsOpacity)) }, [mobileControlsOpacity])
+  const [showControlsSettings, setShowControlsSettings] = useState(false)
 
   // Game state
   const tile = 24
@@ -1311,7 +1320,31 @@ export default function WebGame() {
             style={{ width: width*canvasScale, height: height*canvasScale, display:'block', background:'#0b0507' }}
           />
           {isMobile && (
-            <div style={{ position:'absolute', left:4, bottom:4, right:4, display:'flex', justifyContent:'space-between', gap:12, pointerEvents:'none' }}>
+            <button
+              aria-label="Control Settings"
+              onClick={()=>setShowControlsSettings(s=>!s)}
+              style={{ position:'absolute', top:8, left:8, zIndex:5, background:'rgba(0,0,0,0.5)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'6px 10px', fontSize:12, cursor:'pointer' }}
+            >⚙</button>
+          )}
+          {isMobile && showControlsSettings && (
+            <div style={{ position:'absolute', top:48, left:8, zIndex:5, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(6px)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'10px 12px', width:180, fontSize:12, color:'#fff' }}>
+              <div style={{ fontWeight:600, marginBottom:6 }}>Controls Opacity</div>
+              <input
+                aria-label="Mobile controls opacity"
+                type="range"
+                min={0.2}
+                max={1}
+                step={0.05}
+                value={mobileControlsOpacity}
+                onChange={e=> setMobileControlsOpacity(parseFloat(e.target.value)) }
+                style={{ width:'100%' }}
+              />
+              <div style={{ textAlign:'right', marginTop:4 }}>{Math.round(mobileControlsOpacity*100)}%</div>
+              <button onClick={()=>setShowControlsSettings(false)} style={{ marginTop:8, width:'100%', background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', color:'#fff', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}>Close</button>
+            </div>
+          )}
+          {isMobile && (
+            <div style={{ position:'absolute', left:4, bottom:4, right:4, display:'flex', justifyContent:'space-between', gap:12, pointerEvents:'none', opacity: mobileControlsOpacity }}>
               {/* D-Pad */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(3,56px)', gridTemplateRows:'repeat(3,56px)', gap:4, opacity:0.95, pointerEvents:'auto' }}>
                 <div></div>

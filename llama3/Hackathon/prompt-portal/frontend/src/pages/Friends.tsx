@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth/AuthContext'
@@ -46,9 +46,21 @@ export default function Friends() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [showAlert, setShowAlert] = useState<{ type: 'success' | 'error' | 'warning', message: string } | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     loadFriends()
+  }, [])
+
+  useEffect(()=>{ 
+    const upd=()=>setIsMobile(window.innerWidth<780); 
+    upd(); 
+    window.addEventListener('resize',upd); 
+    window.addEventListener('orientationchange',upd); 
+    return ()=>{
+      window.removeEventListener('resize',upd); 
+      window.removeEventListener('orientationchange',upd)
+    } 
   }, [])
 
   async function loadFriends() {
@@ -122,10 +134,10 @@ export default function Friends() {
     }
   }
 
-  const containerStyle = {
+  const containerStyle: React.CSSProperties = {
     maxWidth: '1000px',
     margin: '0 auto',
-    padding: '40px 20px'
+    padding: isMobile? '28px 14px':'40px 20px'
   }
 
   const tabStyle = (active: boolean) => ({
@@ -148,11 +160,11 @@ export default function Friends() {
     marginBottom: '15px'
   }
 
-  const userCardStyle = {
+  const userCardStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
-    gap: '15px',
-    padding: '20px',
+    gap: isMobile? '10px':'15px',
+    padding: isMobile? '16px 14px':'20px',
     background: 'rgba(255, 255, 255, 0.05)',
     borderRadius: '10px',
     marginBottom: '15px',
@@ -496,9 +508,9 @@ export default function Friends() {
             })
           )}
         </div>
-      )}
+  )}
 
-      {activeTab === 'search' && (
+  {activeTab === 'search' && (
         <div>
           <h3 style={{ marginBottom: '20px', fontSize: '1.3rem' }}>
             Search Results ({searchResults.length})
