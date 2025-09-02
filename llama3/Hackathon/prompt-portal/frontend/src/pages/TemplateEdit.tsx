@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import TemplateForm from '../components/TemplateForm'
 import { api } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useTemplates } from '../contexts/TemplateContext'
 
 type Template = {
   id: number
@@ -19,6 +20,7 @@ type Template = {
 export default function TemplateEdit() {
   const { id } = useParams()
   const nav = useNavigate()
+  const { updateTemplate } = useTemplates()
   const [item, setItem] = useState<Template | null>(null)
   const isMobile = useIsMobile()
 
@@ -30,7 +32,8 @@ export default function TemplateEdit() {
   }, [id])
 
   async function onSubmit(data: any) {
-    await api.patch('/api/templates/' + id, data)
+    const res = await api.patch('/api/templates/' + id, data)
+    updateTemplate(parseInt(id!), res.data) // Update the template in the context
     nav('/templates')
   }
 

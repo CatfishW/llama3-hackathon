@@ -16,6 +16,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import PrivateRoute from './components/PrivateRoute'
 import { useAuth } from './auth/AuthContext'
+import { TemplateProvider } from './contexts/TemplateContext'
 import WebGame from './pages/WebGame'
 
 export default function App() {
@@ -37,128 +38,130 @@ export default function App() {
 
   return (
     <div style={appStyle}>
-      <Routes>
-        <Route path="/" element={
-          <div style={{ flex: 1 }}>
-            <Homepage />
-            <Footer />
-          </div>
-        } />
-        <Route path="/register" element={
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <Navbar />
-            <div style={{ ...contentStyle, flex: 1 }}><Register /></div>
-            <Footer />
-          </div>
-        } />
-        <Route path="/login" element={
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <Navbar />
-            <div style={{ ...contentStyle, flex: 1 }}><Login /></div>
-            <Footer />
-          </div>
-        } />
-        <Route path="/dashboard" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Dashboard /></div>
+      <TemplateProvider>
+        <Routes>
+          <Route path="/" element={
+            <div style={{ flex: 1 }}>
+              <Homepage />
               <Footer />
             </div>
-          </PrivateRoute>
-        } />
-        <Route path="/templates" element={
-          <PrivateRoute>
+          } />
+          <Route path="/register" element={
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Templates /></div>
+              <div style={{ ...contentStyle, flex: 1 }}><Register /></div>
               <Footer />
             </div>
-          </PrivateRoute>
-        } />
-        <Route path="/templates/new" element={
-          <PrivateRoute>
+          } />
+          <Route path="/login" element={
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><NewTemplate /></div>
+              <div style={{ ...contentStyle, flex: 1 }}><Login /></div>
               <Footer />
             </div>
-          </PrivateRoute>
-        } />
-        <Route path="/templates/:id" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><TemplateEdit /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/leaderboard" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Leaderboard /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/friends" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Friends /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/messages" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Messages /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/profile" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Profile /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/settings" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><Settings /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/play" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><WebGame /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="/test" element={
-          <PrivateRoute>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Navbar />
-              <div style={{ ...contentStyle, flex: 1 }}><TestMQTT /></div>
-              <Footer />
-            </div>
-          </PrivateRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+          } />
+          <Route path="/dashboard" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Dashboard /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/templates" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Templates /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/templates/new" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><NewTemplate /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/templates/:id" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><TemplateEdit /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/leaderboard" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Leaderboard /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/friends" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Friends /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/messages" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Messages /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/messages/:userId" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Messages /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Profile /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/settings" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><Settings /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/play" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><WebGame /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </TemplateProvider>
     </div>
   )
 }

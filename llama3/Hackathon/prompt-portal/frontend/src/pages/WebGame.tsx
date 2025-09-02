@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, leaderboardAPI } from '../api'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useTemplates } from '../contexts/TemplateContext'
 
 // ===== Types =====
  type Vec2 = { x: number; y: number }
@@ -124,9 +125,9 @@ export default function WebGame() {
   // Auth context
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { templates } = useTemplates()
   
   // UI state
-  const [templates, setTemplates] = useState<Template[]>([])
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [sessionId, setSessionId] = useState('session-' + Math.random().toString(36).slice(2, 8))
   const [connected, setConnected] = useState(false)
@@ -585,16 +586,12 @@ export default function WebGame() {
     ctx.restore()
   }
 
-  // Load templates
+  // Set initial template when templates load
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get('/api/templates')
-        setTemplates(res.data.map((t: any) => ({ id: t.id, title: t.title })))
-        if (res.data.length > 0) setTemplateId(res.data[0].id)
-      } catch (e) { console.error(e) }
-    })()
-  }, [])
+    if (templates.length > 0 && !templateId) {
+      setTemplateId(templates[0].id)
+    }
+  }, [templates, templateId])
 
   // WebSocket connect/disconnect
   const connectWS = useCallback(() => {

@@ -85,11 +85,11 @@ export default function Messages() {
 
   async function loadMessages(withUserId: number) {
     try {
-      const res = await api.get(`/api/messages/${withUserId}`)
+      const res = await api.get(`/api/messages/conversation/${withUserId}`)
       setMessages(res.data)
 
-      // Mark messages as read
-      await api.post(`/api/messages/${withUserId}/read`)
+      // Mark conversation as read
+      await api.put(`/api/messages/mark-conversation-read/${withUserId}`)
 
       // Update conversation unread count
       setConversations((prev) =>
@@ -147,8 +147,8 @@ export default function Messages() {
 
     try {
       setSending(true)
-      await api.post('/api/messages', {
-        receiver_id: parseInt(userId),
+      await api.post('/api/messages/send', {
+        recipient_id: parseInt(userId),
         content: newMessage.trim(),
       })
       setNewMessage('')

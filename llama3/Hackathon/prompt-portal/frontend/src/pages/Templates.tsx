@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useTemplates } from '../contexts/TemplateContext'
 
 type Template = {
   id: number
@@ -17,9 +18,8 @@ type Template = {
 
 export default function Templates() {
   const isMobile = useIsMobile()
-  const [items, setItems] = useState<Template[]>([])
+  const { templates: items, loading, refreshTemplates, removeTemplate } = useTemplates()
   const [err, setErr] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   // Criteria panel toggle
   const [showCriteria, setShowCriteria] = useState(() => !window.matchMedia || window.innerWidth > 900) // hide large panels by default on mobile
   // Metrics panel toggle
@@ -364,25 +364,11 @@ export default function Templates() {
     }
   ]
 
-  async function load() {
-    try {
-      setLoading(true)
-      const res = await api.get('/api/templates')
-      setItems(res.data)
-    } catch (e: any) {
-      setErr(e?.response?.data?.detail || 'Failed to load templates')
-    } finally {
-      setLoading(false)
-    }
-  }
-  
-  useEffect(() => { load() }, [])
-
   async function remove(id: number, title: string) {
     if (!confirm(`Delete template "${title}"? This action cannot be undone.`)) return
     try {
       await api.delete('/api/templates/' + id)
-      load()
+      removeTemplate(id)
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to delete template')
     }
