@@ -48,16 +48,15 @@ export default function Navbar() {
   const isActive = (path: string) => location.pathname === path
 
   const navStyle = {
-    background: 'rgba(20, 20, 35, 0.55)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
-    padding: '15px 0',
+    background: menuOpen ? 'rgba(15,15,28,0.85)' : 'rgba(20, 20, 35, 0.65)',
+    backdropFilter: 'blur(14px)',
+    WebkitBackdropFilter: 'blur(14px)',
+    borderBottom: '1px solid rgba(255,255,255,0.12)',
+    padding: '14px 0',
     position: 'sticky' as const,
     top: 0,
-    zIndex: 900,
-    // Prevent overlaying modals / dropdowns unintentionally
-    contain: 'layout paint'
+    zIndex: menuOpen ? 1500 : 1100,
+    transition: 'background .3s ease'
   }
 
   const containerStyle = {
@@ -88,8 +87,8 @@ export default function Navbar() {
     left: 0,
     right: 0,
     top: '100%',
-    background: 'rgba(15,15,30,0.94)',
-    backdropFilter: 'blur(18px)',
+    background: 'rgba(18,18,34,0.94)',
+    backdropFilter: 'blur(22px)',
     padding: '18px 18px 28px',
     borderBottom: '1px solid rgba(255,255,255,0.15)',
     boxShadow: '0 18px 40px -10px rgba(0,0,0,0.45)',
@@ -99,19 +98,18 @@ export default function Navbar() {
     display: 'flex',
     gap: '30px',
     alignItems: 'center',
-    // Prevent horizontal nav from covering page content when user scrolls under transparent areas
     background: 'transparent'
   }
 
   const linkStyle = (active: boolean) => ({
     color: 'white',
     textDecoration: 'none',
-    fontSize: mobile ? '0.95rem':'1rem',
+    fontSize: mobile ? '0.95rem':'0.95rem',
     fontWeight: 500,
-    padding: mobile ? '10px 14px':'8px 16px',
-    borderRadius: 18,
-    transition: 'background 0.25s ease, color 0.25s ease, transform 0.25s ease',
-    background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
+    padding: mobile ? '10px 16px':'8px 14px',
+    borderRadius: 16,
+    transition: 'background 0.25s ease, color 0.25s ease',
+    background: active ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)',
     border: active ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
     display: 'flex',
     alignItems: 'center',
@@ -143,7 +141,7 @@ export default function Navbar() {
           <i className="fas fa-puzzle-piece"></i>
           LAM Maze Platform
         </Link>
-        {mobile && user && (
+        {mobile && (
           <button
             aria-label={menuOpen? 'Close menu':'Open menu'}
             aria-expanded={menuOpen}
@@ -153,6 +151,9 @@ export default function Navbar() {
             <i className={`fas ${menuOpen? 'fa-times':'fa-bars'}`}></i>
             <span style={{ fontSize:'.85rem', letterSpacing:'.5px' }}>{menuOpen? 'Close':'Menu'}</span>
           </button>
+        )}
+        {menuOpen && mobile && (
+          <div onClick={()=>setMenuOpen(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', backdropFilter:'blur(2px)', zIndex:1490}} />
         )}
 
         <div style={navLinksStyle}>
