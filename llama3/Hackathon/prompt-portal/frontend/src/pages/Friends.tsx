@@ -77,10 +77,10 @@ export default function Friends() {
 
   async function searchUsers() {
     if (!searchQuery.trim()) return
-    
     try {
       setSearching(true)
-      const res = await api.get(`/api/users/search?q=${encodeURIComponent(searchQuery)}`)
+      // Correct endpoint (backend exposes /api/friends/search)
+      const res = await api.get(`/api/friends/search?q=${encodeURIComponent(searchQuery)}`)
       setSearchResults(res.data)
       setActiveTab('search')
     } catch (e) {
@@ -93,13 +93,10 @@ export default function Friends() {
   async function sendFriendRequest(userId: number) {
     try {
       await api.post(`/api/friends/request`, { requested_id: userId })
-      setSearchResults(prev => 
-        prev.map(user => 
-          user.id === userId 
-            ? { ...user, has_pending_request: true }
-            : user
-        )
-      )
+      // Update search result pill
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, has_pending_request: true } : u))
+      // Refresh friend list so outgoing request appears immediately
+      loadFriends()
       setShowAlert({ type: 'success', message: 'Friend request sent successfully!' })
     } catch (e: any) {
       console.error('Failed to send friend request', e)
@@ -223,6 +220,20 @@ export default function Friends() {
   function getFriendUser(friendship: Friend, currentUserId: number) {
     return friendship.requester_id === currentUserId ? friendship.requested : friendship.requester
   }
+
+  // Refresh pending requests when switching to requests tab
+  useEffect(() => {
+    if (activeTab === 'requests') {
+      loadFriends()
+    }
+  }, [activeTab])
+
+  // Poll for new incoming requests while on requests tab
+  useEffect(() => {
+    if (activeTab !== 'requests') return
+    const id = setInterval(() => { loadFriends() }, 10000)
+    return () => clearInterval(id)
+  }, [activeTab])
 
   return (
     <div style={containerStyle}>

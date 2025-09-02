@@ -48,13 +48,16 @@ export default function Navbar() {
   const isActive = (path: string) => location.pathname === path
 
   const navStyle = {
-    background: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
+    background: 'rgba(20, 20, 35, 0.55)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
     padding: '15px 0',
     position: 'sticky' as const,
     top: 0,
-    zIndex: 1000
+    zIndex: 900,
+    // Prevent overlaying modals / dropdowns unintentionally
+    contain: 'layout paint'
   }
 
   const containerStyle = {
@@ -85,8 +88,8 @@ export default function Navbar() {
     left: 0,
     right: 0,
     top: '100%',
-    background: 'rgba(15,15,30,0.92)',
-    backdropFilter: 'blur(14px)',
+    background: 'rgba(15,15,30,0.94)',
+    backdropFilter: 'blur(18px)',
     padding: '18px 18px 28px',
     borderBottom: '1px solid rgba(255,255,255,0.15)',
     boxShadow: '0 18px 40px -10px rgba(0,0,0,0.45)',
@@ -95,7 +98,9 @@ export default function Navbar() {
   } : {
     display: 'flex',
     gap: '30px',
-    alignItems: 'center'
+    alignItems: 'center',
+    // Prevent horizontal nav from covering page content when user scrolls under transparent areas
+    background: 'transparent'
   }
 
   const linkStyle = (active: boolean) => ({
@@ -105,9 +110,9 @@ export default function Navbar() {
     fontWeight: 500,
     padding: mobile ? '10px 14px':'8px 16px',
     borderRadius: 18,
-    transition: 'all 0.25s ease',
-    background: active ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255,255,255,0.06)',
-    border: active ? '1px solid rgba(255, 255, 255, 0.35)' : '1px solid rgba(255,255,255,0.08)',
+    transition: 'background 0.25s ease, color 0.25s ease, transform 0.25s ease',
+    background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
+    border: active ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
     display: 'flex',
     alignItems: 'center',
     gap: 8
