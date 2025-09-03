@@ -140,12 +140,12 @@ print_step "Starting services with PM2..."
 # Start backend with PM2 (no logging)
 cd ../backend
 pm2 delete prompt-portal-backend 2>/dev/null || true
-pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend --no-autorestart --log /dev/null --error /dev/null --out /dev/null
+pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend --no-autorestart --log /dev/null --error /dev/null
 
 # Start frontend with PM2 (no logging)
 cd ../frontend
 pm2 delete prompt-portal-frontend 2>/dev/null || true
-pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend --no-autorestart --log /dev/null --error /dev/null --out /dev/null
+pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend --no-autorestart --log /dev/null --error /dev/null
 
 # Skip saving PM2 configuration and startup
 print_step "Skipping PM2 configuration save..."
