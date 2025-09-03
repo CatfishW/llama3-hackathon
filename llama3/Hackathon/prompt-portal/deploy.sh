@@ -45,37 +45,7 @@ else
     echo -e "${GREEN}PM2 is already installed${NC}"
 fi
 
-print_step "Checking firewall configuration..."
-if command -v ufw &> /dev/null; then
-    print_step "UFW is available, configuring firewall..."
-    # Set default policies
-    sudo ufw --force reset
-    sudo ufw default deny incoming
-    sudo ufw default allow outgoing
-
-    # Allow SSH (important to not lock yourself out)
-    sudo ufw allow ssh
-    sudo ufw allow 22/tcp
-
-    # Allow HTTP and HTTPS
-    sudo ufw allow 80/tcp
-    sudo ufw allow 443/tcp
-
-    # Allow application ports
-    sudo ufw allow $FRONTEND_PORT/tcp comment "Frontend (Vite dev server)"
-    sudo ufw allow $BACKEND_PORT/tcp comment "Backend API (FastAPI)"
-
-    # Allow MQTT if needed
-    sudo ufw allow 1883/tcp comment "MQTT broker"
-
-    # Enable firewall
-    sudo ufw --force enable
-
-    print_step "Firewall configured successfully!"
-    sudo ufw status
-else
-    print_warning "UFW not available, skipping firewall configuration"
-fi
+print_step "Skipping firewall configuration..."
 
 print_step "Setting up backend..."
 cd backend
@@ -167,68 +137,20 @@ npm run build || {
 
 print_step "Starting services with PM2..."
 
-# Start backend with PM2
+# Start backend with PM2 (no logging)
 cd ../backend
 pm2 delete prompt-portal-backend 2>/dev/null || true
-pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend
+pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend --no-autorestart --log /dev/null --error /dev/null --out /dev/null
 
-# Start frontend with PM2
+# Start frontend with PM2 (no logging)
 cd ../frontend
 pm2 delete prompt-portal-frontend 2>/dev/null || true
-pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend
+pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend --no-autorestart --log /dev/null --error /dev/null --out /dev/null
 
-# Save PM2 configuration
-pm2 save
-pm2 startup | tail -1 | sudo bash || true
+# Skip saving PM2 configuration and startup
+print_step "Skipping PM2 configuration save..."
 
-print_step "Creating monitoring scripts..."
-if [ ! -d "/opt/scripts" ]; then
-    sudo mkdir -p /opt/scripts
-fi
-if [ ! -d "/opt/backups" ]; then
-    sudo mkdir -p /opt/backups
-fi
-
-# Create backup script
-sudo tee /opt/scripts/backup.sh > /dev/null << 'EOF'
-#!/bin/bash
-BACKUP_DIR="/opt/backups"
-DATE=$(date +%Y%m%d_%H%M%S)
-APP_DIR="/opt/prompt-portal"
-
-mkdir -p $BACKUP_DIR
-
-# Backup database
-if [ -f "$APP_DIR/backend/app.db" ]; then
-    cp "$APP_DIR/backend/app.db" "$BACKUP_DIR/app.db.$DATE"
-fi
-
-# Keep only last 7 days of backups
-find $BACKUP_DIR -name "app.db.*" -mtime +7 -delete
-EOF
-
-# Create monitoring script
-sudo tee /opt/scripts/monitor.sh > /dev/null << 'EOF'
-#!/bin/bash
-# Check if services are running and restart if needed
-if ! pm2 show prompt-portal-backend | grep -q "online"; then
-    echo "Backend down, restarting..."
-    pm2 restart prompt-portal-backend
-fi
-
-if ! pm2 show prompt-portal-frontend | grep -q "online"; then
-    echo "Frontend down, restarting..."
-    pm2 restart prompt-portal-frontend
-fi
-EOF
-
-sudo chmod +x /opt/scripts/backup.sh
-sudo chmod +x /opt/scripts/monitor.sh
-
-print_step "Setting up cron jobs..."
-# Add cron jobs for monitoring and backup
-(crontab -l 2>/dev/null; echo "0 2 * * * /opt/scripts/backup.sh") | crontab -
-(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/scripts/monitor.sh") | crontab -
+print_step "Skipping monitoring and backup scripts setup..."
 
 print_step "Deployment completed successfully! 🎉"
 
@@ -242,17 +164,13 @@ echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:$BACKEND_PORT/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  pm2 status                    # Check service status"
-echo "  pm2 logs prompt-portal-backend # View backend logs"
-echo "  pm2 logs prompt-portal-frontend # View frontend logs"
 echo "  pm2 restart all               # Restart all services"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
-echo "- Firewall has been configured automatically"
-echo "- Ports 22 (SSH), 80 (HTTP), 443 (HTTPS), $FRONTEND_PORT (Frontend), $BACKEND_PORT (Backend), and 1883 (MQTT) are open"
+echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
 echo "- Database is initialized and ready to use"
-echo "- Automated backups run daily at 2 AM"
-echo "- Service monitoring runs every 5 minutes"
+echo "- Logging and monitoring have been disabled"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
 echo "1. Open http://$SERVER_IP:5173 in your browser"
