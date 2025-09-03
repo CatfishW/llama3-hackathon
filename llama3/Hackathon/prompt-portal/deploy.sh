@@ -37,13 +37,7 @@ print_error() {
 }
 
 
-print_step "Checking if PM2 is installed..."
-if ! command -v pm2 &> /dev/null; then
-    print_step "Installing PM2 for process management..."
-    sudo npm install -g pm2
-else
-    echo -e "${GREEN}PM2 is already installed${NC}"
-fi
+print_step "Using built-in process management (no PM2 required)..."
 
 print_step "Skipping firewall configuration..."
 
@@ -135,20 +129,34 @@ npm run build || {
     }
 }
 
-print_step "Starting services with PM2..."
+print_step "Starting services in background..."
 
-# Start backend with PM2 (no logging)
+# Kill any existing processes on these ports
+print_step "Cleaning up any existing processes..."
+lsof -ti:$BACKEND_PORT | xargs kill -9 2>/dev/null || true
+lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null || true
+
+# Start backend in background (silent)
 cd ../backend
-pm2 delete prompt-portal-backend 2>/dev/null || true
-pm2 start "uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" --name prompt-portal-backend --no-autorestart --log /dev/null --error /dev/null
+print_step "Starting backend on port $BACKEND_PORT..."
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+BACKEND_PID=$!
+echo $BACKEND_PID > backend.pid
+echo -e "${GREEN}Backend started with PID: $BACKEND_PID${NC}"
 
-# Start frontend with PM2 (no logging)
+# Give backend time to start
+sleep 3
+
+# Start frontend in background (silent)
 cd ../frontend
-pm2 delete prompt-portal-frontend 2>/dev/null || true
-pm2 start "npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT" --name prompt-portal-frontend --no-autorestart --log /dev/null --error /dev/null
+print_step "Starting frontend on port $FRONTEND_PORT..."
+nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT > /dev/null 2>&1 &
+FRONTEND_PID=$!
+echo $FRONTEND_PID > frontend.pid
+echo -e "${GREEN}Frontend started with PID: $FRONTEND_PID${NC}"
 
-# Skip saving PM2 configuration and startup
-print_step "Skipping PM2 configuration save..."
+# Give frontend time to start
+sleep 3
 
 print_step "Skipping monitoring and backup scripts setup..."
 
@@ -163,8 +171,9 @@ echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:$BACKEND_PORT${NC}"
 echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:$BACKEND_PORT/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
-echo "  pm2 status                    # Check service status"
-echo "  pm2 restart all               # Restart all services"
+echo "  kill \$(cat backend/backend.pid)    # Stop backend"
+echo "  kill \$(cat frontend/frontend.pid)  # Stop frontend"
+echo "  ./stop_services.sh               # Stop all services"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
 echo "- Firewall configuration has been skipped"
@@ -180,8 +189,18 @@ echo "4. Test the MQTT functionality"
 
 # Show service status
 echo ""
-print_step "Current service status:"
-pm2 status
+print_step "Checking service status:"
+if ps -p $BACKEND_PID > /dev/null 2>&1; then
+    echo -e "${GREEN}Backend is running (PID: $BACKEND_PID)${NC}"
+else
+    echo -e "${RED}Backend failed to start${NC}"
+fi
+
+if ps -p $FRONTEND_PID > /dev/null 2>&1; then
+    echo -e "${GREEN}Frontend is running (PID: $FRONTEND_PID)${NC}"
+else
+    echo -e "${RED}Frontend failed to start${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
