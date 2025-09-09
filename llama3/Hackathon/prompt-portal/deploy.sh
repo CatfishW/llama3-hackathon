@@ -19,7 +19,7 @@ BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
 # Get server IP
-SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
 
@@ -49,11 +49,11 @@ print_step "Skipping backend environment configuration - using existing .env fil
 
 # Initialize database
 print_step "Initializing database..."
-python create_db.py || python -c "
+python create_db.py > /dev/null 2>&1 || python -c "
 from app.database import init_db
 init_db()
 print('Database initialized successfully!')
-"
+" > /dev/null 2>&1
 
 print_step "Setting up frontend..."
 cd ../frontend
@@ -61,7 +61,7 @@ cd ../frontend
 # Install Node.js dependencies
 print_step "Installing Node.js dependencies..."
 if [ ! -d "node_modules" ]; then
-    npm install --legacy-peer-deps
+    npm install --legacy-peer-deps > /dev/null 2>&1
 else
     print_warning "Node modules already exist, skipping installation..."
 fi
@@ -69,7 +69,7 @@ fi
 # Install additional build dependencies if needed
 if ! npm list terser &> /dev/null; then
     print_step "Installing build dependencies..."
-    npm install --save-dev terser
+    npm install --save-dev terser > /dev/null 2>&1
 fi
 
 # Fix TypeScript configuration for compatibility
@@ -112,20 +112,20 @@ echo -e "${GREEN}Frontend environment configured!${NC}"
 
 # Build frontend for production
 print_step "Building frontend..."
-npm run build || {
+npm run build > /dev/null 2>&1 || {
     print_warning "Initial build failed, trying fixes..."
     
     # Install terser if missing
     print_step "Installing terser..."
-    npm install --save-dev terser
+    npm install --save-dev terser > /dev/null 2>&1
     
     # Try building again
-    npm run build || {
+    npm run build > /dev/null 2>&1 || {
         print_warning "Still failing, cleaning and reinstalling..."
         rm -rf node_modules package-lock.json dist
-        npm install --legacy-peer-deps --force
-        npm install --save-dev terser
-        npm run build
+        npm install --legacy-peer-deps --force > /dev/null 2>&1
+        npm install --save-dev terser > /dev/null 2>&1
+        npm run build > /dev/null 2>&1
     }
 }
 
@@ -139,7 +139,9 @@ lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null || true
 # Start backend in background (silent)
 cd ../backend
 print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+BACKEND_PID=$!
+echo $BACKEND_PID > backend.pid
 
 # Give backend time to start
 sleep 3
@@ -147,7 +149,9 @@ sleep 3
 # Start frontend in background (silent)
 cd ../frontend
 print_step "Starting frontend on port $FRONTEND_PORT..."
-nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT
+nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT > /dev/null 2>&1 &
+FRONTEND_PID=$!
+echo $FRONTEND_PID > frontend.pid
 
 # Give frontend time to start
 sleep 3
