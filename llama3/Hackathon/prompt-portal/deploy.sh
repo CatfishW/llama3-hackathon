@@ -139,9 +139,7 @@ lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null || true
 # Start backend in background (silent)
 cd ../backend
 print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT & BACKEND_PID=$!
-echo $BACKEND_PID > backend.pid
-echo -e "${GREEN}Backend started with PID: $BACKEND_PID${NC}"
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
 
 # Give backend time to start
 sleep 3
@@ -149,10 +147,7 @@ sleep 3
 # Start frontend in background (silent)
 cd ../frontend
 print_step "Starting frontend on port $FRONTEND_PORT..."
-nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT > /dev/null 2>&1 &
-FRONTEND_PID=$!
-echo $FRONTEND_PID > frontend.pid
-echo -e "${GREEN}Frontend started with PID: $FRONTEND_PID${NC}"
+nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT
 
 # Give frontend time to start
 sleep 3
