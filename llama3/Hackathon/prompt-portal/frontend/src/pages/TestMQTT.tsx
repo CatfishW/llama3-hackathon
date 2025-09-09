@@ -29,7 +29,7 @@ export default function TestMQTT() {
   useEffect(() => {
     if (!connected && autoReconnect && connectionAttempts < 5) {
       reconnectTimeoutRef.current = window.setTimeout(() => {
-        console.log(`Auto-reconnect attempt ${connectionAttempts + 1}/5`)
+        // Auto-reconnect attempt ${connectionAttempts + 1}/5 (logging disabled)
         connectWS()
       }, Math.min(1000 * Math.pow(2, connectionAttempts), 10000)) // Exponential backoff, max 10s
     }
@@ -58,7 +58,7 @@ export default function TestMQTT() {
         setTemplates(res.data.map((t: any) => ({ id: t.id, title: t.title })))
         if (res.data.length > 0) setTemplateId(res.data[0].id)
       } catch (e) {
-        console.error('Failed to load templates', e)
+        // Failed to load templates (logging disabled)
       }
     })()
   }, [])
@@ -76,12 +76,12 @@ export default function TestMQTT() {
     ws.onopen = () => {
       setConnected(true)
       setConnectionAttempts(0)
-      console.log(`WebSocket connected to session: ${sessionId}`)
+      // WebSocket connected to session (logging disabled)
     }
     
     ws.onclose = () => {
       setConnected(false)
-      console.log('WebSocket disconnected')
+      // WebSocket disconnected (logging disabled)
     }
     
     ws.onmessage = (evt) => {
@@ -112,7 +112,7 @@ export default function TestMQTT() {
     }
     
     ws.onerror = (err) => {
-      console.error('WebSocket error:', err)
+      // WebSocket error (logging disabled)
       setConnectionAttempts(prev => prev + 1)
     }
     
@@ -194,7 +194,7 @@ export default function TestMQTT() {
       alert(`Successfully published maze state for session ${sessionId}`)
     } catch (e) {
       alert('Failed to publish state. Check console for details.')
-      console.error('Publish error:', e)
+      // Publish error (logging disabled)
     } finally {
       setLoading(false)
     }

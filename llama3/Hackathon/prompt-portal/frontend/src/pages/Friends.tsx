@@ -69,7 +69,7 @@ export default function Friends() {
       const res = await api.get('/api/friends')
       setFriends(res.data)
     } catch (e) {
-      console.error('Failed to load friends', e)
+      // Failed to load friends (logging disabled)
     } finally {
       setLoading(false)
     }
@@ -84,7 +84,7 @@ export default function Friends() {
       setSearchResults(res.data)
       setActiveTab('search')
     } catch (e) {
-      console.error('Failed to search users', e)
+      // Failed to search users (logging disabled)
     } finally {
       setSearching(false)
     }
@@ -99,7 +99,7 @@ export default function Friends() {
       loadFriends()
       setShowAlert({ type: 'success', message: 'Friend request sent successfully!' })
     } catch (e: any) {
-      console.error('Failed to send friend request', e)
+      // Failed to send friend request (logging disabled)
       const message = e.response?.data?.detail || 'Failed to send friend request'
       setShowAlert({ type: 'error', message })
     }
@@ -114,7 +114,7 @@ export default function Friends() {
         message: accept ? 'Friend request accepted!' : 'Friend request rejected!' 
       })
     } catch (e: any) {
-      console.error('Failed to respond to friend request', e)
+      // Failed to respond to friend request (logging disabled)
       const message = e.response?.data?.detail || 'Failed to respond to friend request'
       setShowAlert({ type: 'error', message })
     }
@@ -128,7 +128,7 @@ export default function Friends() {
       loadFriends()
       setShowAlert({ type: 'success', message: 'Friend removed successfully!' })
     } catch (e: any) {
-      console.error('Failed to remove friend', e)
+      // Failed to remove friend (logging disabled)
       const message = e.response?.data?.detail || 'Failed to remove friend'
       setShowAlert({ type: 'error', message })
     }

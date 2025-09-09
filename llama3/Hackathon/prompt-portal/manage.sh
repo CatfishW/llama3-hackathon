@@ -62,45 +62,13 @@ show_status() {
 }
 
 show_logs() {
-    echo "Which logs would you like to view?"
-    echo "1) Backend logs (PM2)"
-    echo "2) Nginx access logs"
-    echo "3) Nginx error logs"
-    echo "4) System logs"
-    echo "5) All logs (last 20 lines each)"
-    
-    read -p "Choose (1-5): " choice
-    
-    case $choice in
-        1)
-            print_step "Backend logs (last 50 lines):"
-            pm2 logs prompt-portal-backend --lines 50
-            ;;
-        2)
-            print_step "Nginx access logs (last 50 lines):"
-            sudo tail -50 /var/log/nginx/access.log
-            ;;
-        3)
-            print_step "Nginx error logs (last 50 lines):"
-            sudo tail -50 /var/log/nginx/error.log
-            ;;
-        4)
-            print_step "System logs (last 50 lines):"
-            sudo journalctl -u prompt-portal --lines 50
-            ;;
-        5)
-            print_step "All logs summary:"
-            echo -e "${YELLOW}=== Backend Logs ===${NC}"
-            pm2 logs prompt-portal-backend --lines 20 | tail -20
-            echo -e "${YELLOW}=== Nginx Error Logs ===${NC}"
-            sudo tail -20 /var/log/nginx/error.log
-            echo -e "${YELLOW}=== System Logs ===${NC}"
-            sudo journalctl -u nginx --lines 20 | tail -20
-            ;;
-        *)
-            print_error "Invalid choice"
-            ;;
-    esac
+    print_error "Log viewing has been disabled for security reasons."
+    print_error "This server does not store logs to protect user privacy."
+    echo ""
+    echo "If you need to debug issues, consider:"
+    echo "- Checking service status with 'systemctl status'"
+    echo "- Using 'pm2 status' for backend process status"
+    echo "- Monitoring in real-time without storing logs"
 }
 
 restart_services() {

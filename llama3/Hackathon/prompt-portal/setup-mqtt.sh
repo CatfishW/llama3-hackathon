@@ -52,12 +52,7 @@ allow_anonymous true
 persistence true
 persistence_location /var/lib/mosquitto/
 
-# Logging
-log_dest file /var/log/mosquitto/mosquitto.log
-log_type error
-log_type warning
-log_type notice
-log_type information
+# Logging disabled for security - no logs stored on server
 
 # Maximum connections
 max_connections 1000
@@ -112,11 +107,7 @@ persistence true
 persistence_location /var/lib/mosquitto/
 
 # Logging
-log_dest file /var/log/mosquitto/mosquitto.log
-log_type error
-log_type warning
-log_type notice
-log_type information
+# Logging disabled for security - no logs stored on server
 
 # Maximum connections
 max_connections 1000
@@ -141,26 +132,17 @@ EOF
     fi
 fi
 
-print_step "Creating MQTT monitoring script..."
+print_step "Creating MQTT monitoring script (NO LOGGING)..."
 sudo tee /opt/scripts/mqtt-monitor.sh > /dev/null << 'EOF'
 #!/bin/bash
 
-LOG_FILE="/var/log/mqtt-monitor.log"
-
-log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
-}
-
-# Check if Mosquitto is running
+# Check if Mosquitto is running (no logging for security)
 if ! systemctl is-active --quiet mosquitto; then
-    log_message "Mosquitto down, restarting..."
     sudo systemctl restart mosquitto
-    log_message "Mosquitto restarted"
 fi
 
-# Test MQTT connection
+# Test MQTT connection without logging
 if ! mosquitto_pub -h localhost -t health/check -m "$(date)" 2>/dev/null; then
-    log_message "MQTT connection test failed"
     sudo systemctl restart mosquitto
 fi
 EOF
@@ -197,11 +179,12 @@ echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  sudo systemctl status mosquitto   # Check status"
 echo "  sudo systemctl restart mosquitto  # Restart broker"
-echo "  sudo tail -f /var/log/mosquitto/mosquitto.log  # View logs"
+echo "  systemctl status mosquitto           # Check status"
+echo "  # Note: Logging has been disabled for security"
 echo ""
 echo -e "${YELLOW}Configuration:${NC}"
 echo "  Config file: /etc/mosquitto/conf.d/prompt-portal.conf"
-echo "  Log file: /var/log/mosquitto/mosquitto.log"
+echo "  # Note: Log files have been disabled for security"
 echo "  Data directory: /var/lib/mosquitto/"
 echo ""
 

@@ -34,7 +34,7 @@ export function TemplateProvider({ children }: { children: ReactNode }) {
       const res = await api.get('/api/templates')
       setTemplates(res.data)
     } catch (e) {
-      console.error('Failed to load templates', e)
+      // Failed to load templates (logging disabled)
     } finally {
       setLoading(false)
     }

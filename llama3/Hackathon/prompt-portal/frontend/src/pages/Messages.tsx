@@ -77,7 +77,7 @@ export default function Messages() {
       const res = await api.get('/api/messages/conversations')
       setConversations(res.data)
     } catch (e) {
-      console.error('Failed to load conversations', e)
+      // Failed to load conversations (logging disabled)
     } finally {
       setLoading(false)
     }
@@ -100,7 +100,7 @@ export default function Messages() {
         )
       )
     } catch (e) {
-      console.error('Failed to load messages', e)
+      // Failed to load messages (logging disabled)
     }
   }
 
@@ -153,7 +153,7 @@ export default function Messages() {
       })
       setNewMessage('')
     } catch (e) {
-      console.error('Failed to send message', e)
+      // Failed to send message (logging disabled)
     } finally {
       setSending(false)
     }

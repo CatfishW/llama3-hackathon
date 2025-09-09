@@ -321,33 +321,26 @@ find $BACKUP_DIR -name "*.db.*" -mtime +30 -delete
 find $BACKUP_DIR -name ".env.*" -mtime +30 -delete
 EOF
 
-# Create monitoring script
+# Create monitoring script (NO LOGGING - logs disabled for security)
 sudo tee /opt/scripts/monitor.sh > /dev/null << 'EOF'
 #!/bin/bash
-LOG_FILE="/var/log/prompt-portal-monitor.log"
-
-log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
-}
 
 # Check if backend is running
 if ! pm2 show prompt-portal-backend | grep -q "online"; then
-    log_message "Backend down, restarting..."
     pm2 restart prompt-portal-backend
-    log_message "Backend restarted"
 fi
 
 # Check if Nginx is running
 if ! systemctl is-active --quiet nginx; then
-    log_message "Nginx down, restarting..."
     sudo systemctl restart nginx
-    log_message "Nginx restarted"
 fi
 
-# Check disk space
+# Check disk space and restart services if needed
 DISK_USAGE=$(df / | grep -vE '^Filesystem' | awk '{print $5}' | sed 's/%//g')
 if [ $DISK_USAGE -gt 85 ]; then
-    log_message "WARNING: Disk usage is ${DISK_USAGE}%"
+    # Clean up without logging
+    sudo systemctl restart nginx
+    pm2 restart prompt-portal-backend
 fi
 EOF
 
@@ -435,7 +428,9 @@ echo "  pm2 status                    # Check PM2 services"
 echo "  sudo systemctl status nginx  # Check Nginx"
 echo "  sudo systemctl status prompt-portal # Check systemd service"
 echo "  pm2 logs prompt-portal-backend # View backend logs"
-echo "  sudo tail -f /var/log/nginx/error.log # View Nginx logs"
+echo "  pm2 status                          # Check PM2 processes"
+echo "  systemctl status nginx              # Check Nginx status"
+echo "  # Note: Logging has been disabled for security"
 echo ""
 echo -e "${YELLOW}Maintenance Scripts:${NC}"
 echo "  sudo /opt/scripts/backup.sh   # Manual backup"

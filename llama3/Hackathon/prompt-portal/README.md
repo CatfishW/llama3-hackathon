@@ -3,6 +3,8 @@
 This repository contains a full-stack web application to manage and evaluate **prompt templates** for a LAM-powered Maze Game.
 It supports **user registration/login (JWT)**, **prompt template CRUD**, **leaderboard**, and **real-time MQTT hint monitoring** with a **FastAPI** backend and a **React (Vite + TypeScript)** frontend.
 
+> **Security Note**: All logging has been disabled in this application to protect user privacy and prevent data storage on the server.
+
 > MQTT is brokered by the backend (paho-mqtt). Clients connect to a WebSocket to receive `maze/hint/{sessionId}` updates.
 > The backend also provides an endpoint to publish game `maze/state` messages that include the selected **prompt template** content.
 

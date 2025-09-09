@@ -410,7 +410,7 @@ export default function WebGame() {
         if (dx!==0 && dy!==0) { candidates.push([px+dx, py]); candidates.push([px, py+dy]) }
         for (let oy=-1; oy<=1; oy++) for (let ox=-1; ox<=1; ox++) if (!(ox===0&&oy===0)) candidates.push([px+ox, py+oy])
         const pick = candidates.find(([cx,cy]) => inBounds(cx,cy) && s.grid[cy][cx] === 1)
-        if (pick) { x = pick[0]; y = pick[1]; reason = 'restricted_to_neighbor' } else { console.debug('[breakWall] out-of-range request; no neighbor wall', { original:[bx,by] }); return }
+        if (pick) { x = pick[0]; y = pick[1]; reason = 'restricted_to_neighbor' } else { return }
       }
       // If out of bounds try swapped (server might send row,col)
       if (!inBounds(x,y) && inBounds(y,x)) {
@@ -422,7 +422,7 @@ export default function WebGame() {
         reason = 'swapped_wall_detected';
         x = by; y = bx
       }
-      if (!inBounds(x,y)) { console.debug('[breakWall] rejected: OOB', { bx, by }); return }
+      if (!inBounds(x,y)) { return }
       // If selected cell not a wall, attempt intelligent recovery: if swapped is wall use it, else search 4-neighbors for a wall
       if (s.grid[y][x] !== 1) {
         // Neighbor search (server may have given a path cell adjacent to intended wall)
@@ -458,8 +458,7 @@ export default function WebGame() {
   ;(s as any).fallTexts.push({ x: x*tile + tile/2, y: y*tile + tile/2, vx: (Math.random()*2-1)*0.4, vy: -0.4 - Math.random()*0.4, t0: performance.now(), ttl: 5000, text: 'Wall Broken!' })
       // Highlight broken location briefly
       s.highlight.set(key(x,y), performance.now()+2500)
-  if (reason) console.debug('[breakWall] success', { original: [bx,by], final:[x,y], reason })
-  else console.debug('[breakWall] success', { original: [bx,by], final:[x,y] })
+  // Debug logging disabled for security
       if ((pendingFlowRef as any)?.current) {
         (pendingFlowRef as any).current.actionsApplied.push({ action:'break_wall', at: performance.now(), detail:{ from:[bx,by], final:[x,y], reason } })
         setLamFlow(f=>[...f])
@@ -715,7 +714,7 @@ export default function WebGame() {
       // Clear status after 3 seconds
       setTimeout(() => setStatus(''), 3000)
     } catch (error) {
-      console.error('Failed to submit score:', error)
+      // Failed to submit score (logging disabled)
       setStatus('Failed to submit score to leaderboard')
       setTimeout(() => setStatus(''), 3000)
     }

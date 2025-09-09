@@ -99,13 +99,13 @@ EOF
 # Create production environment file
 print_step "Configuring frontend environment..."
 cat > .env.production << EOF
-VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
-VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
+VITE_API_BASE=http://lammp.agaii.org:$BACKEND_PORT
+VITE_WS_BASE=ws://lammp.agaii.org:$BACKEND_PORT
 EOF
 
 cat > .env.local << EOF
-VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
-VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
+VITE_API_BASE=http://lammp.agaii.org:$BACKEND_PORT
+VITE_WS_BASE=ws://lammp.agaii.org:$BACKEND_PORT
 EOF
 
 echo -e "${GREEN}Frontend environment configured!${NC}"
@@ -139,8 +139,7 @@ lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null || true
 # Start backend in background (silent)
 cd ../backend
 print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
-BACKEND_PID=$!
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT & BACKEND_PID=$!
 echo $BACKEND_PID > backend.pid
 echo -e "${GREEN}Backend started with PID: $BACKEND_PID${NC}"
 
@@ -166,9 +165,9 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
-echo -e "🌐 Frontend URL: ${GREEN}http://173.61.35.162:$FRONTEND_PORT${NC}"
-echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:$BACKEND_PORT${NC}"
-echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:$BACKEND_PORT/docs${NC}"
+echo -e "🌐 Frontend URL: ${GREEN}http://lammp.agaii.org:$FRONTEND_PORT${NC}"
+echo -e "🔗 Backend API: ${GREEN}http://lammp.agaii.org:$BACKEND_PORT${NC}"
+echo -e "📚 API Docs: ${GREEN}http://lammp.agaii.org:$BACKEND_PORT/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  kill \$(cat backend/backend.pid)    # Stop backend"
@@ -182,7 +181,7 @@ echo "- Database is initialized and ready to use"
 echo "- Logging and monitoring have been disabled"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
-echo "1. Open http://$SERVER_IP:5173 in your browser"
+echo "1. Open http://lammp.agaii.org:$FRONTEND_PORT in your browser"
 echo "2. Register a new account"
 echo "3. Create your first prompt template"
 echo "4. Test the MQTT functionality"
