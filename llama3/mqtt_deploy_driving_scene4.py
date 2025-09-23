@@ -516,7 +516,7 @@ Second Choose Mismatch: Challenge player who changed mind after consensus.
 
 Where x and y are one of: a, b, c, d"""
 
-        SYSTEM_PROMPT = SETTING
+        SYSTEM_PROMPT = ""#SETTING
         
         # Create session manager with our model
         session_manager = SessionManager(model, SYSTEM_PROMPT, max_seq_len)
