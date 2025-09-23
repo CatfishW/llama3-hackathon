@@ -225,11 +225,12 @@ class QwQModel(ModelInterface):
         return tokens.shape[1]  # Number of tokens
 
 class SessionManager:
-    def __init__(self, model, system_prompt, max_seq_len):
+    def __init__(self, model, system_prompt, max_seq_len, max_history_tokens=None):
         self.sessions = {}
         self.model = model  # Now using the model interface
         self.system_prompt = system_prompt
         self.max_seq_len = max_seq_len
+        self.max_history_tokens = max_history_tokens or (max_seq_len - 5)  # Default to max_seq_len - 5 if not specified
         self.session_locks = {}  # Individual locks for each session
         self.global_lock = threading.RLock()  # Only used when modifying the sessions dict
         
@@ -299,8 +300,8 @@ class SessionManager:
                 return error_msg
     
     def trim_dialog_to_fit_max_len(self, dialog):
-        """Trims the oldest messages from the dialog until the total token count is <= max_seq_len."""
-        while self.model.count_tokens(dialog) > self.max_seq_len-5 and len(dialog) > 1:
+        """Trims the oldest messages from the dialog until the total token count is <= max_history_tokens."""
+        while self.model.count_tokens(dialog) > self.max_history_tokens and len(dialog) > 1:
             dialog.pop(0)
 
 def message_processor(session_manager, client, temperature, top_p, max_gen_len, metrics):
@@ -429,6 +430,7 @@ def main(
     max_seq_len: int = 2048,
     max_batch_size: int = 4,
     max_gen_len: Optional[int] = None,
+    max_history_tokens: Optional[int] = None,  # Maximum tokens to keep in chat history (defaults to max_seq_len - 5)
     delay: float = 0.001,
     mqtt_username: Optional[str] = None,
     mqtt_password: Optional[str] = None,
@@ -519,7 +521,7 @@ Where x and y are one of: a, b, c, d"""
         SYSTEM_PROMPT = ""#SETTING
         
         # Create session manager with our model
-        session_manager = SessionManager(model, SYSTEM_PROMPT, max_seq_len)
+        session_manager = SessionManager(model, SYSTEM_PROMPT, max_seq_len, max_history_tokens)
 
         # Initialize performance metrics
         metrics = PerformanceMetrics()
@@ -670,13 +672,13 @@ if __name__ == "__main__":
     fire.Fire(main)
     # Example commands:
     # Llama model:
-    # torchrun --nproc_per_node 1 ./mqtt_deploy_driving.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 4 --mqtt_username TangClinic --mqtt_password Tang123
+    # torchrun --nproc_per_node 1 ./mqtt_deploy_driving.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 4 --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
     
     # QwQ model (full precision):
-    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --mqtt_username TangClinic --mqtt_password Tang123
+    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
     
     # QwQ model (4-bit quantized):
-    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --quantization 4bit --mqtt_username TangClinic --mqtt_password Tang123
+    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --quantization 4bit --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
     
     # QwQ model (8-bit quantized):
-    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --quantization 8bit --mqtt_username TangClinic --mqtt_password Tang123
+    # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --quantization 8bit --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123

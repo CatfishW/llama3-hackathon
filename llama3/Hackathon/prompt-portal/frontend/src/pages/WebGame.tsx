@@ -12,6 +12,7 @@ import { useTemplates } from '../contexts/TemplateContext'
  type HintMsg = {
   hint?: string
   path?: [number, number][]
+  show_path?: boolean  // New field to control path visualization
   break_wall?: [number, number]
   breaks_remaining?: number
   // New LAM actions
@@ -156,7 +157,7 @@ export default function WebGame() {
   // External LAM details UI
   const [showLamDetails, setShowLamDetails] = useState(() => !isMobile) // default hidden on mobile
   const [lamExpanded, setLamExpanded] = useState(false)
-  const [lamData, setLamData] = useState<{hint:string; path:Vec2[]; breaks:number; error:string; raw:any; rawMessage:any; updatedAt:number}>({ hint:'', path:[], breaks:0, error:'', raw:{}, rawMessage:{}, updatedAt:0 })
+  const [lamData, setLamData] = useState<{hint:string; path:Vec2[]; breaks:number; error:string; raw:any; rawMessage:any; updatedAt:number; showPath:boolean}>({ hint:'', path:[], breaks:0, error:'', raw:{}, rawMessage:{}, updatedAt:0, showPath:false })
   // LAM flow monitor state
   type LamFlowEvent = { id:number; publishAt:number; receivedAt?:number; latencyMs?:number; actionsDeclared:string[]; actionsApplied:Array<{action:string; at:number; detail?:any}>; hintExcerpt?:string; error?:string }
   const [lamFlow, setLamFlow] = useState<LamFlowEvent[]>([])
@@ -198,7 +199,7 @@ export default function WebGame() {
     win: false,
   endTime: undefined as number | undefined,
   finalScore: undefined as number | undefined,
-    lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '' },
+    lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '', showPath: false },
     // Effects & visuals
     effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
     highlight: new Map<string, number>(), // key(x,y) -> until timestamp
@@ -615,10 +616,16 @@ export default function WebGame() {
           s.lam.error = ''
         }
         s.lam.hint = hint.hint || ''
-        s.lam.path = (hint.path || []).map(([x,y]) => ({x,y}))
+        // Only set path if LLM explicitly requested to show it
+        s.lam.showPath = hint.show_path === true
+        if (s.lam.showPath && hint.path) {
+          s.lam.path = hint.path.map(([x,y]) => ({x,y}))
+        } else {
+          s.lam.path = []
+        }
   s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
   // Maintain React state copy for external panel (include raw envelope and timestamp)
-  setLamData({ hint: s.lam.hint, path: s.lam.path.slice(), breaks: s.lam.breaks, error: s.lam.error, raw: hint, rawMessage: data, updatedAt: Date.now() })
+  setLamData({ hint: s.lam.hint, path: s.lam.path.slice(), breaks: s.lam.breaks, error: s.lam.error, raw: hint, rawMessage: data, updatedAt: Date.now(), showPath: s.lam.showPath })
         // Flow monitor: record first receipt event & declared actions
         if (pendingFlowRef.current && !pendingFlowRef.current.receivedAt) {
           const evtF = pendingFlowRef.current
@@ -628,6 +635,7 @@ export default function WebGame() {
           const r:any = hint
           if (r.break_wall) decl.push('break_wall')
           if (Array.isArray(r.break_walls) && r.break_walls.length) decl.push('break_walls')
+          if (r.show_path) decl.push('show_path')
           if (r.speed_boost_ms) decl.push('speed_boost')
           if (r.slow_germs_ms) decl.push('slow_germs')
           if (r.freeze_germs_ms) decl.push('freeze_germs')
@@ -772,7 +780,7 @@ export default function WebGame() {
       win: false,
   endTime: undefined,
   finalScore: undefined,
-      lam: { hint: '', path: [], breaks: 0, error: '' },
+      lam: { hint: '', path: [], breaks: 0, error: '', showPath: false },
       effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
       highlight: new Map(),
       revealMap: false,
@@ -926,7 +934,8 @@ export default function WebGame() {
         if (keysRef.current['ArrowLeft'] || keysRef.current['a']) tryMove(-1,0)
         if (keysRef.current['ArrowRight'] || keysRef.current['d']) tryMove(1,0)
       } else {
-        const path = s.lam.path.length ? s.lam.path : (bfsPath(s.grid, s.player, s.exit) || [])
+        // Use LAM path only if explicitly requested, otherwise use BFS
+        const path = (s.lam.showPath && s.lam.path.length) ? s.lam.path : (bfsPath(s.grid, s.player, s.exit) || [])
         if (path.length > 1) {
           const next = path[1]
           const dx = Math.sign(next.x - s.player.x)
@@ -1050,8 +1059,8 @@ export default function WebGame() {
       ctx.fillStyle = 'rgba(78,205,196,0.25)'
       for (const k of s.highlight.keys()) { const [x,y] = k.split(',').map(Number); ctx.fillRect(x*tile, y*tile, tile, tile) }
 
-      // LAM path overlay
-      if (s.lam.path && s.lam.path.length) {
+      // LAM path overlay - only show if LLM explicitly requested it
+      if (s.lam.showPath && s.lam.path && s.lam.path.length) {
         ctx.fillStyle = 'rgba(255,255,0,0.22)'
         for (const p of s.lam.path) ctx.fillRect(p.x*tile, p.y*tile, tile, tile)
         ctx.strokeStyle = 'rgba(255,255,0,0.9)'; ctx.lineWidth = 2
@@ -1413,6 +1422,7 @@ export default function WebGame() {
               <div style={{ fontWeight:600, marginBottom:4, letterSpacing:'.5px', fontSize:12, opacity:.85 }}>Hint</div>
               <div style={{ whiteSpace:'pre-wrap', background:'rgba(255,255,255,0.06)', padding:8, borderRadius:10 }}>{lamData.hint || '—'}</div>
             </section>
+            {lamData.showPath && (
             <section>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                 <div style={{ fontWeight:600, letterSpacing:'.5px', opacity:.85 }}>Path <span style={{ opacity:.6 }}>({lamData.path.length})</span></div>
@@ -1422,6 +1432,7 @@ export default function WebGame() {
                 {lamData.path.length? lamData.path.map((p,i)=> (i && i%8===0? `\n(${p.x},${p.y})`:`(${p.x},${p.y})`)).join(' → ') : '—'}
               </div>
             </section>
+            )}
             <section>
               <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
                 <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Breaks</span>: {lamData.breaks}</div>
@@ -1437,6 +1448,7 @@ export default function WebGame() {
                 const push = (k:string,c:boolean)=>{ if(c) keys.push(k) }
                 push('break_wall', !!r.break_wall)
                 push('break_walls', Array.isArray(r.break_walls) && r.break_walls.length>0)
+                push('show_path', !!r.show_path)
                 push('speed_boost', !!r.speed_boost_ms)
                 push('slow_germs', !!r.slow_germs_ms)
                 push('freeze_germs', !!r.freeze_germs_ms)
@@ -1463,7 +1475,7 @@ export default function WebGame() {
             )}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.raw, null, 2))} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Hint JSON</button>
-              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.path, null, 2))} style={{ background:'linear-gradient(45deg,#0ea5e9,#2563eb)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Path</button>
+              {lamData.showPath && <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.path, null, 2))} style={{ background:'linear-gradient(45deg,#0ea5e9,#2563eb)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Path</button>}
               <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.rawMessage, null, 2))} style={{ background:'linear-gradient(45deg,#64748b,#475569)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Envelope</button>
             </div>
           </div>
