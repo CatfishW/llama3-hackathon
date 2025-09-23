@@ -549,6 +549,8 @@ Always end with:
 <PlayerOp:x>  
 <AgentOP:y>  
 ```
+**IMPORTANT**
+Player choice should change if their text answers indicate choice change.
 
 '''
         SYSTEM_PROMPT = SETTING2_2 #SETTING
