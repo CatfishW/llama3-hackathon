@@ -541,7 +541,7 @@ After player picks:
 * Don’t give correct answer outright.
 * Pull back to slope problem if off-topic.
 
-**OUTPUT FORMAT**
+**OUTPUT FORMAT, MOST IMPORTANT**
 Always end with:
 
 ```
