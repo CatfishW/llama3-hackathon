@@ -3,117 +3,8 @@ import { api, leaderboardAPI } from '../api'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTemplates } from '../contexts/TemplateContext'
-
-// ===== Types =====
- type Vec2 = { x: number; y: number }
- type Cell = 0 | 1 // 0: path, 1: wall
- type Grid = Cell[][]
- type Template = { id: number; title: string }
- type HintMsg = {
-  hint?: string
-  path?: [number, number][]
-  show_path?: boolean  // New field to control path visualization
-  break_wall?: [number, number]
-  breaks_remaining?: number
-  // New LAM actions
-  speed_boost_ms?: number
-  slow_germs_ms?: number
-  freeze_germs_ms?: number
-  teleport_player?: [number, number]
-  spawn_oxygen?: Array<[number, number]> | Array<{x:number;y:number}>
-  move_exit?: [number, number]
-  highlight_zone?: Array<[number, number]>
-  highlight_ms?: number
-  toggle_autopilot?: boolean
-  break_walls?: Array<[number, number]>
-  reveal_map?: boolean
-  // Error from backend/LAM
-  error?: string
-  Error?: string
-  err?: string
-  raw?: string
- }
-
- // ===== Helpers =====
- function randInt(n: number) { return Math.floor(Math.random() * n) }
- function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)) }
- function key(x:number,y:number){return `${x},${y}`}
-
- // Recursive backtracker maze generation (odd dims)
- function generateMaze(cols: number, rows: number): Grid {
-  const C = cols % 2 ? cols : cols + 1
-  const R = rows % 2 ? rows : rows + 1
-  const g: Grid = Array.from({ length: R }, () => Array.from({ length: C }, () => 1 as Cell))
-
-  function carve(cx: number, cy: number) {
-    g[cy][cx] = 0
-    const dirs: Vec2[] = [ {x:2,y:0}, {x:-2,y:0}, {x:0,y:2}, {x:0,y:-2} ]
-    for (let i = dirs.length - 1; i > 0; i--) { // shuffle
-      const j = Math.floor(Math.random() * (i + 1)); [dirs[i], dirs[j]] = [dirs[j], dirs[i]]
-    }
-    for (const d of dirs) {
-      const nx = cx + d.x, ny = cy + d.y
-      if (nx > 0 && ny > 0 && nx < C - 1 && ny < R - 1 && g[ny][nx] === 1) {
-        g[cy + d.y / 2][cx + d.x / 2] = 0
-        carve(nx, ny)
-      }
-    }
-  }
-
-  carve(1, 1)
-  // enforce outer walls
-  for (let x = 0; x < C; x++) { g[0][x] = 1; g[R-1][x] = 1 }
-  for (let y = 0; y < R; y++) { g[y][0] = 1; g[y][C-1] = 1 }
-
-  // add intersections to reduce dead ends
-  for (let y = 2; y < R - 2; y += 2) {
-    for (let x = 2; x < C - 2; x += 2) {
-      if (g[y][x] === 0) {
-        let open = 0
-        if (g[y][x-1] === 0) open++
-        if (g[y][x+1] === 0) open++
-        if (g[y-1][x] === 0) open++
-        if (g[y+1][x] === 0) open++
-        if (open <= 1 && Math.random() < 0.5) {
-          const dirs: Vec2[] = [ {x:-1,y:0},{x:1,y:0},{x:0,y:-1},{x:0,y:1} ]
-          for (let i = dirs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [dirs[i], dirs[j]] = [dirs[j], dirs[i]] }
-          for (const d of dirs) { const nx = x + d.x, ny = y + d.y; if (g[ny][nx] === 1) { g[ny][nx] = 0; break } }
-        }
-      }
-    }
-  }
-  return g
- }
-
- // Simple BFS for autopilot pathfinding (grid-based)
- function bfsPath(grid: Grid, start: Vec2, goal: Vec2): Vec2[] | null {
-  const R = grid.length, C = grid[0].length
-  const q: Vec2[] = [start]
-  const prev = new Map<string, string>()
-  const seen = new Set<string>([`${start.x},${start.y}`])
-  const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1} ]
-  while (q.length) {
-    const cur = q.shift()!
-    if (cur.x === goal.x && cur.y === goal.y) {
-      const path: Vec2[] = []
-      let k = `${goal.x},${goal.y}`
-      while (k) {
-        const [sx, sy] = k.split(',').map(Number)
-        path.push({x:sx,y:sy})
-        const pk = prev.get(k); if (!pk) break; k = pk
-      }
-      return path.reverse()
-    }
-    for (const d of dirs) {
-      const nx = cur.x + d.x, ny = cur.y + d.y
-      if (nx>=0 && ny>=0 && nx<C && ny<R && grid[ny][nx]===0) {
-        const key = `${nx},${ny}`
-        if (!seen.has(key)) { seen.add(key); prev.set(key, `${cur.x},${cur.y}`); q.push({x:nx,y:ny}) }
-      }
-    }
-  }
-  return null
- }
+import { Grid, HintMsg, Vec2 } from '../components/web-game/types'
+import { bfsPath, clamp, generateMaze, key, randInt } from '../components/web-game/utils'
 
  // ===== Component =====
 export default function WebGame() {
@@ -1267,12 +1158,27 @@ export default function WebGame() {
           </div>
         </div>
         <div style={panelStyle as any}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: '100%', alignItems: 'end' }}>
             <div>
               <label style={{ display: 'block', marginBottom: 6 }}>Template</label>
-              <select value={templateId ?? ''} onChange={(e)=>setTemplateId(parseInt(e.target.value))} style={{ width:'100%', padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }}>
+              <select 
+                value={templateId ?? ''} 
+                onChange={(e)=>setTemplateId(parseInt(e.target.value))} 
+                style={{ 
+                  width:'100%', 
+                  padding:'8px', 
+                  borderRadius: 8, 
+                  background:'rgba(255,255,255,0.1)', 
+                  color:'#fff', 
+                  border:'1px solid rgba(255,255,255,0.3)',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
                 <option value="" disabled>Select a template</option>
-                {templates.map(t => <option key={t.id} value={t.id} style={{ background:'#333' }}>{t.title}</option>)}
+                {templates.map(t => <option key={t.id} value={t.id} style={{ background:'#333' }}>{t.title.length > 30 ? t.title.substring(0, 30) + '...' : t.title}</option>)}
               </select>
             </div>
             <div>
@@ -1316,13 +1222,14 @@ export default function WebGame() {
               </div>
             </div>
           </div>
-          <div style={{ marginTop: 12, display:'flex', gap: 10, flexWrap:'wrap' }}>
+          {/* Sticky action bar ensures buttons remain visible even when content grows */}
+          <div style={{ position:'sticky', top: 0, zIndex: 2, background: 'transparent', marginTop: 12, display:'flex', gap: 10, flexWrap:'wrap', alignItems: 'center', justifyContent: 'flex-start', minHeight: '44px' }}>
             <button onClick={startGame} style={buttonStyle('primary') as any}><i className="fas fa-play"/> Start Game</button>
             <button onClick={()=>publishState(true)} style={buttonStyle('secondary') as any}>Publish State</button>
             <button onClick={()=>startGame()} style={{ background: currentTheme.restartButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Restart</button>
             <button onClick={()=>navigate('/leaderboard')} style={{ background: currentTheme.leaderboardButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>🏆 Leaderboard</button>
             <button onClick={()=>navigate('/dashboard')} style={{ background: currentTheme.exitButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Exit to Dashboard</button>
-            <span style={{ opacity:.85 }}>{status}</span>
+            <span style={{ opacity:.85, flexShrink: 0 }}>{status}</span>
           </div>
           <div style={{ marginTop: 6, opacity: .8 }}>Controls: Arrow keys / WASD. T to toggle autopilot. Hints come from LAM via MQTT. Walls may break.</div>
         </div>

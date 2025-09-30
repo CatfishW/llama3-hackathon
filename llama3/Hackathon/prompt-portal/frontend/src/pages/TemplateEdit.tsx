@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import TemplateForm from '../components/TemplateForm'
-import { api } from '../api'
+import { api, templatesAPI } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useTemplates } from '../contexts/TemplateContext'
 
@@ -26,13 +26,13 @@ export default function TemplateEdit() {
 
   useEffect(() => {
     (async () => {
-      const res = await api.get('/api/templates/' + id)
+      const res = await templatesAPI.getTemplate(parseInt(id!))
       setItem(res.data)
     })()
   }, [id])
 
   async function onSubmit(data: any) {
-    const res = await api.patch('/api/templates/' + id, data)
+    const res = await templatesAPI.updateTemplate(parseInt(id!), data)
     updateTemplate(parseInt(id!), res.data) // Update the template in the context
     nav('/templates')
   }

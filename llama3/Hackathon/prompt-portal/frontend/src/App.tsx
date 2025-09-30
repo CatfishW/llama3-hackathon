@@ -7,6 +7,7 @@ import Templates from './pages/Templates'
 import NewTemplate from './pages/NewTemplate'
 import TemplateEdit from './pages/TemplateEdit'
 import Leaderboard from './pages/Leaderboard'
+import TemplateView from './pages/TemplateView'
 import TestMQTT from './pages/TestMQTT'
 import Friends from './pages/Friends'
 import Messages from './pages/Messages'
@@ -101,6 +102,15 @@ export default function App() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <Navbar />
                 <div style={{ ...contentStyle, flex: 1 }}><Leaderboard /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/templates/view/:id" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><TemplateView /></div>
                 <Footer />
               </div>
             </PrivateRoute>

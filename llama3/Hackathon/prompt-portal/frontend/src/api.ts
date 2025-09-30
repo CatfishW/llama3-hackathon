@@ -99,6 +99,17 @@ export const leaderboardAPI = {
   getLeaderboard: (limit: number = 20) => api.get(`/api/leaderboard/?limit=${limit}`)
 }
 
+// Templates API
+export const templatesAPI = {
+  getTemplates: (skip: number = 0, limit: number = 50, mine: boolean = true) => 
+    api.get(`/api/templates?skip=${skip}&limit=${limit}&mine=${mine}`),
+  getTemplate: (id: number) => api.get(`/api/templates/${id}`),
+  getTemplatePublic: (id: number) => api.get(`/api/templates/public/${id}`),
+  createTemplate: (data: any) => api.post('/api/templates', data),
+  updateTemplate: (id: number, data: any) => api.patch(`/api/templates/${id}`, data),
+  deleteTemplate: (id: number) => api.delete(`/api/templates/${id}`)
+}
+
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
   const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`

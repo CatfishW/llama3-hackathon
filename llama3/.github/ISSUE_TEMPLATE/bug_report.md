@@ -1,4 +1,4 @@
----
+0///////////////---
 name: Bug report
 about: Create a report to help us reproduce and fix the issue
 ---
@@ -14,7 +14,6 @@ about: Create a report to help us reproduce and fix the issue
 ```python
 # sample code to repro the bug
 ```
-
 ### Output
 <Remember to wrap the output in ```` ```triple-quotes blocks``` ````>
 

@@ -61,7 +61,7 @@ export default function Friends() {
       window.removeEventListener('resize',upd); 
       window.removeEventListener('orientationchange',upd)
     } 
-  }, [])
+  }, []) 
 
   async function loadFriends() {
     try {

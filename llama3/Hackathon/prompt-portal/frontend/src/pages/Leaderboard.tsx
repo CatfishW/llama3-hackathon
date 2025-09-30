@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { leaderboardAPI } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -268,16 +269,18 @@ export default function Leaderboard() {
                       </div>
                     </td>
                     <td style={tdStyle}>
-                      <span style={{
+                      <Link to={`/templates/view/${(entry as any).template_id}`} style={{
                         background: 'rgba(78, 205, 196, 0.2)',
                         border: '1px solid rgba(78, 205, 196, 0.4)',
                         borderRadius: '15px',
                         padding: '4px 12px',
                         fontSize: '0.9rem',
-                        fontWeight: '500'
+                        fontWeight: '500',
+                        color: 'white',
+                        textDecoration: 'none'
                       }}>
                         {entry.template_title}
-                      </span>
+                      </Link>
                     </td>
                     <td style={tdStyle}>
                       <span style={{

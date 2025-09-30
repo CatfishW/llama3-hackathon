@@ -47,13 +47,19 @@ cd backend
 # Skip backend environment configuration - using existing .env file
 print_step "Skipping backend environment configuration - using existing .env file..."
 
-# Initialize database
-print_step "Initializing database..."
-python create_db.py > /dev/null 2>&1 || python -c "
+# Check and preserve existing database
+print_step "Checking database status..."
+if [ -f "app.db" ]; then
+    print_warning "Database already exists - preserving existing data..."
+    echo -e "${GREEN}Existing database found and will be preserved${NC}"
+else
+    print_step "No existing database found - initializing new database..."
+    python create_db.py > /dev/null 2>&1 || python -c "
 from app.database import init_db
 init_db()
 print('Database initialized successfully!')
 " > /dev/null 2>&1
+fi
 
 print_step "Setting up frontend..."
 cd ../frontend
@@ -176,7 +182,7 @@ echo ""
 echo -e "${YELLOW}Important:${NC}"
 echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
-echo "- Database is initialized and ready to use"
+echo "- Existing database is preserved (no data loss)"
 echo "- Logging and monitoring have been disabled"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"

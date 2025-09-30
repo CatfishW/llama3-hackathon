@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api'
+import { api, templatesAPI } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useTemplates } from '../contexts/TemplateContext'
 
@@ -367,7 +367,7 @@ export default function Templates() {
   async function remove(id: number, title: string) {
     if (!confirm(`Delete template "${title}"? This action cannot be undone.`)) return
     try {
-      await api.delete('/api/templates/' + id)
+      await templatesAPI.deleteTemplate(id)
       removeTemplate(id)
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to delete template')

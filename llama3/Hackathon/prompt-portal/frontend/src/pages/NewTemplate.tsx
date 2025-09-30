@@ -1,5 +1,5 @@
 import TemplateForm from '../components/TemplateForm'
-import { api } from '../api'
+import { api, templatesAPI } from '../api'
 import { useNavigate } from 'react-router-dom'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useTemplates } from '../contexts/TemplateContext'
@@ -10,7 +10,7 @@ export default function NewTemplate() {
   const { addTemplate } = useTemplates()
   
   async function onSubmit(data: any) {
-    const res = await api.post('/api/templates', data)
+    const res = await templatesAPI.createTemplate(data)
     addTemplate(res.data) // Add the new template to the context
     nav('/templates')
   }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { api } from '../api'
+import { api, templatesAPI } from '../api'
 
 interface Template {
   id: number
@@ -31,7 +31,7 @@ export function TemplateProvider({ children }: { children: ReactNode }) {
   const refreshTemplates = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/api/templates')
+      const res = await templatesAPI.getTemplates()
       setTemplates(res.data)
     } catch (e) {
       // Failed to load templates (logging disabled)

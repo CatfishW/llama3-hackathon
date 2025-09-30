@@ -689,8 +689,7 @@ Player choice should change if their text answers indicate choice change.
             return
             
         # Start the MQTT loop to handle incoming messages
-        logger.info("Starting MQTT loop...")
-        client.loop_forever()
+        logger.info("Starting MQTT loop...")client.loop_forever()
 
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, shutting down...")
