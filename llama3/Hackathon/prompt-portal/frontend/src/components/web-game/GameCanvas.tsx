@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { GameState, Vec2 } from './types';
-import { THEME } from './theme';
+import { THEME } from './theme.js';
 
 interface GameCanvasProps {
   width: number;

@@ -540,7 +540,7 @@ class MazeSessionManager:
                 for sid in list(self.dialogs.keys()):
                     self.dialogs[sid] = [{"role": "system", "content": new_prompt}]
                     self.breaks_left[sid] = self.max_breaks
-        logging.info("[Template] Global system prompt updated. reset_existing=%s", reset_existing)` `
+        logging.info("[Template] Global system prompt updated. reset_existing=%s", reset_existing)
 
     def set_session_prompt(self, session_id: str, new_prompt: str, reset: bool = True):
         """Update the system prompt for a specific session. Optionally reset its history."""

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from typing import Dict, Set
 from fastapi import WebSocket
 import paho.mqtt.client as mqtt
@@ -12,7 +13,9 @@ LAST_HINTS: Dict[str, dict] = {}
 # In-memory websocket subscribers per session_id
 SUBSCRIBERS: Dict[str, Set[WebSocket]] = {}
 
-mqtt_client = mqtt.Client(client_id=settings.MQTT_CLIENT_ID, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+# Generate a unique client ID to avoid conflicts during development/reload
+unique_client_id = f"{settings.MQTT_CLIENT_ID}_{uuid.uuid4().hex[:8]}"
+mqtt_client = mqtt.Client(client_id=unique_client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 
 def _on_connect(client, userdata, flags, reason_code, properties=None):
     if reason_code == 0:
@@ -24,7 +27,21 @@ def _on_connect(client, userdata, flags, reason_code, properties=None):
 
 def _on_disconnect(client, userdata, flags, reason_code, properties=None):
     if reason_code != 0:
-        print(f"Unexpected MQTT disconnection: {reason_code}")
+        # Provide more detailed error information
+        error_messages = {
+            1: "Unacceptable protocol version",
+            2: "Identifier rejected", 
+            3: "Server unavailable",
+            4: "Bad username or password",
+            5: "Not authorized",
+            7: "Connection lost",
+            8: "Protocol error"
+        }
+        error_msg = error_messages.get(reason_code, f"Unknown error code {reason_code}")
+        print(f"Unexpected MQTT disconnection: {error_msg} (code: {reason_code})")
+        print(f"Client ID was: {unique_client_id}")
+    else:
+        print("MQTT client disconnected normally")
 
 def _on_message(client, userdata, msg):
     print(f"[MQTT] Received message on topic '{msg.topic}': {msg.payload.decode('utf-8')[:200]}...")
@@ -81,8 +98,14 @@ def start_mqtt():
         print(f"MQTT authentication configured for user: {settings.MQTT_USERNAME}")
     
     print(f"Connecting to MQTT broker at {settings.MQTT_BROKER_HOST}:{settings.MQTT_BROKER_PORT}")
-    mqtt_client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, 60)
-    mqtt_client.loop_start()
+    print(f"Using client ID: {unique_client_id}")
+    
+    try:
+        mqtt_client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, 60)
+        mqtt_client.loop_start()
+        print("MQTT loop started successfully")
+    except Exception as e:
+        print(f"Failed to start MQTT connection: {e}")
 
 def stop_mqtt():
     mqtt_client.loop_stop()
