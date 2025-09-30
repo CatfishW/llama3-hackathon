@@ -113,6 +113,7 @@ class ScoreOut(BaseModel):
 class LeaderboardEntry(BaseModel):
     rank: int
     user_email: str
+    template_id: int
     template_title: str
     score: float
     session_id: str

@@ -27,7 +27,7 @@ def submit_score(payload: schemas.ScoreCreate, db: Session = Depends(get_db), us
 @router.get("/", response_model=List[schemas.LeaderboardEntry])
 def top_scores(limit: int = 20, db: Session = Depends(get_db)):
     q = (
-        db.query(models.Score, models.User.email, models.PromptTemplate.title)
+        db.query(models.Score, models.User.email, models.PromptTemplate.id, models.PromptTemplate.title)
         .join(models.User, models.Score.user_id == models.User.id)
         .join(models.PromptTemplate, models.Score.template_id == models.PromptTemplate.id)
         .order_by(models.Score.score.desc(), models.Score.created_at.asc())
@@ -35,11 +35,12 @@ def top_scores(limit: int = 20, db: Session = Depends(get_db)):
         .all()
     )
     results = []
-    for idx, (score, email, title) in enumerate(q, start=1):
+    for idx, (score, email, template_id, title) in enumerate(q, start=1):
         results.append(
             schemas.LeaderboardEntry(
                 rank=idx,
                 user_email=email,
+                template_id=template_id,
                 template_title=title,
                 score=score.score,
                 session_id=score.session_id,

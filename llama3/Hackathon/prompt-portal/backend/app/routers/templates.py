@@ -34,6 +34,14 @@ def get_template(template_id: int, db: Session = Depends(get_db), user=Depends(g
         raise HTTPException(404, "Template not found")
     return t
 
+# Public read-only access for viewing templates from the leaderboard
+@router.get("/public/{template_id}", response_model=schemas.TemplateOut)
+def get_template_public(template_id: int, db: Session = Depends(get_db)):
+    t = db.query(models.PromptTemplate).filter(models.PromptTemplate.id == template_id).first()
+    if not t:
+        raise HTTPException(404, "Template not found")
+    return t
+
 @router.patch("/{template_id}", response_model=schemas.TemplateOut)
 def update_template(template_id: int, payload: schemas.TemplateUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     t = db.query(models.PromptTemplate).filter(models.PromptTemplate.id == template_id, models.PromptTemplate.user_id == user.id).first()
@@ -48,5 +56,12 @@ def update_template(template_id: int, payload: schemas.TemplateUpdate, db: Sessi
 def delete_template(template_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     t = db.query(models.PromptTemplate).filter(models.PromptTemplate.id == template_id, models.PromptTemplate.user_id == user.id).first()
     if not t: raise HTTPException(404, "Template not found")
-    db.delete(t); db.commit()
+    # Delete dependent scores first to avoid FK constraint violations
+    try:
+        db.query(models.Score).filter(models.Score.template_id == t.id).delete(synchronize_session=False)
+        db.delete(t)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"ok": True}
