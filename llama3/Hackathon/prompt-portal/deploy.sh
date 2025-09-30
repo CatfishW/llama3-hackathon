@@ -18,6 +18,11 @@ NC='\033[0m' # No Color
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
+# Directories
+ROOT_DIR=$(pwd)
+BACKEND_DIR="$ROOT_DIR/backend"
+FRONTEND_DIR="$ROOT_DIR/frontend"
+
 # Get server IP
 SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
@@ -36,13 +41,50 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Helpers to cleanly stop running services
+kill_port() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -ti:"$port" | xargs -r kill -9 2>/dev/null || true
+    fi
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "${port}/tcp" 2>/dev/null || true
+    fi
+}
+
+stop_backend() {
+    print_step "Stopping any existing backend..."
+    # By PID file
+    if [ -f "$BACKEND_DIR/backend.pid" ]; then
+        PID=$(cat "$BACKEND_DIR/backend.pid" 2>/dev/null || echo "")
+        if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+        rm -f "$BACKEND_DIR/backend.pid" 2>/dev/null || true
+    fi
+    # By process signature
+    pkill -f "uvicorn .*app\.main:app" 2>/dev/null || true
+    pkill -f "run_server\.py" 2>/dev/null || true
+    # By port
+    kill_port "$BACKEND_PORT"
+}
+
+stop_frontend() {
+    print_step "Stopping any existing frontend..."
+    if [ -f "$FRONTEND_DIR/frontend.pid" ]; then
+        PID=$(cat "$FRONTEND_DIR/frontend.pid" 2>/dev/null || echo "")
+        if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+        rm -f "$FRONTEND_DIR/frontend.pid" 2>/dev/null || true
+    fi
+    pkill -f "vite.*preview" 2>/dev/null || true
+    kill_port "$FRONTEND_PORT"
+}
+
 
 print_step "Using built-in process management (no PM2 required)..."
 
 print_step "Skipping firewall configuration..."
 
 print_step "Setting up backend..."
-cd backend
+cd "$BACKEND_DIR"
 
 # Skip backend environment configuration - using existing .env file
 print_step "Skipping backend environment configuration - using existing .env file..."
@@ -62,7 +104,7 @@ print('Database initialized successfully!')
 fi
 
 print_step "Setting up frontend..."
-cd ../frontend
+cd "$FRONTEND_DIR"
 
 # Install Node.js dependencies
 print_step "Installing Node.js dependencies..."
@@ -139,8 +181,9 @@ print_step "Starting services in background..."
 
 # Kill any existing processes on these ports
 print_step "Cleaning up any existing processes..."
-lsof -ti:$BACKEND_PORT | xargs kill -9 2>/dev/null || true
-lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null || true
+stop_backend
+stop_frontend
+sleep 1
 
 # Start backend in background (silent)
 cd ../backend
@@ -149,8 +192,22 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 
 BACKEND_PID=$!
 echo $BACKEND_PID > backend.pid
 
-# Give backend time to start
-sleep 3
+# Wait for backend port to be ready (up to ~10s)
+for i in $(seq 1 20); do
+    if curl -s --max-time 1 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
+    print_warning "Backend process exited unexpectedly. Attempting one restart..."
+    stop_backend
+    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+    BACKEND_PID=$!
+    echo $BACKEND_PID > backend.pid
+    sleep 2
+fi
 
 # Start frontend in background (silent)
 cd ../frontend
@@ -170,13 +227,14 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
-echo -e "🌐 Frontend URL: ${GREEN}http://173.61.35.162:$FRONTEND_PORT${NC}"
-echo -e "🔗 Backend API: ${GREEN}http://173.61.35.162:$BACKEND_PORT${NC}"
-echo -e "📚 API Docs: ${GREEN}http://173.61.35.162:$BACKEND_PORT/docs${NC}"
+echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
+echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
+echo -e "📚 API Docs: ${GREEN}http://$SERVER_IP:$BACKEND_PORT/docs${NC}"
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  kill \$(cat backend/backend.pid)    # Stop backend"
 echo "  kill \$(cat frontend/frontend.pid)  # Stop frontend"
+echo "  # or use built-in cleanup in this script on re-run"
 echo "  ./stop_services.sh               # Stop all services"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
