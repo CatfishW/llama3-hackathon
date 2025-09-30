@@ -147,13 +147,13 @@ EOF
 # Create production environment file
 print_step "Configuring frontend environment..."
 cat > .env.production << EOF
-VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
-VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
+VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
+VITE_WS_BASE=ws://$SERVER_IP:$BACKEND_PORT
 EOF
 
 cat > .env.local << EOF
-VITE_API_BASE=http://173.61.35.162:$BACKEND_PORT
-VITE_WS_BASE=ws://173.61.35.162:$BACKEND_PORT
+VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
+VITE_WS_BASE=ws://$SERVER_IP:$BACKEND_PORT
 EOF
 
 echo -e "${GREEN}Frontend environment configured!${NC}"
@@ -185,10 +185,10 @@ stop_backend
 stop_frontend
 sleep 1
 
-# Start backend in background (silent)
+# Start backend in background (log to file)
 cd ../backend
 print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > backend.pid
 
@@ -203,10 +203,23 @@ done
 if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
     print_warning "Backend process exited unexpectedly. Attempting one restart..."
     stop_backend
-    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > backend.pid
     sleep 2
+fi
+
+# Fail fast if backend is not running/healthy
+if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
+    print_error "Backend failed to start. See backend/backend.log for details."
+    tail -n 50 backend.log 2>/dev/null || true
+    exit 1
+fi
+
+if ! curl -s --max-time 2 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
+    print_error "Backend health check failed at http://127.0.0.1:$BACKEND_PORT/docs."
+    tail -n 50 backend.log 2>/dev/null || true
+    exit 1
 fi
 
 # Start frontend in background (silent)
@@ -221,7 +234,16 @@ sleep 3
 
 print_step "Skipping monitoring and backup scripts setup..."
 
-print_step "Deployment completed successfully! 🎉"
+BACKEND_OK=0
+FRONTEND_OK=0
+if ps -p $BACKEND_PID > /dev/null 2>&1; then BACKEND_OK=1; fi
+if ps -p $FRONTEND_PID > /dev/null 2>&1; then FRONTEND_OK=1; fi
+
+if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
+    print_step "Deployment completed successfully! 🎉"
+else
+    print_warning "Deployment completed with issues. See status below."
+fi
 
 echo ""
 echo "=================================="
@@ -265,4 +287,9 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
+if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
+    echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
+else
+    echo -e "${YELLOW}Deployment finished but not all services are healthy.${NC}"
+    echo -e "${YELLOW}Check backend/backend.log and address errors, then re-run this script.${NC}"
+fi
