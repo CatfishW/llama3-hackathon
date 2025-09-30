@@ -105,7 +105,7 @@ export default function WebGame() {
     win: false,
   endTime: undefined as number | undefined,
   finalScore: undefined as number | undefined,
-    lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '', showPath: false },
+  lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '', showPath: false, bfsSteps: 0 },
     // Effects & visuals
     effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
     highlight: new Map<string, number>(), // key(x,y) -> until timestamp
@@ -708,7 +708,7 @@ export default function WebGame() {
         }
         // New actions
         const now = performance.now()
-        // Back-compat durations: accept *_ms, *_seconds, or boolean true -> default
+  // Back-compat durations: accept *_ms, *_seconds, or boolean true -> default
         const msFrom = (obj:any, keys:string[], def:number)=>{
           for (const k of keys){
             const v = obj[k]
@@ -738,6 +738,12 @@ export default function WebGame() {
   let oxyItems:any = (hint as any).spawn_oxygen || (hint as any).spawnOxygen || (hint as any).oxygen
   if (oxyItems && !Array.isArray(oxyItems)) oxyItems = [oxyItems]
   if (Array.isArray(oxyItems) && oxyItems.length>0) spawnOxygen(oxyItems as any)
+        // New: BFS-on-request (move exactly 2 tiles when invoked)
+        const bfsReq = (hint as any).bfs || (hint as any).use_bfs || (hint as any).useBfs
+        const bfsSteps = (hint as any).bfs_steps || (hint as any).bfsSteps
+        if (bfsReq || (typeof bfsSteps === 'number' && bfsSteps>0)) {
+          s.lam.bfsSteps = Math.min(4, Math.max(1, Number(bfsSteps) || 2))
+        }
         if (Array.isArray(hint.break_walls)) {
           for (const item of hint.break_walls as any[]) {
             const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
@@ -873,7 +879,7 @@ export default function WebGame() {
       win: false,
   endTime: undefined,
   finalScore: undefined,
-      lam: { hint: '', path: [], breaks: 0, error: '', showPath: false },
+  lam: { hint: '', path: [], breaks: 0, error: '', showPath: false, bfsSteps: 0 },
       effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
       highlight: new Map(),
       revealMap: false,
@@ -1064,26 +1070,42 @@ export default function WebGame() {
         if (keysRef.current['ArrowLeft'] || keysRef.current['a']) tryMove(-1,0)
         if (keysRef.current['ArrowRight'] || keysRef.current['d']) tryMove(1,0)
       } else if (gameMode === 'lam') {
-        // LAM Mode: Follow the provided path strictly. If speed boost is active, take up to 2 steps per tick along the path.
+        // LAM Mode: follow LAM-provided path strictly. Optional BFS-on-request moves exactly N tiles.
         const speedActive = now < s.effects.speedBoostUntil
-        const maxStepsThisTick = speedActive ? 2 : 1
+        let maxStepsThisTick = speedActive ? 2 : 1
+
+        // If LAM requested BFS, compute once and step exactly bfsSteps tiles (default 2), ignoring speed multiplier
+        if (s.lam.bfsSteps && s.lam.bfsSteps > 0) {
+          const bfs = bfsPath(s.grid as any, { x: s.player.x, y: s.player.y }, { x: s.exit.x, y: s.exit.y })
+          if (Array.isArray(bfs) && bfs.length > 1) {
+            // Step up to bfsSteps tiles along this BFS path
+            const steps = Math.min(4, s.lam.bfsSteps)
+            for (let i=0;i<steps;i++) {
+              if (bfs.length <= 1) break
+              const next = bfs[1]
+              const dx = Math.sign(next.x - s.player.x)
+              const dy = Math.sign(next.y - s.player.y)
+              const nx = clamp(s.player.x + dx, 0, boardCols-1)
+              const ny = clamp(s.player.y + dy, 0, boardRows-1)
+              if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; bfs.shift(); publishState() } else break
+            }
+          }
+          // consume request
+          s.lam.bfsSteps = 0
+          return
+        }
+
+        // Otherwise, follow LAM path
         for (let step=0; step<maxStepsThisTick; step++) {
           const path = (s.lam.path && s.lam.path.length) ? s.lam.path : []
           if (path.length <= 1) break
           const next = path[1]
           const dx = Math.sign(next.x - s.player.x)
           const dy = Math.sign(next.y - s.player.y)
-          // Execute exactly one step toward next path node
           const nx = clamp(s.player.x + dx, 0, boardCols-1)
           const ny = clamp(s.player.y + dy, 0, boardRows-1)
           if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; publishState() }
-          // Advance path head if we reached the waypoint
-          if (s.player.x === next.x && s.player.y === next.y) {
-            s.lam.path.shift()
-          } else {
-            // If we couldn't reach next (blocked), stop attempting further steps this tick
-            break
-          }
+          if (s.player.x === next.x && s.player.y === next.y) { s.lam.path.shift() } else { break }
         }
       }
 

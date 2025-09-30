@@ -166,6 +166,8 @@ Allowed actions (keys) and exact shapes:
 - hint: string                       # short guidance for the player (UI shows it)
  - show_path: boolean                 # if true and "path" is provided, UI will visualize it
  - path: [[x,y], ...]                 # path of floor cells from current player_pos toward exit_pos; client follows this path in LAM Mode
+- use_bfs: boolean                    # when true, the client will compute BFS and move the player along that BFS path
+- bfs_steps: number                   # optional; exact number of tiles to move via BFS in one invocation (default 2; clamped 1–4)
 - break_wall: [x,y]                  # break ONE adjacent wall cell near the player (<=1 step away)
 - break_walls: [[x,y], ...]          # break SEVERAL wall cells (same adjacency rule per cell)
 - breaks_remaining: number           # optional display value (not an action)
@@ -185,6 +187,7 @@ Rules & safety:
 - Only break walls adjacent (Chebyshev distance <= 1) to the player. If unsure, prefer show_path.
 - Keep outputs minimal. Omit fields you are not using this turn.
  - If you provide a path, set show_path: true to visualize it. Movement will still follow the path in LAM Mode even if show_path is false.
+ - BFS policy: Only run BFS when you set use_bfs: true. The client will move exactly bfs_steps tiles (default 2, clamped 1–4) along the BFS path once, then clear the flag. Speed boosts do not accelerate this BFS move.
 
 Return valid JSON only (no comments, no backticks). Example minimal responses:
 
@@ -196,7 +199,9 @@ Return valid JSON only (no comments, no backticks). Example minimal responses:
 
 {"highlight_zone":[[5,3],[5,4],[5,5]],"highlight_ms":4000,"hint":"Follow these tiles"}
 
-{"show_path":true,"path":[[2,1],[3,1],[3,2],[4,2]],"hint":"Following path"}`
+{"show_path":true,"path":[[2,1],[3,1],[3,2],[4,2]],"hint":"Following path"}
+
+{"use_bfs":true,"bfs_steps":2,"hint":"Use BFS to move exactly two tiles"}`
 
   return (
     <form onSubmit={submit} style={formStyle}>
