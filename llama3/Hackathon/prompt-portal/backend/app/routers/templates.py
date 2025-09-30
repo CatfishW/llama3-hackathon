@@ -7,7 +7,9 @@ from .. import models, schemas
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
+# Accept both with and without trailing slash
 @router.post("/", response_model=schemas.TemplateOut)
+@router.post("", response_model=schemas.TemplateOut)
 def create_template(payload: schemas.TemplateCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     t = models.PromptTemplate(
         user_id=user.id,
@@ -21,6 +23,7 @@ def create_template(payload: schemas.TemplateCreate, db: Session = Depends(get_d
     return t
 
 @router.get("/", response_model=List[schemas.TemplateOut])
+@router.get("", response_model=List[schemas.TemplateOut])
 def list_templates(skip:int=0, limit:int=50, mine: bool=True, db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(models.PromptTemplate)
     if mine:
