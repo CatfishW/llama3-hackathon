@@ -14,6 +14,12 @@ type Entry = {
 
 export default function Leaderboard() {
   const [items, setItems] = useState<Entry[]>([])
+  const [total, setTotal] = useState(0)
+  const [skip, setSkip] = useState(0)
+  const [mode, setMode] = useState<'lam'|'manual'>('lam')
+  const [participants, setParticipants] = useState<number | null>(null)
+  const [registeredUsers, setRegisteredUsers] = useState<number | null>(null)
+  const PAGE_SIZE = 50
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const isMobile = useIsMobile()
@@ -45,11 +51,18 @@ export default function Leaderboard() {
 
   const currentTheme = themeConfig[theme]
 
-  async function load() {
+  async function load(initial = false) {
     try {
       setLoading(true)
-      const res = await leaderboardAPI.getLeaderboard(50)
-      setItems(res.data)
+      const { data, total } = await leaderboardAPI.getLeaderboard(PAGE_SIZE, initial ? 0 : skip, mode)
+      setTotal(total)
+      if (initial) {
+        setItems(data)
+        setSkip(data.length)
+      } else {
+        setItems(prev => [...prev, ...data])
+        setSkip(prev => prev + data.length)
+      }
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to load leaderboard')
     } finally {
@@ -57,7 +70,17 @@ export default function Leaderboard() {
     }
   }
   
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(true) }, [mode])
+
+  useEffect(() => {
+    ;(async ()=>{
+      try {
+        const s = await leaderboardAPI.getStats()
+        setParticipants(s.participants)
+        setRegisteredUsers(s.registered_users)
+      } catch {}
+    })()
+  }, [])
 
   const containerStyle = {
     maxWidth: '1200px',
@@ -163,9 +186,43 @@ export default function Leaderboard() {
               </select>
             </div>
           </div>
-          <p style={{ fontSize: isMobile ? '1rem':'1.2rem', opacity: '0.8', maxWidth: '640px', margin: '0 auto', lineHeight:1.45 }}>
-            Top performing prompt templates ranked by player scores and performance metrics
-          </p>
+          <div style={{ fontSize: isMobile ? '1rem':'1.1rem', opacity: 0.9, maxWidth: '820px', margin: '10px auto 0', lineHeight:1.45 }}>
+            <div style={{ display:'flex', gap:16, justifyContent:'center', flexWrap:'wrap' }}>
+              <div style={{ background:'rgba(0,0,0,0.25)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'8px 12px' }}>
+                Participants: <b>{participants!=null? participants : '—'}</b>
+              </div>
+              <div style={{ background:'rgba(0,0,0,0.25)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'8px 12px' }}>
+                Registered Users: <b>{registeredUsers!=null? registeredUsers : '—'}</b>
+              </div>
+            </div>
+            {/* Mode toggle */}
+            <div style={{ marginTop: 16, display:'flex', justifyContent:'center' }}>
+              <div style={{ display:'inline-flex', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius: 999, padding:4 }}>
+                {(['lam','manual'] as const).map(m => (
+                  <button key={m}
+                    onClick={()=>setMode(m)}
+                    style={{
+                      padding: isMobile ? '6px 12px':'8px 16px',
+                      borderRadius: 999,
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#fff',
+                      background: mode===m ? (theme==='orange' ? 'linear-gradient(45deg,#ff8c42,#ff6b35)' : 'linear-gradient(45deg,#4ecdc4,#44a08d)') : 'transparent',
+                      boxShadow: mode===m ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
+                      transition: 'all .2s',
+                      fontWeight: 700,
+                      fontSize: isMobile ? '.9rem':'1rem',
+                      minWidth: 120
+                    }}>
+                    {m==='lam' ? 'LAM Mode' : 'Manual Mode'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop:8, textAlign:'center', opacity:.85 }}>
+              Viewing: <b>{mode==='lam' ? 'LAM Mode (LLM controls)' : 'Manual Mode (You control)'}</b>
+            </div>
+          </div>
         </div>
 
       {err && (
@@ -193,6 +250,10 @@ export default function Leaderboard() {
           {isMobile && items.length>0 && (
             <div style={{ fontSize: '.7rem', opacity:.65, marginBottom:8, textAlign:'right' }}>Swipe horizontally ↔ to see all columns</div>
           )}
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, color:'rgba(255,255,255,0.85)'}}>
+            <div>Total entries: <b>{total}</b></div>
+            <div>Showing: <b>{items.length}</b></div>
+          </div>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <i className="fas fa-trophy" style={{ fontSize: '3rem', marginBottom: '20px', opacity: '0.5' }}></i>
@@ -230,9 +291,9 @@ export default function Leaderboard() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((entry, index) => (
+        {items.map((entry, index) => (
                   <tr 
-                    key={entry.rank + entry.session_id}
+          key={entry.session_id + '-' + index}
                     style={{
                       background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
                       transition: 'background-color 0.3s ease'
@@ -318,10 +379,10 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* Refresh Button */}
-      <div style={{ textAlign: 'center', marginTop: '30px' }}>
+      {/* Controls */}
+      <div style={{ textAlign: 'center', marginTop: '30px', display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
         <button
-          onClick={load}
+          onClick={() => load(true)}
           disabled={loading}
           style={{
             background: currentTheme.buttonPrimary,
@@ -349,8 +410,30 @@ export default function Leaderboard() {
           }}
         >
           <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} style={{ marginRight: '8px' }}></i>
-          {loading ? 'Refreshing...' : 'Refresh Leaderboard'}
+          {loading ? 'Refreshing...' : 'Refresh'}
         </button>
+
+        {skip < total && (
+          <button
+            onClick={() => load(false)}
+            disabled={loading}
+            style={{
+              background: 'linear-gradient(45deg,#36c,#59f)',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '25px',
+              fontSize: '1rem',
+              fontWeight: '600',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-down'}`} style={{ marginRight: '8px' }}></i>
+            {loading ? 'Loading...' : 'Load more'} ({skip}/{total})
+          </button>
+        )}
       </div>
     </div>
     </div>

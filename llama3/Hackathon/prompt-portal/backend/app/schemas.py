@@ -96,6 +96,7 @@ class ScoreCreate(BaseModel):
     survival_time: float = 0
     oxygen_collected: int = 0
     germs: int = 0
+    mode: str = "manual"
 
 class ScoreOut(BaseModel):
     id: int
@@ -106,6 +107,7 @@ class ScoreOut(BaseModel):
     survival_time: float
     oxygen_collected: int
     germs: int
+    mode: str
     created_at: datetime
     class Config:
         from_attributes = True

@@ -86,6 +86,7 @@ class Score(Base):
     survival_time: Mapped[float] = mapped_column(Float, default=0.0)
     oxygen_collected: Mapped[int] = mapped_column(Integer, default=0)
     germs: Mapped[int] = mapped_column(Integer, default=0)
+    mode: Mapped[str] = mapped_column(String(10), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="scores")

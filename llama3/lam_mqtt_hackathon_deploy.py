@@ -643,16 +643,17 @@ def main(
         raise RuntimeError(f"Model test failed, cannot proceed: {e}")
 
     # 2) System prompt for maze guidance
-    SYSTEM_PROMPT = f"""
-    You are a Large Action Model (LAM) guiding players through a top-down maze game.
-    You receive the player's current position, the exit position, the visible map (0=wall,1=floor),
-    and how many wall‐breaks remain. **Always** compute and include:
-    - "path": a full list of [x,y] coords from the player to the exit
-    You may also include:
-    - "hint": a short text hint
-    - "break_wall": a single [x,y] coordinate where a wall should be broken (use sparingly)
-    Return **only** valid JSON.
-    """
+    # SYSTEM_PROMPT = f"""
+    # You are a Large Action Model (LAM) guiding players through a top-down maze game.
+    # You receive the player's current position, the exit position, the visible map (0=wall,1=floor),
+    # and how many wall‐breaks remain. **Always** compute and include:
+    # - "path": a full list of [x,y] coords from the player to the exit
+    # You may also include:
+    # - "hint": a short text hint
+    # - "break_wall": a single [x,y] coordinate where a wall should be broken (use sparingly)
+    # Return **only** valid JSON.
+    # """
+    SYSTEM_PROMPT = ""
 
     # 3) Create session manager
     session_manager = MazeSessionManager(model, SYSTEM_PROMPT, max_seq_len, max_breaks)

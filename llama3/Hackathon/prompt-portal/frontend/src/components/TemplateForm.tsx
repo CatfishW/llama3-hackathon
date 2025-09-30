@@ -149,28 +149,54 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
     justifyContent: 'center'
   }
 
-  const placeholderText = `Example template for LAM maze navigation:
+  const placeholderText = `You are a Large Action Model (LAM) that controls a maze game.
 
-You are a Large Action Model (LAM) navigating a maze environment. Your goal is to help an agent reach the target while avoiding obstacles.
+Goal: Safely guide the player from player_pos to exit_pos. Prefer clean, short JSON outputs. Only include the fields you intend to execute.
 
-Context: {maze_state}
-Current Position: {current_position}
-Target Position: {target_position}
+You receive the current state (examples shown as placeholders you can reason over):
+- sessionId: {sessionId}
+- player_pos: {player_pos}           # [x,y]
+- exit_pos: {exit_pos}               # [x,y]
+- visible_map: {visible_map}         # 2D array with 1=passable floor, 0=wall (NOTE: do not step through 0s)
+- oxygenPellets: {oxygenPellets}     # list of {x,y}
+- germs: {germs}                     # list of {x,y}
+- prompt_template: {prompt_template} # metadata for this template
 
-Instructions:
-1. Analyze the maze layout and current position
-2. Identify the optimal path to the target
-3. Provide specific movement actions
-4. Suggest hints if the agent is stuck
-5. Recommend wall-breaking if necessary
+Allowed actions (keys) and exact shapes:
+- hint: string                       # short guidance for the player (UI shows it)
+ - show_path: boolean                 # if true and "path" is provided, UI will visualize it
+ - path: [[x,y], ...]                 # path of floor cells from current player_pos toward exit_pos; client follows this path in LAM Mode
+- break_wall: [x,y]                  # break ONE adjacent wall cell near the player (<=1 step away)
+- break_walls: [[x,y], ...]          # break SEVERAL wall cells (same adjacency rule per cell)
+- breaks_remaining: number           # optional display value (not an action)
+- speed_boost_ms: number             # e.g. 2000; player moves 2 steps per tick for this many ms
+- slow_germs_ms: number              # e.g. 3000; germs move half the frequency for this many ms
+- freeze_germs_ms: number            # e.g. 2000; germs do not move for this many ms
+- teleport_player: [x,y]             # move player to a floor cell (use sparingly)
+- spawn_oxygen: [[x,y], ...] or [{"x":x,"y":y}, ...]  # add oxygen on floor cells
+- move_exit: [x,y]                   # move exit to a floor cell
+- highlight_zone: [[x,y], ...]       # temporarily highlight cells to guide attention
+- highlight_ms: number               # how long to highlight (default 5000ms)
+ - toggle_autopilot: boolean          # deprecated; client follows provided path automatically in LAM Mode
+- reveal_map: boolean                # true to reveal entire maze temporarily
 
-Return your response as JSON:
-{
-  "actions": ["move_up", "move_right"],
-  "hints": ["Check the path to the right", "Look for alternative routes"],
-  "wall_breaks": [{"x": 5, "y": 3, "reason": "Creates shortest path"}],
-  "reasoning": "Explanation of your strategy"
-}`
+Rules & safety:
+- Coordinates must be within bounds and refer to floor cells when required (visible_map[y][x] == 1).
+- Only break walls adjacent (Chebyshev distance <= 1) to the player. If unsure, prefer show_path.
+- Keep outputs minimal. Omit fields you are not using this turn.
+ - If you provide a path, set show_path: true to visualize it. Movement will still follow the path in LAM Mode even if show_path is false.
+
+Return valid JSON only (no comments, no backticks). Example minimal responses:
+
+{"hint":"Go right, then down","show_path":true,"path":[[2,1],[3,1],[3,2]]}
+
+{"break_wall":[2,2],"hint":"Open a shortcut"}
+
+{"freeze_germs_ms":2000,"hint":"Freezing germs briefly"}
+
+{"highlight_zone":[[5,3],[5,4],[5,5]],"highlight_ms":4000,"hint":"Follow these tiles"}
+
+{"show_path":true,"path":[[2,1],[3,1],[3,2],[4,2]],"hint":"Following path"}`
 
   return (
     <form onSubmit={submit} style={formStyle}>
@@ -246,6 +272,24 @@ Return your response as JSON:
             e.target.style.boxShadow = 'none'
           }}
         />
+        <div style={{ display:'flex', gap:12, marginTop:10, flexWrap:'wrap' as const }}>
+          <button
+            type="button"
+            onClick={() => setContent(placeholderText)}
+            style={{
+              background: 'linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%)',
+              color: 'white',
+              border: 'none',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '.95rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Use sample template
+          </button>
+        </div>
         <div style={{ 
           marginTop: '8px', 
           fontSize: '0.9rem', 
@@ -255,7 +299,7 @@ Return your response as JSON:
           gap: '6px'
         }}>
           <i className="fas fa-info-circle"></i>
-          Use {'{variable_name}'} for dynamic content placeholders
+          You can include {'{variable_name}'} placeholders, but the live game state is already provided via JSON fields above.
         </div>
       </div>
 

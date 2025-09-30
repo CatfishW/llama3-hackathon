@@ -32,6 +32,7 @@ def search_users(
     return users
 
 @router.get("/", response_model=List[FriendshipOut])
+@router.get("", response_model=List[FriendshipOut])
 def get_friends_root(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

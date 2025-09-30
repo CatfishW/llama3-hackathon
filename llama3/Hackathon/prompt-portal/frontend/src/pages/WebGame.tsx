@@ -18,12 +18,19 @@ export default function WebGame() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { templates } = useTemplates()
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  // Game mode selection
+  const [gameMode, setGameMode] = useState<'manual'|'lam'>('manual')
+  const [selectedMode, setSelectedMode] = useState<'manual'|'lam'>('manual')
+  const [startStep, setStartStep] = useState<'mode'|'template'>('mode')
+  const gameModeRef = useRef<'manual'|'lam'>(gameMode)
+  useEffect(()=>{ gameModeRef.current = gameMode }, [gameMode])
   
   // UI state
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [sessionId, setSessionId] = useState('session-' + Math.random().toString(36).slice(2, 8))
   const [connected, setConnected] = useState(false)
-  const [autoPilot, setAutoPilot] = useState(false)
   const [germCount, setGermCount] = useState(5)
   const [status, setStatus] = useState('')
   // Score submission state
@@ -59,7 +66,13 @@ export default function WebGame() {
   const [lamFlowPos, setLamFlowPos] = useState({ x: 16, y: 140 })
   const [lamFlowWidth, setLamFlowWidth] = useState(340)
   const [lamDetailsPos, setLamDetailsPos] = useState<{x:number;y:number}|null>(null)
-  const dragInfoRef = useRef<{ panel: null | 'flow' | 'details' | 'flow-resize'; offX: number; offY: number; startW?: number }>({ panel: null, offX:0, offY:0 })
+  // Drag info for panels
+  const dragInfoRef = useRef<{ panel: 'flow'|'details'|'flow-resize'|null; offX: number; offY: number; startW?: number }>({ panel: null, offX: 0, offY: 0 })
+    // Germs: respect user setting; allow 0. Clamp to a sane range [0, 50].
+    const userSpawn = Number.isFinite(germCount as any)
+      ? Math.max(0, Math.min(50, Math.floor(germCount as any)))
+      : 0
+    const spawnGerms = userSpawn
   // Mobile control opacity (user-adjustable)
   const [mobileControlsOpacity, setMobileControlsOpacity] = useState<number>(() => {
     if (typeof window === 'undefined') return 0.95
@@ -72,7 +85,9 @@ export default function WebGame() {
 
   // Game state
   const tile = 24
-  const cols = 33, rows = 21 // fits nicely within 800x600 canvas
+  // Dynamic board size: default 33x21; switch to 10x10 in LAM mode
+  const [boardCols, setBoardCols] = useState(33)
+  const [boardRows, setBoardRows] = useState(21)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const lastPublishRef = useRef<number>(0)
@@ -80,7 +95,7 @@ export default function WebGame() {
   const stateRef = useRef({
     grid: [] as Grid,
     player: { x: 1, y: 1 } as Vec2,
-    exit: { x: cols - 2, y: rows - 2 } as Vec2,
+  exit: { x: boardCols - 2, y: boardRows - 2 } as Vec2,
     oxy: [] as Vec2[],
     germs: [] as { pos: Vec2; dir: Vec2; speed: number }[],
     oxygenCollected: 0,
@@ -105,8 +120,8 @@ export default function WebGame() {
   cameraShake: 0
   })
 
-  const width = cols * tile
-  const height = rows * tile
+  const width = boardCols * tile
+  const height = boardRows * tile
 
   // ===== Responsive Canvas Scaling (CSS pixel size separate from internal resolution) =====
   const [canvasScale, setCanvasScale] = useState(1)
@@ -133,19 +148,20 @@ export default function WebGame() {
   const swipeStartRef = useRef<{x:number;y:number; t:number}|null>(null)
 
   const pressDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
+    if (gameModeRef.current !== 'manual') return
     const key = dirKeyMap[dir]
     keysRef.current[key] = true
     holdDirsRef.current.add(key)
-    // Any manual input disables autopilot (mobile expectation)
-    setAutoPilot(false)
   }, [])
   const releaseDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
+    if (gameModeRef.current !== 'manual') return
     const key = dirKeyMap[dir]
     keysRef.current[key] = false
     holdDirsRef.current.delete(key)
   }, [])
   const tapDir = useCallback((dir:'up'|'down'|'left'|'right') => {
     // Short simulated tap for swipe translation
+    if (gameModeRef.current !== 'manual') return
     pressDir(dir); setTimeout(()=>releaseDir(dir), 120)
   }, [pressDir, releaseDir])
 
@@ -241,6 +257,27 @@ export default function WebGame() {
       if (a===0) ctx.moveTo(px,py); else ctx.lineTo(px,py)
     }
     ctx.stroke()
+  }
+
+  // Sanitize a LAM-provided path so it never crosses walls and only uses 4-neighbor floor steps.
+  function sanitizePath(grid: Grid, raw: Vec2[], player: Vec2): Vec2[] {
+    if (!raw || raw.length === 0) return []
+    const inBounds = (x:number,y:number)=> y>=0 && y<grid.length && x>=0 && x<grid[0].length
+    const isFloor = (x:number,y:number)=> inBounds(x,y) && grid[y][x]===0
+    const result: Vec2[] = []
+    let last = { x: player.x, y: player.y }
+    result.push({ x:last.x, y:last.y })
+    for (const p of raw) {
+      const x = p.x, y = p.y
+      if (!isFloor(x,y)) break
+      const manhattan = Math.abs(x - last.x) + Math.abs(y - last.y)
+  if (manhattan === 0) continue // skip duplicate of current player cell
+  if (manhattan !== 1) break
+      result.push({ x, y })
+      last = { x, y }
+    }
+    // If only the player position made it in, return empty to avoid drawing a trivial dot
+    return result.length > 1 ? result : []
   }
 
   // Theme helpers and FX utilities
@@ -453,13 +490,18 @@ export default function WebGame() {
   function drawMiniMap(ctx: CanvasRenderingContext2D, s:any){
     if (!showMiniMap) return
     const scale = 3
-    const mmW = cols*scale, mmH = rows*scale
-    const ox = 8, oy = 8
+  const mmW = boardCols*scale, mmH = boardRows*scale
+    // Place at top-right of the main canvas with margin
+    const margin = 8
+    const ox = width - mmW - margin
+    const oy = margin
     ctx.save()
     ctx.globalAlpha = 0.9
+    // backdrop & frame
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(ox-4, oy-4, mmW+8, mmH+8)
-    for (let y=0;y<rows;y++){
-      for (let x=0;x<cols;x++){
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(ox-4, oy-4, mmW+8, mmH+8)
+    for (let y=0;y<boardRows;y++){
+      for (let x=0;x<boardCols;x++){
         ctx.fillStyle = s.grid[y][x]===0? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.6)'
         ctx.fillRect(ox+x*scale, oy+y*scale, scale, scale)
       }
@@ -474,6 +516,8 @@ export default function WebGame() {
     // exit and player
     ctx.fillStyle = '#60a5fa'; ctx.fillRect(ox+s.exit.x*scale, oy+s.exit.y*scale, scale, scale)
     ctx.fillStyle = '#ef4444'; ctx.fillRect(ox+s.player.x*scale, oy+s.player.y*scale, scale, scale)
+    // label
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '10px Inter'; ctx.fillText('MINI-MAP', ox, oy-8)
     ctx.restore()
   }
 
@@ -507,13 +551,16 @@ export default function WebGame() {
           s.lam.error = ''
         }
         s.lam.hint = hint.hint || ''
-        // Only set path if LLM explicitly requested to show it
-        s.lam.showPath = hint.show_path === true
-        if (s.lam.showPath && hint.path) {
-          s.lam.path = hint.path.map(([x,y]) => ({x,y}))
+        // Path handling: allow movement if a path is provided, regardless of show_path; show_path only controls overlay visibility
+  const hasPath = Array.isArray((hint as any).path) && (hint as any).path.length > 0
+        if (hasPath) {
+          const rawPath = (hint as any).path.map((p:any) => Array.isArray(p)? { x:p[0], y:p[1] } : { x: p.x, y: p.y })
+          s.lam.path = sanitizePath(s.grid as any, rawPath, s.player)
         } else {
           s.lam.path = []
         }
+  // In Manual mode, auto-visualize provided paths to assist the player
+  s.lam.showPath = (hint.show_path === true) || (gameModeRef.current === 'manual' && hasPath)
   s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
   // Maintain React state copy for external panel (include raw envelope and timestamp)
   setLamData({ hint: s.lam.hint, path: s.lam.path.slice(), breaks: s.lam.breaks, error: s.lam.error, raw: hint, rawMessage: data, updatedAt: Date.now(), showPath: s.lam.showPath })
@@ -534,7 +581,7 @@ export default function WebGame() {
           if (r.spawn_oxygen) decl.push('spawn_oxygen')
           if (r.move_exit) decl.push('move_exit')
           if (r.highlight_zone) decl.push('highlight_zone')
-          if (r.toggle_autopilot!==undefined) decl.push('toggle_autopilot')
+          // toggle_autopilot deprecated
           if (r.reveal_map!==undefined) decl.push('reveal_map')
           evtF.actionsDeclared = decl
           evtF.hintExcerpt = (hint.hint||'').slice(0,140)
@@ -542,8 +589,10 @@ export default function WebGame() {
           setLamFlow(f=>[...f])
         }
         if (hint.break_wall) {
-          const [bx, by] = hint.break_wall
-          breakWall(bx, by)
+          const bw: any = (hint as any).break_wall
+          const bx = Array.isArray(bw) ? bw[0] : (typeof bw === 'object' ? bw.x : undefined)
+          const by = Array.isArray(bw) ? bw[1] : (typeof bw === 'object' ? bw.y : undefined)
+          if (bx!=null && by!=null) breakWall(bx, by)
         }
         if ((anyHint.breakWall) && Array.isArray(anyHint.breakWall) && anyHint.breakWall.length===2) {
           const [bx, by] = anyHint.breakWall; breakWall(bx, by)
@@ -553,7 +602,7 @@ export default function WebGame() {
         if (hint.speed_boost_ms) s.effects.speedBoostUntil = Math.max(s.effects.speedBoostUntil, now + hint.speed_boost_ms)
         if (hint.slow_germs_ms) s.effects.slowGermsUntil = Math.max(s.effects.slowGermsUntil, now + hint.slow_germs_ms)
         if (hint.freeze_germs_ms) s.effects.freezeGermsUntil = Math.max(s.effects.freezeGermsUntil, now + hint.freeze_germs_ms)
-        if (hint.toggle_autopilot!==undefined) setAutoPilot(Boolean(hint.toggle_autopilot))
+  // toggle_autopilot deprecated: ignored
         if (hint.reveal_map!==undefined) s.revealMap = Boolean(hint.reveal_map)
         if (hint.move_exit && hint.move_exit.length===2) {
           const [ex,ey] = hint.move_exit; if (s.grid[ey]?.[ex]===0) s.exit = {x:ex,y:ey}
@@ -569,7 +618,11 @@ export default function WebGame() {
           }
         }
         if (Array.isArray(hint.break_walls)) {
-          for (const [bx,by] of hint.break_walls) breakWall(bx, by)
+          for (const item of hint.break_walls as any[]) {
+            const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
+            const by = Array.isArray(item) ? item[1] : (typeof item === 'object' ? item.y : undefined)
+            if (bx!=null && by!=null) breakWall(bx, by)
+          }
         }
         if (Array.isArray(hint.highlight_zone)) {
           const until = now + (hint.highlight_ms ?? 5000)
@@ -591,12 +644,19 @@ export default function WebGame() {
     const s = stateRef.current
     if (!s.gameOver) return
     
+    // Scoring: reward faster finishes strongly. Time bonus decays with elapsed seconds.
+    const computeFinalScore = (st: any, elapsedSec: number) => {
+      const oxygenScore = (st.oxygenCollected || 0) * 100
+      const winBonus = st.win ? 1000 : 0
+      const timeBonus = st.win ? Math.round(1500 / (1 + elapsedSec / 20)) : 0 // ~1500 at 0s, ~750 at 20s, ~500 at 40s
+      const timePenalty = st.win ? 0 : Math.round(elapsedSec * 5)
+      return Math.max(0, Math.round(oxygenScore + winBonus + timeBonus - timePenalty))
+    }
+
     try {
   const elapsed = s.endTime ? (s.endTime - s.startTime) / 1000 : (performance.now() - s.startTime) / 1000
-  // Use frozen finalScore if available, else compute current
-  const baseScore = s.finalScore != null ? s.finalScore : (s.oxygenCollected * 100 - elapsed * 5)
-      const winBonus = s.win ? 1000 : 0 // Big bonus for winning
-      const finalScore = Math.round(baseScore + winBonus)
+  // Use frozen finalScore if available, else compute with time-weighted bonus
+      const finalScore = s.finalScore != null ? s.finalScore : computeFinalScore(s, elapsed)
       
       await leaderboardAPI.submitScore({
         template_id: templateId,
@@ -604,11 +664,12 @@ export default function WebGame() {
         score: finalScore,
         survival_time: elapsed,
         oxygen_collected: s.oxygenCollected,
-        germs: germCount
+        germs: s.germs.length,
+        mode: gameMode
       })
       
       setScoreSubmitted(true)
-      setStatus(`Score ${finalScore} submitted to leaderboard!`)
+  setStatus(`Score ${finalScore} submitted to leaderboard!`)
       
       // Clear status after 3 seconds
       setTimeout(() => setStatus(''), 3000)
@@ -626,12 +687,20 @@ export default function WebGame() {
     }
   }, [gameOverTrigger, submitScore, scoreSubmitted, user, templateId])
 
-  // Start a new game
-  const startGame = useCallback(() => {
+  // Core start logic (was startGame); separated so we can show a picker and publish first
+  const doStartGame = useCallback((targetCols?: number, targetRows?: number) => {
     // Reset score submission flag
     setScoreSubmitted(false)
     setGameOverTrigger(0)
-    
+    // Resolve board size (optionally overridden)
+    const cols = (typeof targetCols === 'number') ? targetCols : boardCols
+    const rows = (typeof targetRows === 'number') ? targetRows : boardRows
+    // Apply override to state so UI reflects new board
+    if (typeof targetCols === 'number' && typeof targetRows === 'number') {
+      setBoardCols(targetCols)
+      setBoardRows(targetRows)
+    }
+
     const grid = generateMaze(cols, rows)
 
     // Ensure start area open
@@ -639,9 +708,20 @@ export default function WebGame() {
 
     // Place oxygen ~10% of floors excluding start/exit
     const floors: Vec2[] = []
-    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (grid[y][x] === 0) floors.push({x,y})
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (grid[y][x] === 0) floors.push({x,y})
     const start = { x: 1, y: 1 }
-    const exit = { x: cols - 2, y: rows - 2 }
+  const exit = { x: cols - 2, y: rows - 2 }
+    // Ensure exit is not in a wall; carve if needed and guarantee at least one open neighbor
+    if (grid[exit.y]?.[exit.x] !== 0) {
+      grid[exit.y][exit.x] = 0
+    }
+    const neighborDirs = [ [-1,0], [0,-1], [1,0], [0,1] ] as const
+    if (neighborDirs.every(([dx,dy]) => (grid[exit.y+dy]?.[exit.x+dx] ?? 1) !== 0)) {
+      for (const [dx,dy] of neighborDirs) {
+        const nx = exit.x + dx, ny = exit.y + dy
+        if (ny>=0 && ny<rows && nx>=0 && nx<cols) { grid[ny][nx] = 0; break }
+      }
+    }
     const oxy: Vec2[] = []
     const avail = floors.filter(p => !(p.x===start.x && p.y===start.y) && !(p.x===exit.x && p.y===exit.y))
     const count = Math.max(10, Math.floor(avail.length * 0.1))
@@ -649,16 +729,19 @@ export default function WebGame() {
       const idx = randInt(avail.length); oxy.push(avail[idx]); avail.splice(idx,1)
     }
 
-    // Germs
+  // Germs: use user-provided count; allow 0; clamp to [0, 50]
+  const spawnGerms = Number.isFinite(germCount as any)
+    ? Math.max(0, Math.min(50, Math.floor(germCount as any)))
+    : 0
     const germs: { pos: Vec2; dir: Vec2; speed: number }[] = []
-    for (let i = 0; i < germCount && avail.length; i++) {
+  for (let i = 0; i < spawnGerms && avail.length; i++) {
       const idx = randInt(avail.length)
       const pos = avail[idx]; avail.splice(idx,1)
       const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0, y:1},{x:0,y:-1} ]
       germs.push({ pos, dir: dirs[randInt(4)], speed: 4 })
     }
 
-    stateRef.current = {
+  stateRef.current = {
       grid,
       player: start,
       exit,
@@ -677,7 +760,7 @@ export default function WebGame() {
       revealMap: false,
       fxPopups: [],
       hitFlash: 0,
-      particles: Array.from({length: 80}, ()=>({ x: Math.random()*width, y: Math.random()*height, r: 6+Math.random()*18, spd: 0.3+Math.random()*0.8, alpha: 0.06+Math.random()*0.12 })),
+  particles: Array.from({length: 80}, ()=>({ x: Math.random()*(cols*tile), y: Math.random()*(rows*tile), r: 6+Math.random()*18, spd: 0.3+Math.random()*0.8, alpha: 0.06+Math.random()*0.12 })),
       germStepFlip: false,
   emotion: 'neutral',
   wallBreakParts: [],
@@ -685,17 +768,51 @@ export default function WebGame() {
     }
 
     setStatus('')
+  // Apply chosen game mode
+  setGameMode(selectedMode)
 
     // Connect WS ~ no immediate publish
     disconnectWS(); connectWS();
     // Removed immediate publish; periodic publisher will handle it
-  }, [cols, rows, germCount, connectWS, disconnectWS])
+  }, [boardCols, boardRows, germCount, connectWS, disconnectWS, selectedMode, tile])
+
+  
+
+  // Publish the selected template to backend -> MQTT
+  const publishSelectedTemplate = useCallback(async (tid: number) => {
+    try {
+      await api.post('/api/mqtt/publish_template', { template_id: tid, reset: true })
+      setStatus('Template published!')
+      setTimeout(()=>setStatus(''), 1500)
+    } catch (e) {
+      setStatus('Failed to publish template')
+      setTimeout(()=>setStatus(''), 2000)
+    }
+  }, [])
+
+  // Start a new game: open picker to confirm template and publish
+  const startGame = useCallback(() => {
+    if (!templates || templates.length === 0) {
+      // No templates to choose; just start without publish
+      // Apply board size based on current gameMode (or selectedMode if applicable)
+  const targetCols = (gameModeRef.current === 'lam') ? 10 : 33
+  const targetRows = (gameModeRef.current === 'lam') ? 10 : 21
+  doStartGame(targetCols, targetRows)
+      return
+    }
+    // Prefill currently selected or first and open modal (no page refresh)
+    setSelectedTemplateId(templateId || templates[0].id)
+    setSelectedMode('manual')
+    setStartStep('mode')
+    setShowTemplatePicker(true)
+  }, [templates, templateId, doStartGame])
 
   // Publish state to backend -> MQTT
   const publishState = useCallback(async (force = false) => {
     if (!templateId) return
     const now = performance.now()
-    if (!force && now - lastPublishRef.current < 15000) return // throttle to 15s
+    const throttleMs = (gameModeRef.current === 'lam') ? 3000 : 15000
+    if (!force && now - lastPublishRef.current < throttleMs) return // throttle (3s in LAM, 15s in Manual)
     lastPublishRef.current = now
 
     const s = stateRef.current
@@ -753,29 +870,29 @@ export default function WebGame() {
     return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  // Periodic publisher: every 15s while game is running
+  // Periodic publisher: every 3s in LAM, 15s in Manual, while game is running
   useEffect(() => {
+    const periodMs = (gameMode === 'lam') ? 3000 : 15000
     const id = setInterval(() => {
       const s = stateRef.current
   if (templateId && s.started && !s.gameOver) {
         publishState(true)
       }
-    }, 15000)
+    }, periodMs)
     return () => clearInterval(id)
-  }, [templateId, publishState])
+  }, [templateId, publishState, gameMode])
 
   // Input handling
   const keysRef = useRef<Record<string, boolean>>({})
   useEffect(() => {
     const down = (e: KeyboardEvent) => { 
-      keysRef.current[e.key] = true
-      if (e.key.toLowerCase() === 't') setAutoPilot(v => !v)
+      if (gameModeRef.current === 'manual') keysRef.current[e.key] = true
   // 'H' previously toggled in-canvas LAM panel; removed.
       if (e.key.toLowerCase() === 'm') setShowMenu(v=>!v)
       if (e.key.toLowerCase() === 'p') setPaused(v=>!v)
       if (e.key.toLowerCase() === 'n') setShowMiniMap(v=>!v)
     }
-    const up = (e: KeyboardEvent) => { keysRef.current[e.key] = false }
+    const up = (e: KeyboardEvent) => { if (gameModeRef.current === 'manual') keysRef.current[e.key] = false }
     window.addEventListener('keydown', down); window.addEventListener('keyup', up)
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
   }, [])
@@ -813,25 +930,38 @@ export default function WebGame() {
       // Player move (grid step)
       const tryMove = (dx: number, dy: number) => {
         for (let i=0;i<moves;i++){
-          const nx = clamp(s.player.x + dx, 0, cols-1)
-          const ny = clamp(s.player.y + dy, 0, rows-1)
+          const nx = clamp(s.player.x + dx, 0, boardCols-1)
+          const ny = clamp(s.player.y + dy, 0, boardRows-1)
           if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; publishState() }
         }
       }
 
-      if (!autoPilot) {
+      if (gameMode === 'manual') {
         if (keysRef.current['ArrowUp'] || keysRef.current['w']) tryMove(0,-1)
         if (keysRef.current['ArrowDown'] || keysRef.current['s']) tryMove(0,1)
         if (keysRef.current['ArrowLeft'] || keysRef.current['a']) tryMove(-1,0)
         if (keysRef.current['ArrowRight'] || keysRef.current['d']) tryMove(1,0)
-      } else {
-        // Use LAM path only if explicitly requested, otherwise use BFS
-        const path = (s.lam.showPath && s.lam.path.length) ? s.lam.path : (bfsPath(s.grid, s.player, s.exit) || [])
-        if (path.length > 1) {
+      } else if (gameMode === 'lam') {
+        // LAM Mode: Follow the provided path strictly. If speed boost is active, take up to 2 steps per tick along the path.
+        const speedActive = now < s.effects.speedBoostUntil
+        const maxStepsThisTick = speedActive ? 2 : 1
+        for (let step=0; step<maxStepsThisTick; step++) {
+          const path = (s.lam.path && s.lam.path.length) ? s.lam.path : []
+          if (path.length <= 1) break
           const next = path[1]
           const dx = Math.sign(next.x - s.player.x)
           const dy = Math.sign(next.y - s.player.y)
-          tryMove(dx, dy)
+          // Execute exactly one step toward next path node
+          const nx = clamp(s.player.x + dx, 0, boardCols-1)
+          const ny = clamp(s.player.y + dy, 0, boardRows-1)
+          if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; publishState() }
+          // Advance path head if we reached the waypoint
+          if (s.player.x === next.x && s.player.y === next.y) {
+            s.lam.path.shift()
+          } else {
+            // If we couldn't reach next (blocked), stop attempting further steps this tick
+            break
+          }
         }
       }
 
@@ -849,8 +979,8 @@ export default function WebGame() {
         if (allowStep) {
           for (const g of s.germs) {
             if (Math.random() < 0.1) { const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1} ]; g.dir = dirs[randInt(4)] }
-            const nx = clamp(g.pos.x + g.dir.x, 0, cols-1)
-            const ny = clamp(g.pos.y + g.dir.y, 0, rows-1)
+            const nx = clamp(g.pos.x + g.dir.x, 0, boardCols-1)
+            const ny = clamp(g.pos.y + g.dir.y, 0, boardRows-1)
             if (s.grid[ny][nx] === 0) { g.pos.x = nx; g.pos.y = ny } else { g.dir.x *= -1; g.dir.y *= -1 }
             if (g.pos.x === s.player.x && g.pos.y === s.player.y) s.hitFlash = 1
           }
@@ -870,7 +1000,10 @@ export default function WebGame() {
           s.gameOver = true; s.win = false
           s.endTime = performance.now()
           const elapsedSec = (s.endTime - s.startTime)/1000
-          s.finalScore = Math.round(s.oxygenCollected*100 - elapsedSec*5)
+          // Compute final score (no fast bonus on loss, time penalty applies)
+          const oxygenScore = s.oxygenCollected * 100
+          const timePenalty = Math.round(elapsedSec * 5)
+          s.finalScore = Math.max(0, Math.round(oxygenScore - timePenalty))
           setGameOverTrigger(prev => prev + 1)
         }
       }
@@ -879,7 +1012,18 @@ export default function WebGame() {
           s.gameOver = true; s.win = true
           s.endTime = performance.now()
           const elapsedSec = (s.endTime - s.startTime)/1000
-          s.finalScore = Math.round(s.oxygenCollected*100 - elapsedSec*5)
+          // Reward faster finishes with a decaying time bonus
+          const oxygenScore = s.oxygenCollected * 100
+          const timeBonus = Math.round(1500 / (1 + elapsedSec / 20))
+          if (gameMode === 'lam') {
+            const winBonus = 2500 // much more for LAM
+            const germFactor = Math.min(1.5, 0.5 + s.germs.length / 10) // scale with more germs
+            s.finalScore = Math.max(0, Math.round((oxygenScore + winBonus + timeBonus) * 2.0 * germFactor))
+          } else {
+            const winBonus = 400 // much less for Manual
+            const germFactor = Math.max(0.5, 1 - (10 - s.germs.length) * 0.05) // fewer germs reduce multiplier
+            s.finalScore = Math.max(0, Math.round((oxygenScore + winBonus + timeBonus) * 0.7 * germFactor))
+          }
           setGameOverTrigger(prev => prev + 1)
         }
       }
@@ -935,8 +1079,8 @@ export default function WebGame() {
 
       // grid with textures
       const tex = texturesRef.current
-      for (let y=0;y<rows;y++) {
-        for (let x=0;x<cols;x++) {
+      for (let y=0;y<boardRows;y++) {
+        for (let x=0;x<boardCols;x++) {
           if (s.grid[y]?.[x] === 1) {
             if (tex.wall) ctx.drawImage(tex.wall, x*tile, y*tile)
           } else {
@@ -946,17 +1090,26 @@ export default function WebGame() {
         }
       }
 
-      // highlighted tiles (from LAM)
-      ctx.fillStyle = 'rgba(78,205,196,0.25)'
-      for (const k of s.highlight.keys()) { const [x,y] = k.split(',').map(Number); ctx.fillRect(x*tile, y*tile, tile, tile) }
+  // highlighted tiles (from LAM) — pulsing to draw attention
+  const pulse = (Math.sin(performance.now()/250)+1)/2 // 0..1
+  const hiAlpha = 0.18 + 0.18*pulse
+  ctx.fillStyle = `rgba(78,205,196,${hiAlpha.toFixed(3)})`
+  for (const k of s.highlight.keys()) { const [x,y] = k.split(',').map(Number); ctx.fillRect(x*tile, y*tile, tile, tile) }
 
-      // LAM path overlay - only show if LLM explicitly requested it
+      // LAM path overlay - only show if LLM explicitly requested it; sanitized to avoid crossing walls
       if (s.lam.showPath && s.lam.path && s.lam.path.length) {
         ctx.fillStyle = 'rgba(255,255,0,0.22)'
         for (const p of s.lam.path) ctx.fillRect(p.x*tile, p.y*tile, tile, tile)
         ctx.strokeStyle = 'rgba(255,255,0,0.9)'; ctx.lineWidth = 2
-        ctx.beginPath(); ctx.moveTo(s.lam.path[0].x*tile + tile/2, s.lam.path[0].y*tile + tile/2)
-        for (let i=1;i<s.lam.path.length;i++) ctx.lineTo(s.lam.path[i].x*tile + tile/2, s.lam.path[i].y*tile + tile/2)
+        ctx.beginPath();
+        for (let i=1;i<s.lam.path.length;i++) {
+          const a = s.lam.path[i-1], b = s.lam.path[i]
+          const manhattan = Math.abs(a.x-b.x) + Math.abs(a.y-b.y)
+          if (manhattan===1) {
+            ctx.moveTo(a.x*tile + tile/2, a.y*tile + tile/2)
+            ctx.lineTo(b.x*tile + tile/2, b.y*tile + tile/2)
+          }
+        }
         ctx.stroke()
       }
 
@@ -971,6 +1124,42 @@ export default function WebGame() {
 
       // player (RBC-like)
       drawPlayer(ctx, s, t)
+
+      // Effect-specific overlays/FX
+      const nowDraw = performance.now()
+      const speedActive = nowDraw < s.effects.speedBoostUntil
+      const freezeActive = nowDraw < s.effects.freezeGermsUntil
+      const slowActive = !freezeActive && nowDraw < s.effects.slowGermsUntil
+      // Speed: radial sweep ring around player
+      if (speedActive) {
+        const cx = s.player.x*tile + tile/2
+        const cy = s.player.y*tile + tile/2
+        const r1 = tile*0.9
+        const r2 = tile*1.2
+        const ang = (nowDraw/180)% (Math.PI*2)
+        ctx.save()
+        ctx.strokeStyle = 'rgba(255,220,120,0.6)'
+        ctx.lineWidth = 3
+        ctx.beginPath(); ctx.arc(cx, cy, r1, ang, ang+Math.PI*1.2); ctx.stroke()
+        ctx.strokeStyle = 'rgba(255,180,60,0.35)'
+        ctx.lineWidth = 6
+        ctx.beginPath(); ctx.arc(cx, cy, r2, ang+0.4, ang+Math.PI*1.6); ctx.stroke()
+        ctx.restore()
+      }
+      // Freeze: cool blue tint over the board
+      if (freezeActive) {
+        ctx.fillStyle = 'rgba(120,180,255,0.10)'
+        ctx.fillRect(0,0,width,height)
+      } else if (slowActive) {
+        // Slow: warm amber tint
+        ctx.fillStyle = 'rgba(255,210,120,0.06)'
+        ctx.fillRect(0,0,width,height)
+      }
+      // Reveal: subtle global brighten
+      if (s.revealMap) {
+        ctx.fillStyle = 'rgba(255,255,255,0.05)'
+        ctx.fillRect(0,0,width,height)
+      }
 
       // debris (after player so appears above floor but below HUD overlays)
       if (s.wallBreakParts.length) {
@@ -1011,9 +1200,33 @@ export default function WebGame() {
 
       // HUD (freeze after game over)
   const elapsed = s.started ? (s.gameOver && s.endTime ? (s.endTime - s.startTime)/1000 : (performance.now() - s.startTime)/1000) : 0
-  const score = s.started ? (s.gameOver && s.finalScore!=null ? s.finalScore : Math.round(s.oxygenCollected*100 - elapsed*5)) : 0
+  const liveBase = Math.round(s.oxygenCollected*100 - elapsed*5)
+  const liveMult = (gameMode==='lam') ? 2.0 : 0.5
+  const score = s.started ? (s.gameOver && s.finalScore!=null ? s.finalScore : Math.max(0, Math.round(liveBase * liveMult))) : 0
       ctx.fillStyle = '#fff'; ctx.font = '16px Inter, system-ui, sans-serif'
       ctx.fillText(`O₂: ${s.oxygenCollected}  Time: ${elapsed.toFixed(1)}s  Score: ${score}`, 10, 22)
+      // Active effects HUD badges
+      const effs: Array<{label:string;color:string;remaining:number}> = []
+      const rem = (until:number)=> Math.max(0, (until - performance.now())/1000)
+      const rSpeed = rem(s.effects.speedBoostUntil); if (rSpeed>0.05) effs.push({ label:`Speed ${rSpeed.toFixed(1)}s`, color:'#f59e0b', remaining:rSpeed })
+      const rFreeze = rem(s.effects.freezeGermsUntil); if (rFreeze>0.05) effs.push({ label:`Freeze ${rFreeze.toFixed(1)}s`, color:'#60a5fa', remaining:rFreeze })
+      const rSlow = rem(s.effects.slowGermsUntil); if (rSlow>0.05) effs.push({ label:`Slow ${rSlow.toFixed(1)}s`, color:'#fbbf24', remaining:rSlow })
+      if (s.revealMap) effs.push({ label:'Reveal', color:'#a3e635', remaining: 0 })
+      if (effs.length) {
+        let x = 10, y = 40
+        ctx.font = '12px Inter, system-ui, sans-serif'
+        for (const e of effs) {
+          const padX = 8, padY = 4
+          const w = ctx.measureText(e.label).width + padX*2
+          ctx.fillStyle = 'rgba(0,0,0,0.45)'
+          ctx.fillRect(x, y-12, w, 20)
+          ctx.strokeStyle = e.color; ctx.lineWidth = 1
+          ctx.strokeRect(x+0.5, y-11.5, w-1, 19)
+          ctx.fillStyle = e.color
+          ctx.fillText(e.label, x+padX, y+2)
+          x += w + 6
+        }
+      }
 
       // LAM Panel (toggle)
   // (In-canvas LAM panel removed)
@@ -1030,8 +1243,9 @@ export default function WebGame() {
         ctx.fillStyle = '#fff'; ctx.font = '20px Inter'
         const title = paused ? 'Paused' : 'Menu'
         ctx.fillText(title, width/2 - 40, height/2 - 40)
-        ctx.font = '14px Inter'
-        ctx.fillText('P: Pause/Resume   H: Toggle LAM   T: Auto   N: Mini-map   M: Menu', width/2 - 190, height/2 - 10)
+  ctx.font = '14px Inter'
+  const modeLine = `Mode: ${gameMode==='lam' ? 'LAM (LLM controls)' : 'Manual (You control)'}`
+  ctx.fillText(modeLine, width/2 - ctx.measureText(modeLine).width/2, height/2 - 10)
       }
 
       if (s.gameOver) {
@@ -1047,7 +1261,7 @@ export default function WebGame() {
         
         // Show game stats
         ctx.font = '16px Inter';
-        const statsText = `Oxygen: ${s.oxygenCollected} | Time: ${elapsed.toFixed(1)}s | Germs: ${germCount}`
+  const statsText = `Oxygen: ${s.oxygenCollected} | Time: ${elapsed.toFixed(1)}s | Germs: ${s.germs.length}`
         ctx.fillText(statsText, width/2 - ctx.measureText(statsText).width/2, height/2 + 10)
         
         // Show submission status
@@ -1075,7 +1289,7 @@ export default function WebGame() {
 
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [autoPilot, cols, rows, germCount, publishState, width, height, paused, showMiniMap])
+  }, [gameMode, boardCols, boardRows, germCount, publishState, width, height, paused, showMiniMap])
 
   // UI styles
   const containerStyle = useMemo(() => ({ maxWidth: '1200px', margin: '0 auto', padding: '20px' }), [])
@@ -1190,13 +1404,14 @@ export default function WebGame() {
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 6 }}>Germs</label>
-              <input type="number" min={1} max={20} value={germCount} onChange={(e)=>setGermCount(parseInt(e.target.value||'5'))} style={{ width:'100%', padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }} />
+              <input type="number" min={0} max={20} value={germCount} onChange={(e)=>setGermCount(parseInt(e.target.value||'0'))} style={{ width:'100%', padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }} />
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 6 }}>Mode</label>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <input type="checkbox" checked={autoPilot} onChange={(e)=>setAutoPilot(e.target.checked)} />
-                <span>Auto (follows LAM path or BFS) — press T to toggle</span>
+                <div style={{ padding: '6px 10px', borderRadius: 20, border:'1px solid rgba(255,255,255,0.3)', background: 'rgba(0,0,0,0.25)' }}>
+                  { (showTemplatePicker ? selectedMode : gameMode) === 'lam' ? 'LAM Mode (no user control)' : 'Manual Mode (user control + LAM hints)'}
+                </div>
               </div>
             </div>
             <div>
@@ -1231,7 +1446,87 @@ export default function WebGame() {
             <button onClick={()=>navigate('/dashboard')} style={{ background: currentTheme.exitButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Exit to Dashboard</button>
             <span style={{ opacity:.85, flexShrink: 0 }}>{status}</span>
           </div>
-          <div style={{ marginTop: 6, opacity: .8 }}>Controls: Arrow keys / WASD. T to toggle autopilot. Hints come from LAM via MQTT. Walls may break.</div>
+          <div style={{ marginTop: 6, opacity: .8 }}>Controls: Arrow keys / WASD in Manual mode only. LAM Mode ignores user input. Hints come from LAM via MQTT. Walls may break.</div>
+
+          {/* Start Game Modal (two-step: Mode -> Template) */}
+          {showTemplatePicker && (
+            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 }}>
+              <div style={{ background:'linear-gradient(165deg, #1f2937, #0f172a)', color:'#fff', borderRadius:16, padding:20, width: 'min(92vw, 620px)', boxShadow:'0 20px 60px rgba(0,0,0,.45)', border:'1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <h3 style={{ margin:0, fontSize:18, letterSpacing:.3 }}>Start Game</h3>
+                  <div style={{ fontSize:12, opacity:.8 }}>Step {startStep==='mode'? '1':'2'} of 2</div>
+                </div>
+                {startStep === 'mode' ? (
+                  <div>
+                    <div style={{ fontWeight:600, marginBottom:8, opacity:.9 }}>Choose Mode</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12 }}>
+                      <div onClick={()=>setSelectedMode('manual')} role="button" aria-label="Manual Mode" style={{ cursor:'pointer', border:'1px solid '+(selectedMode==='manual'?'#22c55e66':'rgba(255,255,255,0.12)'), borderRadius:12, padding:12, background: selectedMode==='manual'? 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05))':'rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontWeight:700, marginBottom:4 }}>Manual Mode</div>
+                        <div style={{ fontSize:13, opacity:.8 }}>You move with WASD/Arrows. LAM gives hints and can take actions.</div>
+                      </div>
+                      <div onClick={()=>setSelectedMode('lam')} role="button" aria-label="LAM Mode" style={{ cursor:'pointer', border:'1px solid '+(selectedMode==='lam'?'#f59e0b66':'rgba(255,255,255,0.12)'), borderRadius:12, padding:12, background: selectedMode==='lam'? 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.06))':'rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontWeight:700, marginBottom:4 }}>LAM Mode</div>
+                        <div style={{ fontSize:13, opacity:.8 }}>LLM controls movement (user input disabled). Higher scoring on win.</div>
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:16 }}>
+                      <button onClick={()=>{ setShowTemplatePicker(false) }} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Cancel</button>
+                      <button onClick={()=>setStartStep('template')} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:700 }}>Next</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <div style={{ fontSize:12, opacity:.8 }}>Mode: <strong>{selectedMode==='lam'? 'LAM (LLM controls)': 'Manual (You control)'}</strong></div>
+                    </div>
+                    <div style={{ maxHeight:320, overflowY:'auto', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10 }}>
+                      {templates.length === 0 ? (
+                        <div style={{ padding:16, opacity:.8 }}>No templates found. Please create one first.</div>
+                      ) : (
+                        <ul style={{ listStyle:'none', margin:0, padding:0 }}>
+                          {templates.map(t => (
+                            <li key={t.id} onClick={()=>setSelectedTemplateId(t.id)} style={{ padding:'10px 12px', borderBottom:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', background: selectedTemplateId===t.id? 'rgba(255,255,255,0.06)':'transparent' }}>
+                              <input type="radio" name="tpl" checked={selectedTemplateId===t.id} onChange={()=>setSelectedTemplateId(t.id)} />
+                              <div>
+                                <div style={{ fontWeight:700 }}>{t.title}</div>
+                                {t.description && <div style={{ opacity:.7, fontSize:'.9rem' }}>{t.description}</div>}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:10, marginTop:14 }}>
+                      <div>
+                        <button onClick={()=>setStartStep('mode')} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Back</button>
+                      </div>
+                      <div style={{ display:'flex', gap:10 }}>
+                        <button onClick={()=>{ setShowTemplatePicker(false) }} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Cancel</button>
+            <button
+                          disabled={!selectedTemplateId}
+                          onClick={()=>{
+                            if (!selectedTemplateId) return
+                            setTemplateId(selectedTemplateId)
+              // Reflect chosen mode immediately in UI and gating
+              setGameMode(selectedMode)
+                            setShowTemplatePicker(false)
+                            publishSelectedTemplate(selectedTemplateId).finally(() => {
+                              const targetCols = (selectedMode === 'lam') ? 10 : 33
+                              const targetRows = (selectedMode === 'lam') ? 10 : 21
+                              doStartGame(targetCols, targetRows)
+                            })
+                          }}
+                          style={{ background:'linear-gradient(45deg,#4ecdc4,#44a08d)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:700 }}
+                        >
+                          Publish & Start
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Canvas with glow and border */}
@@ -1269,12 +1564,12 @@ export default function WebGame() {
           {isMobile && (
             <div style={{ position:'absolute', left:4, bottom:4, right:4, display:'flex', justifyContent:'space-between', gap:12, pointerEvents:'none', opacity: mobileControlsOpacity }}>
               {/* D-Pad */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,56px)', gridTemplateRows:'repeat(3,56px)', gap:4, opacity:0.95, pointerEvents:'auto' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,56px)', gridTemplateRows:'repeat(3,56px)', gap:4, opacity: gameMode==='lam'? 0.4:0.95, pointerEvents: gameMode==='lam'? 'none':'auto' }}>
                 <div></div>
                 <button aria-label="Move Up" onPointerDown={()=>pressDir('up')} onPointerUp={()=>releaseDir('up')} onPointerLeave={()=>releaseDir('up')} style={mobileBtnStyle()}>▲</button>
                 <div></div>
                 <button aria-label="Move Left" onPointerDown={()=>pressDir('left')} onPointerUp={()=>releaseDir('left')} onPointerLeave={()=>releaseDir('left')} style={mobileBtnStyle()}>◀</button>
-                <button aria-label="Auto Pilot" onClick={()=>setAutoPilot(a=>!a)} style={mobileCenterBtnStyle(autoPilot)}>{autoPilot? 'AUTO':'MAN'}</button>
+                <div style={mobileCenterBtnStyle(false)}>{gameMode==='lam'? 'LAM':'MAN'}</div>
                 <button aria-label="Move Right" onPointerDown={()=>pressDir('right')} onPointerUp={()=>releaseDir('right')} onPointerLeave={()=>releaseDir('right')} style={mobileBtnStyle()}>▶</button>
                 <div></div>
                 <button aria-label="Move Down" onPointerDown={()=>pressDir('down')} onPointerUp={()=>releaseDir('down')} onPointerLeave={()=>releaseDir('down')} style={mobileBtnStyle()}>▼</button>
@@ -1343,7 +1638,7 @@ export default function WebGame() {
             <section>
               <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
                 <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Breaks</span>: {lamData.breaks}</div>
-                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Autopilot</span>: {autoPilot? 'On':'Off'}</div>
+                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Mode</span>: {gameMode==='lam'? 'LAM':'Manual'}</div>
                 <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Updated</span>: {lamData.updatedAt? `${((Date.now()-lamData.updatedAt)/1000).toFixed(1)}s ago`:'—'}</div>
               </div>
             </section>

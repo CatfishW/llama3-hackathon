@@ -96,7 +96,17 @@ export const settingsAPI = {
 // Leaderboard API
 export const leaderboardAPI = {
   submitScore: (data: any) => api.post('/api/leaderboard/submit', data),
-  getLeaderboard: (limit: number = 20) => api.get(`/api/leaderboard/?limit=${limit}`)
+  getLeaderboard: async (limit: number = 20, skip: number = 0, mode?: 'lam'|'manual') => {
+    const q = new URLSearchParams({ limit: String(limit), skip: String(skip) })
+    if (mode) q.set('mode', mode)
+    const res = await api.get(`/api/leaderboard/?${q.toString()}`)
+    const total = Number(res.headers['x-total-count'] ?? '0')
+    return { data: res.data, total }
+  },
+  getStats: async () => {
+    const res = await api.get('/api/leaderboard/stats')
+    return res.data as { participants: number; registered_users: number }
+  }
 }
 
 // Templates API
