@@ -292,13 +292,25 @@ class MazeSessionManager:
                 if field not in state:
                     raise ValueError(f"Missing required state field: {field}")
             
+            germs = state.get("germs")
+            oxygen = state.get("oxygenPellets")
+            def to_xy_list(objs):
+                out = []
+                for it in (objs or []):
+                    if isinstance(it, dict) and "x" in it and "y" in it:
+                        out.append([int(it["x"]), int(it["y"])])
+                    elif isinstance(it, (list, tuple)) and len(it) == 2:
+                        out.append([int(it[0]), int(it[1])])
+                return out
             user_msg = {
                 "role": "user",
                 "content": json.dumps({
                     "player_pos":      state["player_pos"],
                     "exit_pos":        state["exit_pos"],
                     "visible_map":     state["visible_map"],
-                    "breaks_remaining": breaks_remain
+                    "breaks_remaining": breaks_remain,
+                    "germs":            to_xy_list(germs),
+                    "oxygen":           to_xy_list(oxygen),
                 }, ensure_ascii=False)  # Ensure proper JSON encoding
             }
             
@@ -433,6 +445,47 @@ class MazeSessionManager:
                 logging.error(f"[Session {session_id}] Failed to compute fallback path: {e}")
                 guidance.setdefault("error", f"No valid path and fallback failed: {e}")
                 guidance.setdefault("path", [])
+        # Augment guidance with safe visuals and timed effects so the client can render more actions
+        try:
+            # Default to showing the path overlay
+            guidance.setdefault("show_path", True)
+
+            # Highlight near-term path cells (skip player cell)
+            if isinstance(guidance.get("path"), list) and guidance["path"] and "highlight_zone" not in guidance:
+                ppos = tuple(state.get("player_pos", ()))
+                steps = []
+                for p in guidance["path"][:12]:
+                    if isinstance(p, (list, tuple)) and len(p)==2 and tuple(p) != ppos:
+                        steps.append([int(p[0]), int(p[1])])
+                if steps:
+                    guidance["highlight_zone"] = steps
+                    guidance.setdefault("highlight_ms", 5000)
+
+            # Heuristic timed effects depending on germs proximity and path length
+            px, py = state.get("player_pos", (0,0))
+            germs = state.get("germs") or []
+            gpos = []
+            for g in germs:
+                if isinstance(g, dict) and "x" in g and "y" in g:
+                    gpos.append((int(g["x"]), int(g["y"])) )
+                elif isinstance(g, (list, tuple)) and len(g)==2:
+                    gpos.append((int(g[0]), int(g[1])))
+            def manhattan(a,b):
+                return abs(a[0]-b[0]) + abs(a[1]-b[1])
+            near2 = any(manhattan((px,py), gp) <= 2 for gp in gpos)
+            near3 = any(manhattan((px,py), gp) <= 3 for gp in gpos)
+            plen = len(guidance.get("path") or [])
+
+            if "freeze_germs_ms" not in guidance and near2:
+                guidance["freeze_germs_ms"] = 2000
+            elif "slow_germs_ms" not in guidance and near3:
+                guidance["slow_germs_ms"] = 2500
+
+            if "speed_boost_ms" not in guidance and plen >= 20:
+                guidance["speed_boost_ms"] = 1500
+        except Exception as e:
+            logging.debug(f"[Session {session_id}] Augmentation skipped: {e}")
+
         return guidance
 
     def _is_valid_path(self, path):
@@ -653,7 +706,7 @@ def main(
     # - "break_wall": a single [x,y] coordinate where a wall should be broken (use sparingly)
     # Return **only** valid JSON.
     # """
-    SYSTEM_PROMPT = ""
+    SYSTEM_PROMPT = ''
 
     # 3) Create session manager
     session_manager = MazeSessionManager(model, SYSTEM_PROMPT, max_seq_len, max_breaks)

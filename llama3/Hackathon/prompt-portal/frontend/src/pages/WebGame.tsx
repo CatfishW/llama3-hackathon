@@ -113,6 +113,10 @@ export default function WebGame() {
     fxPopups: [] as Array<{x:number;y:number;text:string;t0:number;ttl:number}>,
     hitFlash: 0,
     particles: [] as Array<{x:number;y:number;r:number;spd:number;alpha:number}>,
+  // Additional FX systems
+  fxSparkles: [] as Array<{x:number;y:number;vx:number;vy:number;life:number;ttl:number;color:string;r:number}>,
+  fxRings: [] as Array<{x:number;y:number;r0:number;r1:number;life:number;ttl:number;color:string;line:number}>,
+  fxBursts: [] as Array<{x:number;y:number;ang:number;spd:number;life:number;ttl:number;color:string}>,
     germStepFlip: false,
   emotion: 'neutral' as 'neutral'|'happy'|'scared'|'tired'|'excited',
   // New wall break FX
@@ -394,6 +398,111 @@ export default function WebGame() {
       }
     }
 
+  // ----- FX helpers -----
+  function addPopup(x:number, y:number, text:string, ttl=900){
+    const s = stateRef.current
+    s.fxPopups.push({ x, y, text, t0: performance.now(), ttl })
+  }
+  function addRing(x:number, y:number, r0:number, r1:number, color:string, ttl=600, line=3){
+    const s = stateRef.current
+    s.fxRings.push({ x: x*tile + tile/2, y: y*tile + tile/2, r0, r1, life:0, ttl, color, line })
+  }
+  function addSparkle(x:number, y:number, color='#8df6ff', count=10){
+    const s = stateRef.current
+    const cx = x*tile + tile/2, cy = y*tile + tile/2
+    for (let i=0;i<count;i++){
+      const ang = Math.random()*Math.PI*2
+      const spd = 0.6 + Math.random()*1.6
+      s.fxSparkles.push({ x:cx, y:cy, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-0.2, life:0, ttl:600+Math.random()*500, color, r:1+Math.random()*2 })
+    }
+  }
+  function addBurst(x:number, y:number, color:string, count=14){
+    const s = stateRef.current
+    const cx = x*tile + tile/2, cy = y*tile + tile/2
+    for (let i=0;i<count;i++){
+      const ang = Math.random()*Math.PI*2
+      const spd = 1 + Math.random()*2.5
+      s.fxBursts.push({ x:cx, y:cy, ang, spd, life:0, ttl:500+Math.random()*500, color })
+    }
+  }
+
+  // ----- Flow helper -----
+  function noteApplied(action:string, detail?:any){
+    if (pendingFlowRef.current){ pendingFlowRef.current.actionsApplied.push({ action, at: performance.now(), detail }); setLamFlow(f=>[...f]) }
+  }
+
+  // ----- Action handlers -----
+  function applySpeedBoost(ms:number){
+    const s = stateRef.current
+    const now = performance.now()
+    const dur = Math.max(300, ms||1500)
+    s.effects.speedBoostUntil = Math.max(s.effects.speedBoostUntil, now + dur)
+    addRing(s.player.x, s.player.y, tile*0.6, tile*1.6, 'rgba(255,200,80,0.8)', 700, 4)
+    addPopup(s.player.x, s.player.y, 'Speed!', 700)
+    noteApplied('speed_boost', { ms:dur })
+  }
+  function applySlowGerms(ms:number){
+    const s = stateRef.current
+    const now = performance.now()
+    const dur = Math.max(500, ms||3000)
+    s.effects.slowGermsUntil = Math.max(s.effects.slowGermsUntil, now + dur)
+    addRing(s.player.x, s.player.y, tile*0.4, tile*1.4, 'rgba(255,190,90,0.7)', 800, 3)
+    addPopup(s.player.x, s.player.y, 'Slow Germs', 900)
+    noteApplied('slow_germs', { ms:dur })
+  }
+  function applyFreezeGerms(ms:number){
+    const s = stateRef.current
+    const now = performance.now()
+    const dur = Math.max(800, ms||3500)
+    s.effects.freezeGermsUntil = Math.max(s.effects.freezeGermsUntil, now + dur)
+    // Ice sparkles on each germ
+    for (const g of s.germs) addSparkle(g.pos.x, g.pos.y, '#a7d8ff', 10)
+    addRing(s.player.x, s.player.y, tile*0.6, tile*1.8, 'rgba(140,200,255,0.8)', 900, 4)
+    addPopup(s.player.x, s.player.y, 'Freeze!', 900)
+    noteApplied('freeze_germs', { ms:dur })
+  }
+  function teleportPlayer(x:number, y:number){
+    const s = stateRef.current
+  if (s.grid[y]?.[x] !== 0) return
+    // origin ring
+    addRing(s.player.x, s.player.y, tile*0.2, tile*1.2, 'rgba(160,120,255,0.9)', 500, 3)
+    addBurst(s.player.x, s.player.y, 'rgba(160,120,255,0.6)', 12)
+    s.player = { x, y }
+    // destination ring
+    addRing(x, y, tile*0.2, tile*1.4, 'rgba(160,120,255,0.9)', 700, 3)
+    addBurst(x, y, 'rgba(160,120,255,0.6)', 16)
+    stateRef.current.highlight.set(key(x,y), performance.now()+2000)
+    addPopup(x, y, 'Teleport', 800)
+    noteApplied('teleport_player', { x, y })
+  }
+  function spawnOxygen(list: Array<[number,number]|{x:number;y:number}>){
+    const s = stateRef.current
+    for (const it of list){
+      const x = Array.isArray(it)? it[0] : (it as any).x
+      const y = Array.isArray(it)? it[1] : (it as any).y
+      if (s.grid[y]?.[x]===0 && !s.oxy.find(o=>o.x===x&&o.y===y)){
+        s.oxy.push({ x, y })
+        addSparkle(x, y, '#8df6ff', 14)
+        addRing(x, y, tile*0.2, tile*1.2, 'rgba(78,240,255,0.8)', 700, 2)
+      }
+    }
+    noteApplied('spawn_oxygen', { count:list.length })
+  }
+  function moveExitTo(x:number, y:number){
+    const s = stateRef.current
+    if (s.grid[y]?.[x]===0){
+      s.exit = { x, y }
+      addRing(x, y, tile*0.3, tile*1.5, 'rgba(190,190,255,0.7)', 800, 3)
+      noteApplied('move_exit', { x, y })
+    }
+  }
+  function highlightZone(cells: Array<[number,number]>, ms=5000){
+    const s = stateRef.current
+    const until = performance.now() + ms
+    for (const [hx,hy] of cells) s.highlight.set(key(hx,hy), until)
+    noteApplied('highlight_zone', { cells: cells.length, ms })
+  }
+
   function drawPlayer(ctx: CanvasRenderingContext2D, s: any, t: number) {
     const cx = s.player.x*tile + tile/2
     const cy = s.player.y*tile + tile/2
@@ -599,24 +708,36 @@ export default function WebGame() {
         }
         // New actions
         const now = performance.now()
-        if (hint.speed_boost_ms) s.effects.speedBoostUntil = Math.max(s.effects.speedBoostUntil, now + hint.speed_boost_ms)
-        if (hint.slow_germs_ms) s.effects.slowGermsUntil = Math.max(s.effects.slowGermsUntil, now + hint.slow_germs_ms)
-        if (hint.freeze_germs_ms) s.effects.freezeGermsUntil = Math.max(s.effects.freezeGermsUntil, now + hint.freeze_germs_ms)
-  // toggle_autopilot deprecated: ignored
-        if (hint.reveal_map!==undefined) s.revealMap = Boolean(hint.reveal_map)
-        if (hint.move_exit && hint.move_exit.length===2) {
-          const [ex,ey] = hint.move_exit; if (s.grid[ey]?.[ex]===0) s.exit = {x:ex,y:ey}
-        }
-        if (hint.teleport_player && hint.teleport_player.length===2) {
-          const [tx,ty] = hint.teleport_player; if (s.grid[ty]?.[tx]===0) s.player = {x:tx,y:ty}
-        }
-        if (Array.isArray(hint.spawn_oxygen)) {
-          for (const item of hint.spawn_oxygen) {
-            const x = Array.isArray(item)? item[0] : (item as any).x
-            const y = Array.isArray(item)? item[1] : (item as any).y
-            if (s.grid[y]?.[x]===0 && !s.oxy.find(o=>o.x===x&&o.y===y)) s.oxy.push({x,y})
+        // Back-compat durations: accept *_ms, *_seconds, or boolean true -> default
+        const msFrom = (obj:any, keys:string[], def:number)=>{
+          for (const k of keys){
+            const v = obj[k]
+            if (typeof v === 'number' && isFinite(v)){
+              // if seconds variant
+              if (k.endsWith('seconds') || k.endsWith('second') || k.endsWith('_sec')) return Math.round(v*1000)
+              return Math.round(v)
+            }
+            if (v === true) return def
           }
+          return 0
         }
+        const spdMs = msFrom(hint, ['speed_boost_ms','speed_ms','speedBoostMs','speed_boost','speed'], 1500)
+        if (spdMs>0) applySpeedBoost(spdMs)
+        const slowMs = msFrom(hint, ['slow_germs_ms','slow_ms','slowGermsMs','slow_germs'], 3000)
+        if (slowMs>0) applySlowGerms(slowMs)
+        const frzMs = msFrom(hint, ['freeze_germs_ms','freeze_ms','freezeGermsMs','freeze_germs','freeze'], 3500)
+        if (frzMs>0) applyFreezeGerms(frzMs)
+  // toggle_autopilot deprecated: ignored
+        if (hint.reveal_map!==undefined) { s.revealMap = Boolean(hint.reveal_map); if (s.revealMap) addPopup(s.player.x, s.player.y, 'Reveal', 800); noteApplied('reveal_map', { value: s.revealMap }) }
+  const tp = (hint as any).teleport_player || (hint as any).teleport || (hint as any).tp || (hint as any).teleport_to
+  if (Array.isArray(tp) && tp.length===2) teleportPlayer(tp[0], tp[1])
+  else if (tp && typeof tp==='object' && Number.isFinite(tp.x) && Number.isFinite(tp.y)) teleportPlayer(tp.x, tp.y)
+  const mx = (hint as any).move_exit || (hint as any).moveExit || (hint as any).exit
+  if (Array.isArray(mx) && mx.length===2) moveExitTo(mx[0], mx[1])
+  else if (mx && typeof mx==='object' && Number.isFinite(mx.x) && Number.isFinite(mx.y)) moveExitTo(mx.x, mx.y)
+  let oxyItems:any = (hint as any).spawn_oxygen || (hint as any).spawnOxygen || (hint as any).oxygen
+  if (oxyItems && !Array.isArray(oxyItems)) oxyItems = [oxyItems]
+  if (Array.isArray(oxyItems) && oxyItems.length>0) spawnOxygen(oxyItems as any)
         if (Array.isArray(hint.break_walls)) {
           for (const item of hint.break_walls as any[]) {
             const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
@@ -624,10 +745,8 @@ export default function WebGame() {
             if (bx!=null && by!=null) breakWall(bx, by)
           }
         }
-        if (Array.isArray(hint.highlight_zone)) {
-          const until = now + (hint.highlight_ms ?? 5000)
-          for (const [hx,hy] of hint.highlight_zone) s.highlight.set(key(hx,hy), until)
-        }
+  const hz = (hint as any).highlight_zone || (hint as any).highlightZone || (hint as any).highlight
+  if (Array.isArray(hz)) highlightZone(hz, (hint as any).highlight_ms ?? (hint as any).highlightMs ?? 5000)
       } catch {}
     }
     wsRef.current = ws
@@ -761,6 +880,9 @@ export default function WebGame() {
       fxPopups: [],
       hitFlash: 0,
   particles: Array.from({length: 80}, ()=>({ x: Math.random()*(cols*tile), y: Math.random()*(rows*tile), r: 6+Math.random()*18, spd: 0.3+Math.random()*0.8, alpha: 0.06+Math.random()*0.12 })),
+  fxSparkles: [],
+  fxRings: [],
+  fxBursts: [],
       germStepFlip: false,
   emotion: 'neutral',
   wallBreakParts: [],
@@ -1044,6 +1166,34 @@ export default function WebGame() {
           return p.life < p.ttl
         })
       }
+      // update sparkles
+      if (s.fxSparkles.length){
+        s.fxSparkles = s.fxSparkles.filter(sp => {
+          sp.life += stepMs
+          sp.x += sp.vx
+          sp.y += sp.vy
+          sp.vy += 0.02
+          return sp.life < sp.ttl
+        })
+      }
+      // update rings
+      if (s.fxRings.length){
+        s.fxRings = s.fxRings.filter(r => {
+          r.life += stepMs
+          return r.life < r.ttl
+        })
+      }
+      // update bursts
+      if (s.fxBursts.length){
+        s.fxBursts = s.fxBursts.filter(b => {
+          b.life += stepMs
+          const spd = b.spd * (1 - 0.002*stepMs)
+          b.spd = Math.max(0, spd)
+          b.x += Math.cos(b.ang) * b.spd
+          b.y += Math.sin(b.ang) * b.spd
+          return b.life < b.ttl
+        })
+      }
       // update falling texts
       if ((s as any).fallTexts?.length) {
         ;(s as any).fallTexts = (s as any).fallTexts.filter((ft:any)=>{
@@ -1170,6 +1320,42 @@ export default function WebGame() {
           ctx.globalAlpha = alpha
           ctx.fillStyle = '#5a1f1f'
           ctx.beginPath(); ctx.arc(p.x, p.y, pr, 0, Math.PI*2); ctx.fill()
+          ctx.globalAlpha = 1
+        }
+      }
+      // FX: sparkles
+      if (s.fxSparkles.length){
+        for (const sp of s.fxSparkles){
+          const a = 1 - (sp.life / sp.ttl)
+          ctx.globalAlpha = Math.max(0, a)
+          ctx.fillStyle = sp.color
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI*2); ctx.fill()
+          ctx.globalAlpha = 1
+        }
+      }
+      // FX: rings
+      if (s.fxRings.length){
+        for (const r of s.fxRings){
+          const ratio = r.life / r.ttl
+          const rad = r.r0 + (r.r1 - r.r0) * ratio
+          const alpha = 1 - ratio
+          ctx.globalAlpha = Math.max(0, alpha)
+          ctx.strokeStyle = r.color
+          ctx.lineWidth = r.line
+          ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, Math.PI*2); ctx.stroke()
+          ctx.globalAlpha = 1
+        }
+      }
+      // FX: bursts (short dashes)
+      if (s.fxBursts.length){
+        ctx.lineWidth = 2
+        for (const b of s.fxBursts){
+          const a = 1 - (b.life / b.ttl)
+          ctx.globalAlpha = Math.max(0, a)
+          ctx.strokeStyle = b.color
+          const lx = b.x - Math.cos(b.ang)*3
+          const ly = b.y - Math.sin(b.ang)*3
+          ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(b.x, b.y); ctx.stroke()
           ctx.globalAlpha = 1
         }
       }
