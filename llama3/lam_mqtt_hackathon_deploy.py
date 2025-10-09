@@ -676,7 +676,8 @@ class MazeSessionManager:
 
         logging.warning(f"[Session {session_id}] Falling back to computed path (parse failed)")
         fallback = {"hint": raw[:160] + ("…" if len(raw) > 160 else "")}
-        return self._finalize_guidance(fallback, state, breaks_remain, session_id, source="fallback")
+        #return self._finalize_guidance(fallback, state, breaks_remain, session_id, source="fallback")
+        return fallback
 
     def _extract_first_json_object(self, text: str):
         """Extract the first top-level JSON object substring by balancing braces."""
