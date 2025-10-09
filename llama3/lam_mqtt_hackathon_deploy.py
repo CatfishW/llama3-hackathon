@@ -477,12 +477,11 @@ DELETE_SESSION_TOPIC = "maze/delete_session"
 # ─── Session & Prompt Management ────────────────────────────────────────────────
 
 class MazeSessionManager:
-    def __init__(self, model, system_prompt, max_seq_len, max_breaks, enable_navigation=False):
+    def __init__(self, model, system_prompt, max_seq_len, max_breaks):
         self.model         = model
         self.system_prompt = system_prompt
         self.max_seq_len   = max_seq_len
         self.max_breaks    = max_breaks
-        self.enable_navigation = enable_navigation  # Enable/disable navigation features
 
         # Track per-session dialog history and breaks remaining
         self.dialogs       = {}  # session_id -> [messages...]
@@ -502,82 +501,52 @@ class MazeSessionManager:
                 logging.info(f"[Session] Created new session '{session_id}' with {self.max_breaks} breaks")
         return self.dialogs[session_id], self.breaks_left[session_id], self.locks[session_id]
 
-    def _is_casual_message(self, content):
-        """Detect if a message is casual conversation vs. action/navigation request."""
-        if isinstance(content, dict):
-            # If it's already structured data (like game state), it's not casual
-            return False
-        
-        text = str(content).strip().lower()
-        
-        # Very short messages are likely casual
-        if len(text) < 50 and not any(keyword in text for keyword in ["path", "move", "go", "navigate", "break", "wall", "exit", "help me", "guide"]):
-            return True
-        
-        # Common casual greetings and phrases
-        casual_patterns = [
-            "hi", "hello", "hey", "thanks", "thank you", "ok", "okay", "cool", 
-            "nice", "good", "great", "bye", "goodbye", "how are you", "what's up",
-            "sup", "yo", "greetings"
-        ]
-        
-        return any(text.startswith(pattern) or text == pattern for pattern in casual_patterns)
-
     def process_state(self, state):
         """
-        Given a state dict (or simple message), produce guidance or response.
-        Handles both structured navigation requests and casual conversation.
+        Given a state dict from the game, produce guidance JSON.
         """
         session_id = state.get("sessionId", "default")
         dialog, breaks_remain, lock = self.get_or_create(session_id)
 
-        # Check if this is a simple text message or structured state
-        is_structured_state = all(field in state for field in ["player_pos", "exit_pos", "visible_map"])
-        
-        # Build the user message
+        # Build the user message describing the current state
         try:
-            if is_structured_state:
-                # Structured navigation state
-                germs = state.get("germs")
-                oxygen = state.get("oxygenPellets")
-                def to_xy_list(objs):
-                    out = []
-                    for it in (objs or []):
-                        if isinstance(it, dict) and "x" in it and "y" in it:
-                            out.append([int(it["x"]), int(it["y"])])
-                        elif isinstance(it, (list, tuple)) and len(it) == 2:
-                            out.append([int(it[0]), int(it[1])])
-                    return out
-                user_msg = {
-                    "role": "user",
-                    "content": json.dumps({
-                        "player_pos":      state["player_pos"],
-                        "exit_pos":        state["exit_pos"],
-                        "visible_map":     state["visible_map"],
-                        "breaks_remaining": breaks_remain,
-                        "germs":            to_xy_list(germs),
-                        "oxygen":           to_xy_list(oxygen),
-                    }, ensure_ascii=False)
-                }
-                is_navigation_request = True
-            else:
-                # Simple message (could be from "message" field or direct text)
-                message_text = state.get("message") or state.get("text") or state.get("content") or str(state)
-                user_msg = {
-                    "role": "user",
-                    "content": message_text
-                }
-                is_navigation_request = not self._is_casual_message(message_text)
+            # Validate state data before creating user message
+            required_state_fields = ["player_pos", "exit_pos", "visible_map"]
+            for field in required_state_fields:
+                if field not in state:
+                    raise ValueError(f"Missing required state field: {field}")
             
-            logging.debug(f"[Session {session_id}] Message type: {'navigation' if is_navigation_request else 'casual'}")
+            germs = state.get("germs")
+            oxygen = state.get("oxygenPellets")
+            def to_xy_list(objs):
+                out = []
+                for it in (objs or []):
+                    if isinstance(it, dict) and "x" in it and "y" in it:
+                        out.append([int(it["x"]), int(it["y"])])
+                    elif isinstance(it, (list, tuple)) and len(it) == 2:
+                        out.append([int(it[0]), int(it[1])])
+                return out
+            user_msg = {
+                "role": "user",
+                "content": json.dumps({
+                    "player_pos":      state["player_pos"],
+                    "exit_pos":        state["exit_pos"],
+                    "visible_map":     state["visible_map"],
+                    "breaks_remaining": breaks_remain,
+                    "germs":            to_xy_list(germs),
+                    "oxygen":           to_xy_list(oxygen),
+                }, ensure_ascii=False)  # Ensure proper JSON encoding
+            }
+            
+            logging.debug(f"[Session {session_id}] Created user message with content length: {len(user_msg['content'])}")
             
         except Exception as e:
             logging.error(f"[Session {session_id}] Error creating user message: {e}")
+            # Create a fallback message
             user_msg = {
                 "role": "user", 
-                "content": str(state)
+                "content": json.dumps({"error": "Invalid state data", "breaks_remaining": breaks_remain})
             }
-            is_navigation_request = False
 
         with lock:
             # Append to dialog
@@ -623,15 +592,6 @@ class MazeSessionManager:
             # Append assistant response and parse into guidance JSON
             dialog.append({"role": "assistant", "content": response_text})
 
-            # For casual messages or when navigation is disabled, return simple response
-            if not is_navigation_request or not self.enable_navigation:
-                guidance = {
-                    "response": response_text,
-                    "breaks_remaining": breaks_remain
-                }
-                return session_id, guidance
-
-            # For navigation requests, parse and augment with navigation data
             guidance = self._robust_parse_guidance(response_text, state, breaks_remain, session_id)
 
             # Enforce break limits
@@ -696,16 +656,7 @@ class MazeSessionManager:
         return None
 
     def _finalize_guidance(self, guidance: dict, state: dict, breaks_remain: int, session_id: str, source: str):
-        """Ensure mandatory fields (path) exist; compute if absent or invalid.
-        Only applies navigation augmentation if state contains navigation data."""
-        
-        # Check if state has navigation data
-        has_nav_data = isinstance(state, dict) and all(k in state for k in ["player_pos", "exit_pos", "visible_map"])
-        
-        if not has_nav_data:
-            # No navigation data, return guidance as-is
-            return guidance
-        
+        """Ensure mandatory fields (path) exist; compute if absent or invalid."""
         path = guidance.get("path")
         if not self._is_valid_path(path):
             try:
@@ -719,7 +670,6 @@ class MazeSessionManager:
                 logging.error(f"[Session {session_id}] Failed to compute fallback path: {e}")
                 guidance.setdefault("error", f"No valid path and fallback failed: {e}")
                 guidance.setdefault("path", [])
-        
         # Augment guidance with safe visuals and timed effects so the client can render more actions
         try:
             # Default to showing the path overlay
@@ -985,19 +935,14 @@ def main(
     mqtt_username: str = None,
     mqtt_password: str = None,
     hf_model: str = "microsoft/phi-1_5",
-    device: str = None,
-    enable_navigation: bool = False,
-    system_prompt: str = None
+    device: str = None
 ):
-    """Deploy a flexible LAM that can handle both navigation tasks and casual conversation.
+    """Deploy a hackathon‐style LAM that guides maze players via hints, paths, and wall‐breaks.
 
     model_type options:
     - llama: use local Llama weights via llama.cpp bindings in this repo
     - phi:   use Hugging Face Transformers causal LM (default microsoft/phi-1_5)
     - qwq:   placeholder
-    
-    enable_navigation: if True, enable navigation-specific features (path computation, etc.)
-    system_prompt: custom system prompt (if None, uses a default generic one)
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -1026,8 +971,8 @@ def main(
     # Test the model with a simple dialog to ensure it's working
     try:
         test_dialog = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Say hello."}
+            {"role": "system", "content": "You are a helpful assistant. Only output JSON with keys path and/or hint when relevant."},
+            {"role": "user", "content": "Respond with {\"message\": \"Hello\"}."}
         ]
         logging.info("Testing model with a simple dialog...")
         test_response = model.generate_response(test_dialog, max_gen_len=50, temperature=0.1, top_p=0.9)
@@ -1036,19 +981,21 @@ def main(
         logging.error(f"Model test failed: {e}")
         raise RuntimeError(f"Model test failed, cannot proceed: {e}")
 
-    # 2) System prompt - use custom or default generic one
-    if system_prompt is None:
-        if enable_navigation:
-            SYSTEM_PROMPT = """You are a helpful AI assistant that can provide guidance and conversation.
-When you receive structured navigation data (with player position, exit, and map), provide JSON guidance with a 'path' field.
-For casual conversation, respond naturally without JSON formatting."""
-        else:
-            SYSTEM_PROMPT = "You are a helpful, friendly AI assistant. Respond naturally to user messages."
-    else:
-        SYSTEM_PROMPT = system_prompt
+    # 2) System prompt for maze guidance
+    # SYSTEM_PROMPT = f"""
+    # You are a Large Action Model (LAM) guiding players through a top-down maze game.
+    # You receive the player's current position, the exit position, the visible map (0=wall,1=floor),
+    # and how many wall‐breaks remain. **Always** compute and include:
+    # - "path": a full list of [x,y] coords from the player to the exit
+    # You may also include:
+    # - "hint": a short text hint
+    # - "break_wall": a single [x,y] coordinate where a wall should be broken (use sparingly)
+    # Return **only** valid JSON.
+    # """
+    SYSTEM_PROMPT = ''
 
     # 3) Create session manager
-    session_manager = MazeSessionManager(model, SYSTEM_PROMPT, max_seq_len, max_breaks, enable_navigation)
+    session_manager = MazeSessionManager(model, SYSTEM_PROMPT, max_seq_len, max_breaks)
 
     # 4) Start worker threads
     client_id = f"maze-hack-lam-{uuid.uuid4().hex[:8]}"
@@ -1086,16 +1033,8 @@ For casual conversation, respond naturally without JSON formatting."""
                     message_queue.put(state)
                     return
                 except json.JSONDecodeError as e:
-                    # If not valid JSON, treat as plain text message
-                    logging.info(f"[MQTT] Treating state message as plain text")
-                    try:
-                        text_content = msg.payload.decode("utf-8")
-                        state = {"message": text_content, "sessionId": "default"}
-                        message_queue.put(state)
-                        return
-                    except Exception as decode_error:
-                        logging.error(f"[MQTT] Failed to decode message: {decode_error}")
-                        return
+                    logging.error(f"[MQTT] Invalid JSON in state message: {e}")
+                    return
 
             # Handle template submissions
             if msg.topic == TEMPLATE_TOPIC or msg.topic.startswith(f"{TEMPLATE_TOPIC}/"):
@@ -1218,13 +1157,5 @@ For casual conversation, respond naturally without JSON formatting."""
 if __name__ == "__main__":
     fire.Fire(main)
     # Example usage:
-    # 
-    # For navigation-enabled mode with Llama:
-    # torchrun --nproc_per_node 1 ./lam_mqtt_hackathon_deploy.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 2 --mqtt_username TangClinic --mqtt_password Tang123 --enable_navigation True
-    # 
-    # For casual conversation mode with Phi:
-    # python lam_mqtt_hackathon_deploy.py --model_type phi --hf_model microsoft/phi-1_5 --enable_navigation False --mqtt_username TangClinic --mqtt_password Tang123
-    # 
-    # With custom system prompt:
-    # python lam_mqtt_hackathon_deploy.py --model_type phi --system_prompt "You are a helpful coding assistant." --enable_navigation False
-    #
+    # torchrun --nproc_per_node 1 ./lam_mqtt_hackathon_deploy.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 2 --mqtt_username TangClinic --mqtt_password Tang123
+    # -
