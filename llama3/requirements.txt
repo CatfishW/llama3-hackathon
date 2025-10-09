@@ -4,3 +4,5 @@ fire
 tiktoken==0.4.0
 blobfile
 gym
+transformers>=4.37.0
+paho-mqtt
