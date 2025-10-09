@@ -1,26 +1,4 @@
 # lam_mqtt_hackathon_deploy.py
-"""
-Stateless Large Action Model (LAM) for Maze Guidance
-
-KEY FEATURES:
-- NO CONVERSATION MEMORY: Each request is independent (only system prompt + current state)
-- PROMPT TEMPLATE OPTIMIZATION: Players improve by refining their system prompts
-- RICH GUIDANCE: Provides paths, hints, wall breaks, and dynamic game effects
-- PERFORMANCE STATS: Tracks response times and success rates per session
-- ROBUST FALLBACKS: Always provides valid paths even if LLM fails to parse
-
-PLAYER EXPERIENCE:
-1. Submit custom prompt templates via MQTT (maze/template topic)
-2. Game sends current state (player pos, map, germs, etc.)
-3. LLM generates guidance based on YOUR prompt + current state
-4. Iterate on prompts to improve maze performance
-5. See stats to measure improvement
-
-MQTT Topics:
-- maze/state: Game publishes current state here
-- maze/hint/{session_id}: LAM publishes guidance here
-- maze/template or maze/template/{session_id}: Submit prompt templates here
-"""
 
 import uuid
 import json
@@ -490,10 +468,11 @@ MQTT_BROKER = "47.89.252.2"
 MQTT_PORT   = 1883
 STATE_TOPIC = "maze/state"
 HINT_PREFIX = "maze/hint"
-# Topic to submit prompt templates (global or per-session)
+# New: topic to submit prompt templates (global or per-session)
 TEMPLATE_TOPIC = "maze/template"
-# Topic to request session stats/info
-STATS_TOPIC = "maze/stats"
+# New: topics for session management
+CLEAR_HISTORY_TOPIC = "maze/clear_history"
+DELETE_SESSION_TOPIC = "maze/delete_session"
 
 # ─── Session & Prompt Management ────────────────────────────────────────────────
 
@@ -504,36 +483,30 @@ class MazeSessionManager:
         self.max_seq_len   = max_seq_len
         self.max_breaks    = max_breaks
 
-        # Track per-session state (NO DIALOG HISTORY - stateless LLM calls)
-        self.session_prompts = {}  # session_id -> custom system prompt
-        self.breaks_left   = {}    # session_id -> int
-        self.locks         = {}    # session_id -> threading.Lock
-        self.stats         = {}    # session_id -> {requests: int, errors: int, avg_time: float}
+        # Track per-session dialog history and breaks remaining
+        self.dialogs       = {}  # session_id -> [messages...]
+        self.breaks_left   = {}  # session_id -> int
+        self.locks         = {}  # session_id -> threading.Lock
         self.global_lock   = threading.Lock()
 
     def get_or_create(self, session_id):
-        """Get session state (prompt, breaks, lock) - NO HISTORY TRACKING"""
         with self.global_lock:
-            if session_id not in self.session_prompts:
-                # Initialize session with default or global prompt
-                self.session_prompts[session_id] = self.system_prompt
+            if session_id not in self.dialogs:
+                # Initialize dialog with system prompt
+                self.dialogs[session_id] = [
+                    {"role": "system", "content": self.system_prompt}
+                ]
                 self.breaks_left[session_id] = self.max_breaks
                 self.locks[session_id] = threading.Lock()
-                self.stats[session_id] = {"requests": 0, "errors": 0, "total_time": 0.0, "avg_time": 0.0}
                 logging.info(f"[Session] Created new session '{session_id}' with {self.max_breaks} breaks")
-        return self.session_prompts[session_id], self.breaks_left[session_id], self.locks[session_id]
+        return self.dialogs[session_id], self.breaks_left[session_id], self.locks[session_id]
 
     def process_state(self, state):
         """
         Given a state dict from the game, produce guidance JSON.
-        STATELESS: Each call is independent - no conversation history.
         """
-        import time
-        
         session_id = state.get("sessionId", "default")
-        session_prompt, breaks_remain, lock = self.get_or_create(session_id)
-
-        start_time = time.time()
+        dialog, breaks_remain, lock = self.get_or_create(session_id)
 
         # Build the user message describing the current state
         try:
@@ -553,82 +526,82 @@ class MazeSessionManager:
                     elif isinstance(it, (list, tuple)) and len(it) == 2:
                         out.append([int(it[0]), int(it[1])])
                 return out
+            user_msg = {
+                "role": "user",
+                "content": json.dumps({
+                    "player_pos":      state["player_pos"],
+                    "exit_pos":        state["exit_pos"],
+                    "visible_map":     state["visible_map"],
+                    "breaks_remaining": breaks_remain,
+                    "germs":            to_xy_list(germs),
+                    "oxygen":           to_xy_list(oxygen),
+                }, ensure_ascii=False)  # Ensure proper JSON encoding
+            }
             
-            state_content = json.dumps({
-                "player_pos":      state["player_pos"],
-                "exit_pos":        state["exit_pos"],
-                "visible_map":     state["visible_map"],
-                "breaks_remaining": breaks_remain,
-                "germs":            to_xy_list(germs),
-                "oxygen":           to_xy_list(oxygen),
-            }, ensure_ascii=False)
-            
-            logging.debug(f"[Session {session_id}] Created state message with content length: {len(state_content)}")
+            logging.debug(f"[Session {session_id}] Created user message with content length: {len(user_msg['content'])}")
             
         except Exception as e:
-            logging.error(f"[Session {session_id}] Error creating state message: {e}")
-            self._update_stats(session_id, time.time() - start_time, error=True)
-            return session_id, {"error": "Invalid state data", "breaks_remaining": breaks_remain}
+            logging.error(f"[Session {session_id}] Error creating user message: {e}")
+            # Create a fallback message
+            user_msg = {
+                "role": "user", 
+                "content": json.dumps({"error": "Invalid state data", "breaks_remaining": breaks_remain})
+            }
 
         with lock:
-            # Build a FRESH dialog for each request (no history)
-            dialog = [
-                {"role": "system", "content": session_prompt},
-                {"role": "user", "content": state_content}
-            ]
+            # Append to dialog
+            dialog.append(user_msg)
+
+            # Trim if too long
+            # (simple drop oldest user/assistant after the system prompt)
+            while self.model.count_tokens(dialog) > self.max_seq_len - 500 and len(dialog) > 2:
+                dialog.pop(1)  # drop oldest user
+                if len(dialog) > 1 and dialog[1]["role"] == "assistant":
+                    dialog.pop(1)
+
+            # Validate dialog structure after trimming
+            if len(dialog) == 0:
+                logging.error(f"[Session {session_id}] Dialog became empty after trimming!")
+                # Reinitialize with system prompt
+                dialog.append({"role": "system", "content": self.system_prompt})
+                dialog.append(user_msg)
+            elif dialog[0]["role"] != "system":
+                logging.warning(f"[Session {session_id}] Dialog missing system message after trimming, reinserting")
+                dialog.insert(0, {"role": "system", "content": self.system_prompt})
             
-            logging.debug(f"[Session {session_id}] Fresh dialog with {len(dialog)} messages (stateless)")
+            logging.debug(f"[Session {session_id}] Final dialog length: {len(dialog)} messages")
 
             # Generate guidance
             try:
-                logging.info(f"[Session {session_id}] Generating stateless response...")
+                logging.info(f"[Session {session_id}] Generating response with the dialogue content: {dialog}...")
                 response_text = self.model.generate_response(
                     dialog,
-                    max_gen_len=512,  # Increased for richer guidance
+                    max_gen_len=256,
                     temperature=0.6,
                     top_p=0.9
                 )
             except Exception as e:
                 logging.error(f"[Session {session_id}] Model generation error: {e}")
-                self._update_stats(session_id, time.time() - start_time, error=True)
-                # Include prompt excerpt for debugging
-                sample = state_content[:160] + '…' if len(state_content) > 160 else state_content
-                guidance = {
-                    "error": f"LLM error: {e}", 
-                    "prompt_sample": sample, 
-                    "breaks_remaining": breaks_remain,
-                    "hint": "LLM failed to generate guidance. Try refining your prompt template."
-                }
+                # include small prompt excerpt for debugging
+                sample = user_msg.get('content', '')
+                if isinstance(sample, str) and len(sample) > 160:
+                    sample = sample[:160] + '…'
+                guidance = {"error": f"LLM error: {e}", "prompt": sample, "breaks_remaining": breaks_remain}
                 return session_id, guidance
 
-            # Parse response into guidance JSON
+            # Append assistant response and parse into guidance JSON
+            dialog.append({"role": "assistant", "content": response_text})
+
             guidance = self._robust_parse_guidance(response_text, state, breaks_remain, session_id)
 
             # Enforce break limits
             if "break_wall" in guidance:
                 if breaks_remain > 0:
                     self.breaks_left[session_id] -= 1
-                    guidance["breaks_remaining"] = self.breaks_left[session_id]
                 else:
                     guidance.pop("break_wall", None)
-                    guidance["breaks_remaining"] = 0
-                    if "hint" not in guidance:
-                        guidance["hint"] = "No wall breaks remaining!"
-            else:
-                guidance["breaks_remaining"] = breaks_remain
 
-            # Add performance stats for player feedback
-            elapsed = time.time() - start_time
-            self._update_stats(session_id, elapsed, error=False)
-            guidance["response_time_ms"] = int(elapsed * 1000)
-            
-            # Add session stats for player insight
-            stats = self.stats.get(session_id, {})
-            guidance["session_stats"] = {
-                "requests": stats.get("requests", 0),
-                "errors": stats.get("errors", 0),
-                "avg_response_ms": int(stats.get("avg_time", 0) * 1000)
-            }
+            guidance["breaks_remaining"] = self.breaks_left[session_id]
 
         return session_id, guidance
 
@@ -662,11 +635,7 @@ class MazeSessionManager:
                 logging.debug(f"[Session {session_id}] Extracted JSON parse fail: {e}")
 
         logging.warning(f"[Session {session_id}] Falling back to computed path (parse failed)")
-        fallback = {
-            "hint": raw[:200] + ("…" if len(raw) > 200 else ""),
-            "parse_failed": True,
-            "raw_response_sample": raw[:300]
-        }
+        fallback = {"hint": raw[:160] + ("…" if len(raw) > 160 else "")}
         return self._finalize_guidance(fallback, state, breaks_remain, session_id, source="fallback")
 
     def _extract_first_json_object(self, text: str):
@@ -686,7 +655,7 @@ class MazeSessionManager:
         return None
 
     def _finalize_guidance(self, guidance: dict, state: dict, breaks_remain: int, session_id: str, source: str):
-        """Ensure mandatory fields (path) exist; compute if absent or invalid. Add rich game effects."""
+        """Ensure mandatory fields (path) exist; compute if absent or invalid."""
         path = guidance.get("path")
         if not self._is_valid_path(path):
             try:
@@ -695,82 +664,49 @@ class MazeSessionManager:
                 # Only propose break if model didn't already and it's useful
                 if break_wall and "break_wall" not in guidance and breaks_remain > 0:
                     guidance["break_wall"] = break_wall
-                    guidance.setdefault("hint", f"Break wall at {break_wall} to shorten path")
                 logging.info(f"[Session {session_id}] Path {'computed' if path is None else 'replaced'} via {source} (len={len(guidance['path'])})")
             except Exception as e:
                 logging.error(f"[Session {session_id}] Failed to compute fallback path: {e}")
                 guidance.setdefault("error", f"No valid path and fallback failed: {e}")
                 guidance.setdefault("path", [])
-        
-        # Augment guidance with rich game effects to help players
+        # Augment guidance with safe visuals and timed effects so the client can render more actions
         try:
             # Default to showing the path overlay
             guidance.setdefault("show_path", True)
 
-            # Highlight near-term path cells (skip player cell) for visual guidance
+            # Highlight near-term path cells (skip player cell)
             if isinstance(guidance.get("path"), list) and guidance["path"] and "highlight_zone" not in guidance:
                 ppos = tuple(state.get("player_pos", ()))
                 steps = []
-                for p in guidance["path"][:15]:  # Increased from 12 to 15
+                for p in guidance["path"][:12]:
                     if isinstance(p, (list, tuple)) and len(p)==2 and tuple(p) != ppos:
                         steps.append([int(p[0]), int(p[1])])
                 if steps:
                     guidance["highlight_zone"] = steps
-                    guidance.setdefault("highlight_ms", 6000)  # Increased from 5000
+                    guidance.setdefault("highlight_ms", 5000)
 
-            # Smart timed effects based on situation analysis
+            # Heuristic timed effects depending on germs proximity and path length
             px, py = state.get("player_pos", (0,0))
-            exit_pos = state.get("exit_pos", (0,0))
             germs = state.get("germs") or []
             gpos = []
             for g in germs:
                 if isinstance(g, dict) and "x" in g and "y" in g:
-                    gpos.append((int(g["x"]), int(g["y"])))
+                    gpos.append((int(g["x"]), int(g["y"])) )
                 elif isinstance(g, (list, tuple)) and len(g)==2:
                     gpos.append((int(g[0]), int(g[1])))
-            
             def manhattan(a,b):
                 return abs(a[0]-b[0]) + abs(a[1]-b[1])
-            
-            # Analyze danger and distance
             near2 = any(manhattan((px,py), gp) <= 2 for gp in gpos)
             near3 = any(manhattan((px,py), gp) <= 3 for gp in gpos)
-            near4 = any(manhattan((px,py), gp) <= 4 for gp in gpos)
             plen = len(guidance.get("path") or [])
-            dist_to_exit = manhattan((px, py), exit_pos)
 
-            # Adaptive effects based on situation
             if "freeze_germs_ms" not in guidance and near2:
-                guidance["freeze_germs_ms"] = 2500  # Critical danger
-                guidance.setdefault("hint", "⚠️ Germs very close! Freezing them.")
+                guidance["freeze_germs_ms"] = 2000
             elif "slow_germs_ms" not in guidance and near3:
-                guidance["slow_germs_ms"] = 3000  # Moderate danger
-                guidance.setdefault("hint", "⚠️ Germs nearby, slowing them down.")
+                guidance["slow_germs_ms"] = 2500
 
-            # Speed boost for long paths or near exit
-            if "speed_boost_ms" not in guidance:
-                if plen >= 25:
-                    guidance["speed_boost_ms"] = 2000
-                    guidance.setdefault("hint", "🚀 Long path ahead, boosting speed!")
-                elif dist_to_exit <= 5 and not near2:
-                    guidance["speed_boost_ms"] = 1500
-                    guidance.setdefault("hint", "🎯 Exit nearby, final sprint!")
-
-            # Oxygen collection hints if oxygen exists and not in danger
-            oxygen = state.get("oxygenPellets") or []
-            if oxygen and not near2 and "oxygen_hint" not in guidance:
-                oxy_pos = []
-                for o in oxygen:
-                    if isinstance(o, dict) and "x" in o and "y" in o:
-                        oxy_pos.append((int(o["x"]), int(o["y"])))
-                    elif isinstance(o, (list, tuple)) and len(o)==2:
-                        oxy_pos.append((int(o[0]), int(o[1])))
-                if oxy_pos:
-                    closest_oxy = min(oxy_pos, key=lambda o: manhattan((px,py), o))
-                    oxy_dist = manhattan((px,py), closest_oxy)
-                    if oxy_dist <= 6:
-                        guidance["oxygen_hint"] = f"💨 Oxygen at {list(closest_oxy)}, {oxy_dist} steps away"
-
+            if "speed_boost_ms" not in guidance and plen >= 20:
+                guidance["speed_boost_ms"] = 1500
         except Exception as e:
             logging.debug(f"[Session {session_id}] Augmentation skipped: {e}")
 
@@ -878,53 +814,77 @@ class MazeSessionManager:
         with self.global_lock:
             self.system_prompt = new_prompt
             if reset_existing:
-                for sid in list(self.session_prompts.keys()):
-                    self.session_prompts[sid] = new_prompt
+                for sid in list(self.dialogs.keys()):
+                    self.dialogs[sid] = [{"role": "system", "content": new_prompt}]
                     self.breaks_left[sid] = self.max_breaks
-        logging.info("[Template] Global system prompt updated (len=%d). reset_existing=%s", len(new_prompt), reset_existing)
+        logging.info("[Template] Global system prompt updated. reset_existing=%s", reset_existing)
 
     def set_session_prompt(self, session_id: str, new_prompt: str, reset: bool = True):
-        """Update the system prompt for a specific session. Optionally reset its state."""
+        """Update the system prompt for a specific session. Optionally reset its history."""
         with self.global_lock:
-            self.session_prompts[session_id] = new_prompt
-            if reset or session_id not in self.breaks_left:
+            if reset or session_id not in self.dialogs:
+                self.dialogs[session_id] = [{"role": "system", "content": new_prompt}]
                 self.breaks_left[session_id] = self.max_breaks
                 if session_id not in self.locks:
                     self.locks[session_id] = threading.Lock()
-                if session_id not in self.stats:
-                    self.stats[session_id] = {"requests": 0, "errors": 0, "total_time": 0.0, "avg_time": 0.0}
-        logging.info("[Template] Session '%s' system prompt updated (len=%d). reset=%s", session_id, len(new_prompt), reset)
-
-    def _update_stats(self, session_id: str, elapsed: float, error: bool = False):
-        """Update performance statistics for a session."""
-        with self.global_lock:
-            if session_id not in self.stats:
-                self.stats[session_id] = {"requests": 0, "errors": 0, "total_time": 0.0, "avg_time": 0.0}
-            
-            stats = self.stats[session_id]
-            stats["requests"] += 1
-            if error:
-                stats["errors"] += 1
             else:
-                stats["total_time"] += elapsed
-                # Compute running average for successful requests
-                success_count = stats["requests"] - stats["errors"]
-                if success_count > 0:
-                    stats["avg_time"] = stats["total_time"] / success_count
+                # Replace only the system message, retain history
+                if self.dialogs[session_id]:
+                    self.dialogs[session_id][0] = {"role": "system", "content": new_prompt}
+                else:
+                    self.dialogs[session_id] = [{"role": "system", "content": new_prompt}]
+        logging.info("[Template] Session '%s' system prompt updated. reset=%s", session_id, reset)
 
-    def get_session_info(self, session_id: str):
-        """Get diagnostic info about a session for player feedback."""
+    def clear_session_history(self, session_id: str):
+        """Clear chat history for a specific session, keeping only the system prompt."""
         with self.global_lock:
-            if session_id not in self.session_prompts:
-                return {"error": "Session not found"}
-            
-            return {
-                "session_id": session_id,
-                "prompt_length": len(self.session_prompts.get(session_id, "")),
-                "breaks_remaining": self.breaks_left.get(session_id, 0),
-                "stats": self.stats.get(session_id, {})
-            }
+            if session_id in self.dialogs:
+                # Keep only the system message (first message)
+                system_msg = self.dialogs[session_id][0] if self.dialogs[session_id] else {"role": "system", "content": self.system_prompt}
+                self.dialogs[session_id] = [system_msg]
+                self.breaks_left[session_id] = self.max_breaks
+                logging.info(f"[Session] Cleared history for session '{session_id}'")
+                return True
+            else:
+                logging.warning(f"[Session] Session '{session_id}' not found")
+                return False
 
+    def clear_all_sessions(self):
+        """Clear chat history for all sessions."""
+        with self.global_lock:
+            cleared_count = 0
+            for session_id in list(self.dialogs.keys()):
+                system_msg = self.dialogs[session_id][0] if self.dialogs[session_id] else {"role": "system", "content": self.system_prompt}
+                self.dialogs[session_id] = [system_msg]
+                self.breaks_left[session_id] = self.max_breaks
+                cleared_count += 1
+            logging.info(f"[Session] Cleared history for {cleared_count} sessions")
+            return cleared_count
+
+    def delete_session(self, session_id: str):
+        """Completely delete a session and its history."""
+        with self.global_lock:
+            if session_id in self.dialogs:
+                del self.dialogs[session_id]
+                if session_id in self.breaks_left:
+                    del self.breaks_left[session_id]
+                if session_id in self.locks:
+                    del self.locks[session_id]
+                logging.info(f"[Session] Deleted session '{session_id}'")
+                return True
+            else:
+                logging.warning(f"[Session] Session '{session_id}' not found")
+                return False
+
+    def delete_all_sessions(self):
+        """Delete all sessions completely."""
+        with self.global_lock:
+            session_count = len(self.dialogs)
+            self.dialogs.clear()
+            self.breaks_left.clear()
+            self.locks.clear()
+            logging.info(f"[Session] Deleted all {session_count} sessions")
+            return session_count
 
 # ─── Worker & MQTT Setup ────────────────────────────────────────────────────────
 
@@ -939,35 +899,21 @@ def maze_message_processor(session_manager, mqtt_client):
             
             session_id, guidance = session_manager.process_state(state)
             topic = f"{HINT_PREFIX}/{session_id}"
-            payload = json.dumps(guidance, ensure_ascii=False)
+            payload = json.dumps(guidance)
             
             # Publish the guidance
-            result = mqtt_client.publish(topic, payload, qos=1)  # Added QoS 1 for reliability
+            result = mqtt_client.publish(topic, payload)
             if result.rc != mqtt.MQTT_ERR_SUCCESS:
                 logging.error(f"[Processor] Failed to publish to {topic}: {result.rc}")
             else:
-                # Log concise summary
-                summary = {
-                    "path_len": len(guidance.get("path", [])),
-                    "has_break": "break_wall" in guidance,
-                    "hint": guidance.get("hint", "")[:50],
-                    "response_ms": guidance.get("response_time_ms", 0)
-                }
-                logging.info(f"[Publish] {topic} → {summary}")
+                logging.info(f"[Publish] {topic} → {payload[:200]}...")
                 
         except Exception as e:
             logging.error(f"[Processor] Error handling state: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
             try:
                 session_id = state.get('sessionId', 'default') if 'state' in locals() else 'unknown'
-                error_payload = json.dumps({
-                    "error": str(e),
-                    "breaks_remaining": 0,
-                    "hint": "⚠️ Server error. Check your prompt template or try again.",
-                    "path": []
-                }, ensure_ascii=False)
-                mqtt_client.publish(f"{HINT_PREFIX}/{session_id}", error_payload, qos=1)
+                error_payload = json.dumps({"error": str(e), "breaks_remaining": 0})
+                mqtt_client.publish(f"{HINT_PREFIX}/{session_id}", error_payload)
                 logging.info(f"[Processor] Published error to session {session_id}")
             except Exception as pub_error:
                 logging.error(f"[Processor] Failed to publish error message: {pub_error}")
@@ -1034,32 +980,18 @@ def main(
         logging.error(f"Model test failed: {e}")
         raise RuntimeError(f"Model test failed, cannot proceed: {e}")
 
-    # 2) System prompt for maze guidance (default - players can override)
-    SYSTEM_PROMPT = """You are a strategic maze guide AI. Analyze the current game state and provide optimal guidance in JSON format.
-
-Required output format:
-{
-  "path": [[x1,y1], [x2,y2], ...],  // Complete path from player to exit
-  "hint": "Brief strategic advice",   // Optional: helpful text guidance
-  "break_wall": [x, y]                // Optional: wall to break if beneficial
-}
-
-State provided:
-- player_pos: Current position [x, y]
-- exit_pos: Goal position [x, y]
-- visible_map: Grid (0=wall, 1=floor)
-- breaks_remaining: Number of wall breaks available
-- germs: Dangerous positions to avoid
-- oxygen: Collectible power-ups
-
-Strategy tips:
-- Always provide a valid path array
-- Use wall breaks strategically for shortcuts
-- Avoid germs when possible
-- Consider collecting oxygen if safe
-- Prioritize reaching the exit efficiently
-
-Output only valid JSON."""
+    # 2) System prompt for maze guidance
+    # SYSTEM_PROMPT = f"""
+    # You are a Large Action Model (LAM) guiding players through a top-down maze game.
+    # You receive the player's current position, the exit position, the visible map (0=wall,1=floor),
+    # and how many wall‐breaks remain. **Always** compute and include:
+    # - "path": a full list of [x,y] coords from the player to the exit
+    # You may also include:
+    # - "hint": a short text hint
+    # - "break_wall": a single [x,y] coordinate where a wall should be broken (use sparingly)
+    # Return **only** valid JSON.
+    # """
+    SYSTEM_PROMPT = ''
 
     # 3) Create session manager
     session_manager = MazeSessionManager(model, SYSTEM_PROMPT, max_seq_len, max_breaks)
@@ -1077,9 +1009,11 @@ Output only valid JSON."""
             client.subscribe(STATE_TOPIC)
             client.subscribe(TEMPLATE_TOPIC)
             client.subscribe(f"{TEMPLATE_TOPIC}/+")  # Subscribe to session-specific templates
-            client.subscribe(STATS_TOPIC)
-            client.subscribe(f"{STATS_TOPIC}/+")  # Subscribe to session-specific stats requests
-            logging.info(f"Subscribed to: {STATE_TOPIC}, {TEMPLATE_TOPIC}, {TEMPLATE_TOPIC}/+, {STATS_TOPIC}, {STATS_TOPIC}/+")
+            client.subscribe(CLEAR_HISTORY_TOPIC)
+            client.subscribe(f"{CLEAR_HISTORY_TOPIC}/+")  # Subscribe to session-specific clear
+            client.subscribe(DELETE_SESSION_TOPIC)
+            client.subscribe(f"{DELETE_SESSION_TOPIC}/+")  # Subscribe to session-specific delete
+            logging.info(f"Subscribed to: {STATE_TOPIC}, {TEMPLATE_TOPIC}, {CLEAR_HISTORY_TOPIC}, {DELETE_SESSION_TOPIC}")
         else:
             logging.error(f"MQTT connect failed with code {reason_code}")
 
@@ -1089,7 +1023,7 @@ Output only valid JSON."""
 
     def on_message(client, userdata, msg):
         try:
-            logging.info(f"[MQTT] Received message on topic '{msg.topic}'")
+            logging.info(f"[DEBUG] Received MQTT message on topic '{msg.topic}': {msg.payload}")
             
             # Handle state updates
             if msg.topic == STATE_TOPIC:
@@ -1101,91 +1035,95 @@ Output only valid JSON."""
                     logging.error(f"[MQTT] Invalid JSON in state message: {e}")
                     return
 
-            # Handle stats requests
-            if msg.topic == STATS_TOPIC or msg.topic.startswith(f"{STATS_TOPIC}/"):
-                try:
-                    payload = json.loads(msg.payload.decode("utf-8")) if msg.payload else {}
-                    sid = payload.get("session_id") or payload.get("sessionId")
-                    if not sid and msg.topic.startswith(f"{STATS_TOPIC}/"):
-                        sid = msg.topic.split("/", 2)[-1]
-                    
-                    if sid:
-                        info = session_manager.get_session_info(sid)
-                        client.publish(f"{HINT_PREFIX}/{sid}", json.dumps(info, ensure_ascii=False), qos=1)
-                        logging.info(f"[Stats] Published stats for session {sid}")
-                    else:
-                        # Return global stats summary
-                        with session_manager.global_lock:
-                            all_sessions = list(session_manager.session_prompts.keys())
-                            global_info = {
-                                "total_sessions": len(all_sessions),
-                                "sessions": all_sessions[:20]  # Limit to avoid huge payloads
-                            }
-                        client.publish(f"{HINT_PREFIX}/global", json.dumps(global_info, ensure_ascii=False), qos=1)
-                        logging.info("[Stats] Published global stats")
-                    return
-                except Exception as e:
-                    logging.error(f"[Stats] Error handling stats request: {e}")
-                    return
-
             # Handle template submissions
             if msg.topic == TEMPLATE_TOPIC or msg.topic.startswith(f"{TEMPLATE_TOPIC}/"):
                 try:
                     payload = json.loads(msg.payload.decode("utf-8")) if msg.payload else {}
                     new_prompt = payload.get("prompt_template") or payload.get("system_prompt") or payload.get("template")
                     if not new_prompt:
-                        logging.warning("[Template] Missing 'template' field in payload")
+                        logging.warning("[Template] Missing 'template' in payload")
                         return
-                    
-                    # Validate prompt length (reasonable limits)
-                    if len(new_prompt) > 10000:
-                        logging.warning("[Template] Prompt too long (%d chars), truncating to 10000", len(new_prompt))
-                        new_prompt = new_prompt[:10000]
-                    
                     logging.info(f"[Template] Received new prompt: {new_prompt[:100]}...")
-                    
-                    # Optional overrides
+                    # optional overrides
                     mb = payload.get("max_breaks")
                     if isinstance(mb, int) and mb > 0:
                         session_manager.max_breaks = mb
                         logging.info("[Template] max_breaks updated globally to %d", mb)
-                    
                     reset = bool(payload.get("reset", True))
-                    
-                    # Session id can be in payload or encoded in topic suffix
+                    # session id can be in payload or encoded in topic suffix
                     sid = payload.get("session_id") or payload.get("sessionId")
                     if not sid and msg.topic.startswith(f"{TEMPLATE_TOPIC}/"):
                         sid = msg.topic.split("/", 2)[-1]
-                    
                     if sid:
                         session_manager.set_session_prompt(sid, new_prompt, reset=reset)
-                        # Acknowledge with session info
+                        # Optionally acknowledge via hint channel
                         try:
-                            info = session_manager.get_session_info(sid)
-                            ack = {
-                                "hint": f"✅ Template updated ({len(new_prompt)} chars)",
-                                "breaks_remaining": info.get("breaks_remaining", session_manager.max_breaks),
-                                "template_applied": True,
-                                "session_stats": info.get("stats", {})
-                            }
-                            client.publish(f"{HINT_PREFIX}/{sid}", json.dumps(ack, ensure_ascii=False), qos=1)
-                            logging.info(f"[Template] Acknowledged template update for session {sid}")
-                        except Exception as ack_err:
-                            logging.warning(f"[Template] Failed to send acknowledgment: {ack_err}")
+                            client.publish(f"{HINT_PREFIX}/{sid}", json.dumps({"hint": "Template updated", "breaks_remaining": session_manager.breaks_left.get(sid, session_manager.max_breaks)}))
+                        except Exception:
+                            pass
                     else:
                         session_manager.set_global_prompt(new_prompt, reset_existing=reset)
-                        logging.info("[Template] Global template updated")
                     return
                 except json.JSONDecodeError as e:
                     logging.error(f"[MQTT] Invalid JSON in template message: {e}")
                     return
 
+            # Handle clear history requests
+            if msg.topic == CLEAR_HISTORY_TOPIC or msg.topic.startswith(f"{CLEAR_HISTORY_TOPIC}/"):
+                try:
+                    payload = json.loads(msg.payload.decode("utf-8")) if msg.payload else {}
+                    # Get session ID from topic suffix or payload
+                    sid = payload.get("session_id") or payload.get("sessionId")
+                    if not sid and msg.topic.startswith(f"{CLEAR_HISTORY_TOPIC}/"):
+                        sid = msg.topic.split("/", 2)[-1]
+                    
+                    if sid and sid.lower() != "all":
+                        # Clear specific session
+                        success = session_manager.clear_session_history(sid)
+                        response = {"status": "success" if success else "not_found", "session_id": sid, "action": "clear_history"}
+                        try:
+                            client.publish(f"{HINT_PREFIX}/{sid}", json.dumps({"hint": "History cleared", "breaks_remaining": session_manager.breaks_left.get(sid, session_manager.max_breaks)}))
+                        except Exception:
+                            pass
+                    else:
+                        # Clear all sessions
+                        count = session_manager.clear_all_sessions()
+                        response = {"status": "success", "cleared_sessions": count, "action": "clear_all_history"}
+                    
+                    logging.info(f"[ClearHistory] {response}")
+                    return
+                except json.JSONDecodeError as e:
+                    logging.error(f"[MQTT] Invalid JSON in clear history message: {e}")
+                    return
+
+            # Handle delete session requests
+            if msg.topic == DELETE_SESSION_TOPIC or msg.topic.startswith(f"{DELETE_SESSION_TOPIC}/"):
+                try:
+                    payload = json.loads(msg.payload.decode("utf-8")) if msg.payload else {}
+                    # Get session ID from topic suffix or payload
+                    sid = payload.get("session_id") or payload.get("sessionId")
+                    if not sid and msg.topic.startswith(f"{DELETE_SESSION_TOPIC}/"):
+                        sid = msg.topic.split("/", 2)[-1]
+                    
+                    if sid and sid.lower() != "all":
+                        # Delete specific session
+                        success = session_manager.delete_session(sid)
+                        response = {"status": "success" if success else "not_found", "session_id": sid, "action": "delete_session"}
+                    else:
+                        # Delete all sessions
+                        count = session_manager.delete_all_sessions()
+                        response = {"status": "success", "deleted_sessions": count, "action": "delete_all_sessions"}
+                    
+                    logging.info(f"[DeleteSession] {response}")
+                    return
+                except json.JSONDecodeError as e:
+                    logging.error(f"[MQTT] Invalid JSON in delete session message: {e}")
+                    return
+
             logging.debug("[MQTT] Ignored topic %s", msg.topic)
         except Exception as e:
             logging.error(f"[MQTT] Unexpected error in on_message for topic {msg.topic}: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
-
+            logging.error(f"[MQTT] Message payload: {msg.payload}")
 
     mqtt_client.on_connect = on_connect
     mqtt_client.on_disconnect = on_disconnect
