@@ -20,7 +20,7 @@ try:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 except Exception:
     torch = None
-    AutoModelForCausalLM = None
+    AutoModelForCausalLM = None             
     AutoTokenizer = None
 # Model interface and implementations
 class ModelInterface(ABC):

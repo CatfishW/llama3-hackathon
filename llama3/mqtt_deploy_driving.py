@@ -59,7 +59,7 @@ class PerformanceMetrics:
         self.start_time = time.time()
         # Start metrics reporting thread
         self.reporting_thread = threading.Thread(target=self._report_metrics, daemon=True)
-        self.reporting_thread.start()
+        self.reporting_thread.start()   
     
     def record_request(self):
         with self.lock:
