@@ -357,6 +357,7 @@ class RacingGameClient(QMainWindow):
         self.current_scenario = None
         self.waiting_for_response = False
         self.first_message_sent = False  # Track if first message has been sent
+        self.client_id = f'racing-client-{uuid.uuid4().hex}'  # Unique client ID
         
         # Connect signals to slots
         self.session_created_signal.connect(self.handle_session_created)
@@ -546,7 +547,7 @@ class RacingGameClient(QMainWindow):
     
     def init_mqtt(self):
         """Initialize MQTT connection"""
-        self.mqtt_client = mqtt.Client(client_id=f'racing-client-{uuid.uuid4().hex[:8]}')
+        self.mqtt_client = mqtt.Client(client_id=self.client_id)
         self.mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
         
         self.mqtt_client.on_connect = self.on_mqtt_connect
@@ -649,8 +650,8 @@ class RacingGameClient(QMainWindow):
         if self.mqtt_client and self.mqtt_client.is_connected():
             self.mqtt_client.subscribe(f"{MQTT_SESSION_TOPIC}/response")
             
-            # Send system prompt as first message to initialize the session
-            self.mqtt_client.publish(MQTT_SESSION_TOPIC, "")
+            # Send unique client ID to request a new session
+            self.mqtt_client.publish(MQTT_SESSION_TOPIC, self.client_id)
     
     def create_new_session(self):
         """Create a new session (reset)"""

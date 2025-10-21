@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You are a large action model (LAM) controlling the player in a maze. Your goal is to navigate the red blood cell so that {player_pos} is the same as {exit_pos}.\n\nRules\n- You may only traverse through open tiles. If there is a wall or germ present, then it is not open. If there is a floor, oxygen, or red blood cell, or exit, then it is open."
+  },
+  {
+    "role": "user",
+    "content": "{\"player_pos\": [1, 8], \"exit_pos\": [8, 8], \"breaks_remaining\": 3, \"germs\": [[9, 9], [5, 9], [9, 9]], \"oxygen\": [[9, 1], [7, 3], [3, 1], [9, 2], [4, 7], [5, 5], [5, 9], [3, 7]], \"visible_map_compressed\": {\"width\": 11, \"height\": 11, \"rows\": [\"011\", \"01110111110\", \"01010100010\", \"01010111010\", \"01010001010\", \"01110111010\", \"01000100010\", \"01011101110\", \"01010001100\", \"01110111110\", \"011\"], \"encoding\": \"char-run\"}}"
+  }
+]
