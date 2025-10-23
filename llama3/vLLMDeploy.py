@@ -75,13 +75,12 @@ class DeploymentConfig:
     # Generation Configuration
     default_temperature: float = 0.6
     default_top_p: float = 0.9
-    default_max_tokens: int = 256  # Reduced from 512 for faster generation
+    default_max_tokens: int = 512
     
     # Session Management
-    max_history_tokens: int = 2000  # Reduced from 3000 to keep context smaller
+    max_history_tokens: int = 3000
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds
-    max_history_turns: int = 6  # Keep only last N conversation turns
     
     # Performance Configuration
     num_worker_threads: int = 4
@@ -145,27 +144,15 @@ class vLLMInference:
         
         # Initialize vLLM
         try:
-            # Try to enable prefix caching if supported by vLLM version
-            init_kwargs = {
-                "model": config.model_name,
-                "tensor_parallel_size": config.tensor_parallel_size,
-                "max_model_len": config.max_model_len,
-                "gpu_memory_utilization": config.gpu_memory_utilization,
-                "quantization": config.quantization,
-                "trust_remote_code": True,
-                "enforce_eager": False,  # Use CUDA graphs for better performance
-            }
-            
-            # Try to add prefix caching (available in vLLM >= 0.4.0)
-            try:
-                from vllm import __version__ as vllm_version
-                # Check if enable_chunked_prefill is available (newer parameter name)
-                init_kwargs["enable_chunked_prefill"] = True
-                logger.info(f"Using vLLM {vllm_version} with chunked prefill optimization")
-            except (ImportError, TypeError):
-                logger.info(f"Prefix caching not available in this vLLM version, using standard mode")
-            
-            self.llm = LLM(**init_kwargs)
+            self.llm = LLM(
+                model=config.model_name,
+                tensor_parallel_size=config.tensor_parallel_size,
+                max_model_len=config.max_model_len,
+                gpu_memory_utilization=config.gpu_memory_utilization,
+                quantization=config.quantization,
+                trust_remote_code=True,
+                enforce_eager=False,  # Use CUDA graphs for better performance
+            )
             logger.info("vLLM model initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize vLLM: {e}")
@@ -201,28 +188,16 @@ class vLLMInference:
         top_p = top_p or self.config.default_top_p
         max_tokens = max_tokens or self.config.default_max_tokens
         
-        # Create sampling params with optimizations
+        # Create sampling params
         sampling_params = SamplingParams(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            skip_special_tokens=True,  # Don't generate special tokens
         )
-        
-        # Add stop strings if supported
-        try:
-            sampling_params.stop = ["\n\nUser:", "\n\nHuman:", "<|im_end|>", "</s>"]
-        except (AttributeError, TypeError):
-            pass  # Stop strings not supported in this version
         
         try:
             # Generate with vLLM (automatic batching)
-            # Try to disable tqdm for less overhead
-            try:
-                outputs = self.llm.generate(prompts, sampling_params, use_tqdm=False)
-            except TypeError:
-                # use_tqdm not supported, use standard call
-                outputs = self.llm.generate(prompts, sampling_params)
+            outputs = self.llm.generate(prompts, sampling_params)
             
             # Extract generated text
             results = [output.outputs[0].text for output in outputs]
@@ -414,7 +389,6 @@ class SessionManager:
     def _trim_dialog(self, session: Dict):
         """
         Trim dialog history to stay within token limits.
-        More aggressive trimming for better performance.
         
         Args:
             session: Session dictionary to trim
@@ -425,18 +399,11 @@ class SessionManager:
         if len(dialog) <= 1:
             return
         
-        # First: Keep only last N turns (2 messages per turn)
-        max_messages = 1 + (self.config.max_history_turns * 2)  # system + N user-assistant pairs
-        if len(dialog) > max_messages:
-            # Keep system message + last N turns
-            dialog[1:] = dialog[-(max_messages - 1):]
-            logger.debug(f"Trimmed to last {self.config.max_history_turns} turns")
-        
-        # Second: Check token limit (but should already be under with turn limit)
+        # Calculate total tokens
         total_text = " ".join([msg["content"] for msg in dialog])
         total_tokens = self.inference.count_tokens(total_text)
         
-        # Remove oldest messages (except system) if still over limit
+        # Remove oldest messages (except system) if over limit
         while total_tokens > self.config.max_history_tokens and len(dialog) > 2:
             # Remove oldest user-assistant pair
             dialog.pop(1)
@@ -787,10 +754,10 @@ def main(
     # Generation parameters
     temperature: float = 0.6,
     top_p: float = 0.9,
-    max_tokens: int = 256,  # Reduced default for faster generation
+    max_tokens: int = 512,
     
     # Session management
-    max_history_tokens: int = 2000,  # Reduced for faster processing
+    max_history_tokens: int = 3000,
     max_concurrent_sessions: int = 100,
     
     # MQTT configuration
