@@ -70,6 +70,7 @@ class DeploymentConfig:
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.90
     quantization: Optional[str] = None  # e.g., "awq", "gptq", None
+    visible_devices: Optional[str] = None  # e.g., "0", "1,2", "2" to specify GPU(s)
     
     # Generation Configuration
     default_temperature: float = 0.6
@@ -134,6 +135,12 @@ class vLLMInference:
         """
         self.config = config
         logger.info(f"Initializing vLLM with model: {config.model_name}")
+        
+        # Set visible GPUs if specified
+        import os
+        if config.visible_devices:
+            os.environ["CUDA_VISIBLE_DEVICES"] = config.visible_devices
+            logger.info(f"Setting CUDA_VISIBLE_DEVICES to: {config.visible_devices}")
         
         # Initialize vLLM
         try:
