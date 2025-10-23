@@ -749,6 +749,7 @@ def main(
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.90,
     quantization: Optional[str] = None,
+    visible_devices: Optional[str] = None,
     
     # Generation parameters
     temperature: float = 0.6,
@@ -778,6 +779,7 @@ def main(
         tensor_parallel_size: Number of GPUs for tensor parallelism
         gpu_memory_utilization: GPU memory utilization (0.0-1.0)
         quantization: Quantization method (awq, gptq, etc.)
+        visible_devices: Specify which GPU(s) to use (e.g., "0", "1,2", "2")
         temperature: Default sampling temperature
         top_p: Default top-p sampling
         max_tokens: Default max tokens to generate
@@ -833,6 +835,7 @@ def main(
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=gpu_memory_utilization,
         quantization=quantization,
+        visible_devices=visible_devices,
         default_temperature=temperature,
         default_top_p=top_p,
         default_max_tokens=max_tokens,
