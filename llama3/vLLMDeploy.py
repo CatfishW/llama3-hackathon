@@ -75,12 +75,13 @@ class DeploymentConfig:
     # Generation Configuration
     default_temperature: float = 0.6
     default_top_p: float = 0.9
-    default_max_tokens: int = 512
+    default_max_tokens: int = 256  # Reduced from 512 for faster generation
     
     # Session Management
-    max_history_tokens: int = 3000
+    max_history_tokens: int = 2000  # Reduced from 3000 to keep context smaller
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds
+    max_history_turns: int = 6  # Keep only last N conversation turns
     
     # Performance Configuration
     num_worker_threads: int = 4
@@ -152,8 +153,10 @@ class vLLMInference:
                 quantization=config.quantization,
                 trust_remote_code=True,
                 enforce_eager=False,  # Use CUDA graphs for better performance
+                enable_prefix_caching=True,  # CRITICAL: Cache KV for repeated prefixes
+                disable_log_stats=True,  # Reduce logging overhead
             )
-            logger.info("vLLM model initialized successfully")
+            logger.info("vLLM model initialized successfully with prefix caching enabled")
         except Exception as e:
             logger.error(f"Failed to initialize vLLM: {e}")
             raise
@@ -188,16 +191,19 @@ class vLLMInference:
         top_p = top_p or self.config.default_top_p
         max_tokens = max_tokens or self.config.default_max_tokens
         
-        # Create sampling params
+        # Create sampling params with optimizations
         sampling_params = SamplingParams(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            skip_special_tokens=True,  # Don't generate special tokens
+            spaces_between_special_tokens=False,  # Faster decoding
+            stop=["\n\nUser:", "\n\nHuman:", "<|im_end|>", "</s>"],  # Stop early if needed
         )
         
         try:
             # Generate with vLLM (automatic batching)
-            outputs = self.llm.generate(prompts, sampling_params)
+            outputs = self.llm.generate(prompts, sampling_params, use_tqdm=False)
             
             # Extract generated text
             results = [output.outputs[0].text for output in outputs]
@@ -389,6 +395,7 @@ class SessionManager:
     def _trim_dialog(self, session: Dict):
         """
         Trim dialog history to stay within token limits.
+        More aggressive trimming for better performance.
         
         Args:
             session: Session dictionary to trim
@@ -399,11 +406,18 @@ class SessionManager:
         if len(dialog) <= 1:
             return
         
-        # Calculate total tokens
+        # First: Keep only last N turns (2 messages per turn)
+        max_messages = 1 + (self.config.max_history_turns * 2)  # system + N user-assistant pairs
+        if len(dialog) > max_messages:
+            # Keep system message + last N turns
+            dialog[1:] = dialog[-(max_messages - 1):]
+            logger.debug(f"Trimmed to last {self.config.max_history_turns} turns")
+        
+        # Second: Check token limit (but should already be under with turn limit)
         total_text = " ".join([msg["content"] for msg in dialog])
         total_tokens = self.inference.count_tokens(total_text)
         
-        # Remove oldest messages (except system) if over limit
+        # Remove oldest messages (except system) if still over limit
         while total_tokens > self.config.max_history_tokens and len(dialog) > 2:
             # Remove oldest user-assistant pair
             dialog.pop(1)
@@ -754,10 +768,10 @@ def main(
     # Generation parameters
     temperature: float = 0.6,
     top_p: float = 0.9,
-    max_tokens: int = 512,
+    max_tokens: int = 256,  # Reduced default for faster generation
     
     # Session management
-    max_history_tokens: int = 3000,
+    max_history_tokens: int = 2000,  # Reduced for faster processing
     max_concurrent_sessions: int = 100,
     
     # MQTT configuration
@@ -939,3 +953,4 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
+#python vLLMDeploy.py --model ./QwQ-32B --visible_devices "2" --mqtt_username TangClinic --mqtt_password Tang123

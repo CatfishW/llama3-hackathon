@@ -239,7 +239,7 @@ python vLLMDeploy.py --projects myproject
 ### Multi-GPU Deployment
 
 For large models, use tensor parallelism:
-```bash
+```bashf
 python vLLMDeploy.py \
   --projects general \
   --model Qwen/QwQ-72B \
