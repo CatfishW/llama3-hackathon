@@ -132,9 +132,9 @@ class vLLMInference:
         
         Args:
             config: Deployment configuration
-        """
+        """     
         self.config = config
-        logger.info(f"Initializing vLLM with model: {config.model_name}")
+        logger.info(f"Initializing vLLM with model: {config.model_name}")       
         
         # Set visible GPUs if specified
         import os
