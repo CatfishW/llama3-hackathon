@@ -741,7 +741,7 @@ class MQTTHandler:
 
 def main(
     # Project selection (toggle which topics to enable)
-    projects: List[str] = ["general"],
+    projects: str = "general",  # Changed from List[str] to str - will be split by commas
     
     # Model configuration
     model: str = "Qwen/QwQ-32B",
@@ -773,7 +773,7 @@ def main(
     Deploy vLLM model with MQTT interface for multiple projects.
     
     Args:
-        projects: List of project names to enable (e.g., ["maze", "driving", "bloodcell"])
+        projects: Project names to enable (e.g., "maze driving bloodcell" or "maze,driving,bloodcell")
         model: Model name or path (default: Qwen/QwQ-32B)
         max_model_len: Maximum model context length
         tensor_parallel_size: Number of GPUs for tensor parallelism
@@ -795,8 +795,11 @@ def main(
         # Deploy for maze game only
         python vLLMDeploy.py --projects maze
         
-        # Deploy for multiple projects
-        python vLLMDeploy.py --projects maze driving bloodcell racing
+        # Deploy for multiple projects (space-separated)
+        python vLLMDeploy.py --projects "maze driving bloodcell racing"
+        
+        # Deploy for multiple projects (comma-separated)
+        python vLLMDeploy.py --projects "maze,driving,bloodcell"
         
         # With custom MQTT settings
         python vLLMDeploy.py --projects driving --mqtt_username user --mqtt_password pass
@@ -809,9 +812,16 @@ def main(
     logger.info("vLLM Multi-Project MQTT Deployment")
     logger.info("=" * 80)
     
+    # Parse projects parameter - handle both string and list
+    if isinstance(projects, str):
+        # Split by comma or space
+        projects_list = [p.strip() for p in projects.replace(',', ' ').split() if p.strip()]
+    else:
+        projects_list = projects
+    
     # Create project configurations
     project_configs = {}
-    for project_name in projects:
+    for project_name in projects_list:
         # Get system prompt
         system_prompt = SYSTEM_PROMPTS.get(project_name, SYSTEM_PROMPTS["general"])
         
@@ -845,7 +855,7 @@ def main(
         projects=project_configs
     )
     
-    logger.info(f"Enabled projects: {', '.join(projects)}")
+    logger.info(f"Enabled projects: {', '.join(projects_list)}")
     logger.info(f"Model: {model}")
     logger.info(f"Max model length: {max_model_len}")
     logger.info(f"Tensor parallel size: {tensor_parallel_size}")
