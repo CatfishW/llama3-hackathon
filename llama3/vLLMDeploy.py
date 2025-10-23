@@ -139,7 +139,7 @@ class vLLMInference:
         # Set visible GPUs if specified
         import os
         if config.visible_devices:
-            os.environ["CUDA_VISIBLE_DEVICES"] = config.visible_devices
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(config.visible_devices)
             logger.info(f"Setting CUDA_VISIBLE_DEVICES to: {config.visible_devices}")
         
         # Initialize vLLM
