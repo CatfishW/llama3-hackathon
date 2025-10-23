@@ -774,7 +774,7 @@ if __name__ == "__main__":
     fire.Fire(main)
     # Example commands:
     # Llama model:
-    # torchrun --nproc_per_node 1 ./mqtt_deploy_driving.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 4 --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
+    # torchrun --nproc_per_node 1 ./mqtt_deploy_driving_scene4.py --model_type llama --ckpt_dir Llama3.1-8B-Instruct --tokenizer_path Llama3.1-8B-Instruct/tokenizer.model --max_batch_size 4 --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
     
     # QwQ model (full precision):
     # python mqtt_deploy.py --model_type qwq --model_name Qwen/QwQ-32B --max_history_tokens 1500 --mqtt_username TangClinic --mqtt_password Tang123
