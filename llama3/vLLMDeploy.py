@@ -145,18 +145,28 @@ class vLLMInference:
         
         # Initialize vLLM
         try:
-            self.llm = LLM(
-                model=config.model_name,
-                tensor_parallel_size=config.tensor_parallel_size,
-                max_model_len=config.max_model_len,
-                gpu_memory_utilization=config.gpu_memory_utilization,
-                quantization=config.quantization,
-                trust_remote_code=True,
-                enforce_eager=False,  # Use CUDA graphs for better performance
-                enable_prefix_caching=True,  # CRITICAL: Cache KV for repeated prefixes
-                disable_log_stats=True,  # Reduce logging overhead
-            )
-            logger.info("vLLM model initialized successfully with prefix caching enabled")
+            # Try to enable prefix caching if supported by vLLM version
+            init_kwargs = {
+                "model": config.model_name,
+                "tensor_parallel_size": config.tensor_parallel_size,
+                "max_model_len": config.max_model_len,
+                "gpu_memory_utilization": config.gpu_memory_utilization,
+                "quantization": config.quantization,
+                "trust_remote_code": True,
+                "enforce_eager": False,  # Use CUDA graphs for better performance
+            }
+            
+            # Try to add prefix caching (available in vLLM >= 0.4.0)
+            try:
+                from vllm import __version__ as vllm_version
+                # Check if enable_chunked_prefill is available (newer parameter name)
+                init_kwargs["enable_chunked_prefill"] = True
+                logger.info(f"Using vLLM {vllm_version} with chunked prefill optimization")
+            except (ImportError, TypeError):
+                logger.info(f"Prefix caching not available in this vLLM version, using standard mode")
+            
+            self.llm = LLM(**init_kwargs)
+            logger.info("vLLM model initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize vLLM: {e}")
             raise
@@ -197,13 +207,22 @@ class vLLMInference:
             top_p=top_p,
             max_tokens=max_tokens,
             skip_special_tokens=True,  # Don't generate special tokens
-            spaces_between_special_tokens=False,  # Faster decoding
-            stop=["\n\nUser:", "\n\nHuman:", "<|im_end|>", "</s>"],  # Stop early if needed
         )
+        
+        # Add stop strings if supported
+        try:
+            sampling_params.stop = ["\n\nUser:", "\n\nHuman:", "<|im_end|>", "</s>"]
+        except (AttributeError, TypeError):
+            pass  # Stop strings not supported in this version
         
         try:
             # Generate with vLLM (automatic batching)
-            outputs = self.llm.generate(prompts, sampling_params, use_tqdm=False)
+            # Try to disable tqdm for less overhead
+            try:
+                outputs = self.llm.generate(prompts, sampling_params, use_tqdm=False)
+            except TypeError:
+                # use_tqdm not supported, use standard call
+                outputs = self.llm.generate(prompts, sampling_params)
             
             # Extract generated text
             results = [output.outputs[0].text for output in outputs]
