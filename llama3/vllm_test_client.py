@@ -26,7 +26,7 @@ class vLLMClient:
         port: int = 1883,
         username: Optional[str] = None,
         password: Optional[str] = None,
-        min_request_interval: float = 0.5  # Minimum seconds between requests
+        min_request_interval: float = 0.1  # Minimum seconds between requests (reduced from 0.5)
     ):
         """
         Initialize MQTT client.

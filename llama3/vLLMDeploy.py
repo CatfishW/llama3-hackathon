@@ -103,13 +103,13 @@ class DeploymentConfig:
     session_timeout: int = 3600  # seconds
     
     # Performance Configuration
-    num_worker_threads: int = 8  # Increased from 4 for better concurrency
+    num_worker_threads: int = 12  # Increased for better concurrency (more than inference slots)
     batch_timeout: float = 0.1  # seconds
     max_queue_size: int = 1000  # Maximum messages in queue
     enable_batching: bool = True  # Enable vLLM batching optimization
     
     # Rate Limiting
-    max_requests_per_session: int = 10  # Max requests per minute per session
+    max_requests_per_session: int = 20  # Max requests per minute per session (increased from 10)
     rate_limit_window: int = 60  # Rate limit window in seconds
     
     # Projects
@@ -657,8 +657,9 @@ class SessionManager:
         self.rate_limit_lock = threading.RLock()
         
         # Global inference semaphore to limit concurrent vLLM calls
-        # This prevents too many threads from hitting the model simultaneously
-        self.inference_semaphore = threading.Semaphore(4)  # Max 4 concurrent inferences
+        # For RTX 4090 with 4GB model, we can handle more concurrent requests
+        # vLLM handles internal batching, so we can be more aggressive
+        self.inference_semaphore = threading.Semaphore(8)  # Increased from 4 to 8
         
         # Start cleanup thread
         self.cleanup_thread = threading.Thread(target=self._cleanup_sessions, daemon=True)
@@ -751,22 +752,15 @@ class SessionManager:
         # Get or create session
         session = self.get_or_create_session(session_id, project_name, system_prompt)
         
-        # Use a timeout lock - if session is locked for too long, give up
+        # Get session lock but DON'T hold it during inference!
+        # Only lock during session data manipulation
         session_lock = self.session_locks.get(session_id, threading.RLock())
-        acquired = session_lock.acquire(blocking=True, timeout=10.0)
         
-        if not acquired:
-            # Session is currently being processed and timeout expired
-            logger.warning(f"Session {session_id[:8]}... lock timeout, request dropped")
-            return "Server is processing your previous request. Please wait a moment and try again."
-        
-        try:
-            # Add user message to dialog WITHOUT computing tokens yet
+        # Build the prompt first (with minimal locking)
+        with session_lock:
+            # Add user message to dialog
             session["dialog"].append({"role": "user", "content": user_message})
             session["message_count"] += 1
-            
-            # Skip token counting in critical path - we'll do lazy trimming
-            # This is the key optimization: don't block on tokenization
             
             # Debug log: conversation history
             debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
@@ -778,9 +772,12 @@ class SessionManager:
                 session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
                 debug_logger.debug(f"Trimmed to last {max_messages} messages")
             
-            # Format prompt
+            # Format prompt - do this inside lock to ensure consistency
             prompt = self.inference.format_chat(session["dialog"])
-            
+        
+        # Now do inference WITHOUT holding session lock!
+        # This allows other requests to the same session to queue properly
+        try:
             # Prepare debug info
             debug_info = {
                 'session_id': session_id,
@@ -790,7 +787,7 @@ class SessionManager:
             }
             
             # Use semaphore to limit concurrent vLLM inference calls
-            # This prevents GPU from being overwhelmed
+            # Multiple different sessions can run concurrently here!
             with self.inference_semaphore:
                 # Generate response - this is where the actual work happens
                 responses = self.inference.generate(
@@ -807,9 +804,10 @@ class SessionManager:
             debug_logger.info(f"ASSISTANT RESPONSE:\n{response}")
             debug_logger.info("╚" + "═" * 78 + "╝\n")
             
-            # Add assistant response to history
-            session["dialog"].append({"role": "assistant", "content": response})
-            session["last_access"] = time.time()
+            # Add assistant response to history (lock again briefly)
+            with session_lock:
+                session["dialog"].append({"role": "assistant", "content": response})
+                session["last_access"] = time.time()
             
             return response
                 
@@ -819,12 +817,6 @@ class SessionManager:
             debug_logger.error(f"ERROR in session {session_id}: {error_msg}")
             debug_logger.info("╚" + "═" * 78 + "╝\n")
             return error_msg
-        finally:
-            # Always release the lock
-            try:
-                session_lock.release()
-            except:
-                pass  # Lock might already be released in some error cases
     
     def _check_rate_limit(self, session_id: str) -> bool:
         """
