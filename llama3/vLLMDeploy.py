@@ -565,6 +565,7 @@ class vLLMInference:
     def count_tokens(self, text: str) -> int:
         """
         Count tokens in a text string.
+        Thread-safe with minimal locking.
         
         Args:
             text: Input text
@@ -572,7 +573,27 @@ class vLLMInference:
         Returns:
             Number of tokens
         """
-        return len(self.tokenizer.encode(text))
+        # Rough estimation to avoid tokenizer calls in critical path
+        # Average ~4 characters per token for most models
+        return len(text) // 4
+    
+    def count_tokens_accurate(self, text: str) -> int:
+        """
+        Accurately count tokens using the tokenizer.
+        Only use this when precision is needed, not in hot paths.
+        
+        Args:
+            text: Input text
+            
+        Returns:
+            Exact number of tokens
+        """
+        try:
+            return len(self.tokenizer.encode(text))
+        except Exception as e:
+            # Fallback to estimation if tokenizer fails
+            logger.warning(f"Tokenizer failed, using estimation: {e}")
+            return len(text) // 4
     
     def format_chat(self, messages: List[Dict[str, str]]) -> str:
         """
@@ -635,6 +656,10 @@ class SessionManager:
         self.request_timestamps: Dict[str, List[float]] = {}
         self.rate_limit_lock = threading.RLock()
         
+        # Global inference semaphore to limit concurrent vLLM calls
+        # This prevents too many threads from hitting the model simultaneously
+        self.inference_semaphore = threading.Semaphore(4)  # Max 4 concurrent inferences
+        
         # Start cleanup thread
         self.cleanup_thread = threading.Thread(target=self._cleanup_sessions, daemon=True)
         self.cleanup_thread.start()
@@ -656,41 +681,36 @@ class SessionManager:
         Returns:
             Session dictionary
         """
-        # Check if session exists
+        # Fast path: check if session exists without locking
         if session_id in self.sessions:
             session = self.sessions[session_id]
             session["last_access"] = time.time()
-            if "token_cache" not in session:
-                token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"]]
-                session["token_cache"] = token_cache
-                session["total_tokens"] = sum(token_cache)
             return session
         
-        # Create new session
+        # Slow path: create new session with minimal locking
         with self.global_lock:
-            if session_id not in self.sessions:
-                # Check session limit
-                if len(self.sessions) >= self.config.max_concurrent_sessions:
-                    self._evict_oldest_session()
+            # Double-check after acquiring lock (another thread might have created it)
+            if session_id in self.sessions:
+                session = self.sessions[session_id]
+                session["last_access"] = time.time()
+                return session
                 
-                system_tokens = self.inference.count_tokens(system_prompt)
+            # Check session limit
+            if len(self.sessions) >= self.config.max_concurrent_sessions:
+                self._evict_oldest_session()
 
-                # Create session
-                self.sessions[session_id] = {
-                    "dialog": [{"role": "system", "content": system_prompt}],
-                    "project": project_name,
-                    "created_at": time.time(),
-                    "last_access": time.time(),
-                    "message_count": 0,
-                    "token_cache": [system_tokens],
-                    "total_tokens": system_tokens,
-                }
-                self.session_locks[session_id] = threading.RLock()
-                logger.info(f"Created new session: {session_id} for project: {project_name}")
-            else:
-                self.sessions[session_id]["last_access"] = time.time()
-                
-            return self.sessions[session_id]
+            # Create session without token counting (use lazy initialization)
+            self.sessions[session_id] = {
+                "dialog": [{"role": "system", "content": system_prompt}],
+                "project": project_name,
+                "created_at": time.time(),
+                "last_access": time.time(),
+                "message_count": 0,
+            }
+            self.session_locks[session_id] = threading.RLock()
+            logger.info(f"Created new session: {session_id[:16]}... for project: {project_name}")
+            
+        return self.sessions[session_id]
     
     def process_message(
         self,
@@ -731,51 +751,48 @@ class SessionManager:
         # Get or create session
         session = self.get_or_create_session(session_id, project_name, system_prompt)
         
-        # Use a non-blocking approach - if session is locked, return queue message
+        # Use a timeout lock - if session is locked for too long, give up
         session_lock = self.session_locks.get(session_id, threading.RLock())
-        acquired = session_lock.acquire(blocking=False)
+        acquired = session_lock.acquire(blocking=True, timeout=10.0)
         
         if not acquired:
-            # Session is currently being processed, inform user
-            logger.warning(f"Session {session_id[:8]}... is busy, skipping concurrent request")
-            return "Please wait, your previous message is still being processed..."
+            # Session is currently being processed and timeout expired
+            logger.warning(f"Session {session_id[:8]}... lock timeout, request dropped")
+            return "Server is processing your previous request. Please wait a moment and try again."
         
         try:
-                # Add user message
-                session["dialog"].append({"role": "user", "content": user_message})
-                session["message_count"] += 1
-                token_cache = session.get("token_cache")
-                if token_cache is None:
-                    token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"][:-1]]
-                    session["token_cache"] = token_cache
-                user_tokens = self.inference.count_tokens(user_message)
-                token_cache.append(user_tokens)
-                session["total_tokens"] = session.get("total_tokens", sum(token_cache[:-1])) + user_tokens
-                
-                # Debug log: conversation history before trimming
-                debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
-                debug_logger.debug(f"Message count: {session['message_count']}")
-                
-                # Trim history if needed
-                self._trim_dialog(session)
-                
-                # Debug log: conversation history after trimming
-                debug_logger.debug(f"After trimming: {len(session['dialog'])} messages")
-                for i, msg in enumerate(session['dialog']):
-                    debug_logger.debug(f"  [{i}] {msg['role']}: {msg['content'][:100]}...")
-                
-                # Format prompt
-                prompt = self.inference.format_chat(session["dialog"])
-                
-                # Prepare debug info
-                debug_info = {
-                    'session_id': session_id,
-                    'project': project_name,
-                    'message_count': session['message_count'],
-                    'user_message': user_message
-                }
-                
-                # Generate response
+            # Add user message to dialog WITHOUT computing tokens yet
+            session["dialog"].append({"role": "user", "content": user_message})
+            session["message_count"] += 1
+            
+            # Skip token counting in critical path - we'll do lazy trimming
+            # This is the key optimization: don't block on tokenization
+            
+            # Debug log: conversation history
+            debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
+            
+            # Simple trimming: keep only last N messages (faster than token counting)
+            max_messages = 20  # Keep last 20 messages (10 exchanges)
+            if len(session["dialog"]) > max_messages:
+                # Keep system message + last max_messages-1
+                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                debug_logger.debug(f"Trimmed to last {max_messages} messages")
+            
+            # Format prompt
+            prompt = self.inference.format_chat(session["dialog"])
+            
+            # Prepare debug info
+            debug_info = {
+                'session_id': session_id,
+                'project': project_name,
+                'message_count': session['message_count'],
+                'user_message': user_message
+            }
+            
+            # Use semaphore to limit concurrent vLLM inference calls
+            # This prevents GPU from being overwhelmed
+            with self.inference_semaphore:
+                # Generate response - this is where the actual work happens
                 responses = self.inference.generate(
                     [prompt],
                     temperature=temperature,
@@ -783,26 +800,18 @@ class SessionManager:
                     max_tokens=max_tokens,
                     debug_info=debug_info
                 )
-                
-                response = responses[0] if responses else "Error: No response generated"
-                
-                # Debug log: final response to user
-                debug_logger.info(f"ASSISTANT RESPONSE:\n{response}")
-                debug_logger.info("╚" + "═" * 78 + "╝\n")
-                
-                # Add assistant response to history
-                session["dialog"].append({"role": "assistant", "content": response})
-                token_cache = session.get("token_cache")
-                if token_cache is None:
-                    token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"][:-1]]
-                    session["token_cache"] = token_cache
-                assistant_tokens = self.inference.count_tokens(response)
-                token_cache.append(assistant_tokens)
-                session["total_tokens"] = session.get("total_tokens", sum(token_cache[:-1])) + assistant_tokens
-                self._trim_dialog(session)
-                session["last_access"] = time.time()
-                
-                return response
+            
+            response = responses[0] if responses else "Error: No response generated"
+            
+            # Debug log: final response to user
+            debug_logger.info(f"ASSISTANT RESPONSE:\n{response}")
+            debug_logger.info("╚" + "═" * 78 + "╝\n")
+            
+            # Add assistant response to history
+            session["dialog"].append({"role": "assistant", "content": response})
+            session["last_access"] = time.time()
+            
+            return response
                 
         except Exception as e:
             error_msg = f"Error processing message: {str(e)}"
@@ -812,7 +821,10 @@ class SessionManager:
             return error_msg
         finally:
             # Always release the lock
-            session_lock.release()
+            try:
+                session_lock.release()
+            except:
+                pass  # Lock might already be released in some error cases
     
     def _check_rate_limit(self, session_id: str) -> bool:
         """
@@ -848,48 +860,24 @@ class SessionManager:
     
     def _trim_dialog(self, session: Dict):
         """
-        Trim dialog history to stay within token limits.
+        Trim dialog history to stay within limits.
+        Uses simple message counting instead of expensive token counting.
         
         Args:
             session: Session dictionary to trim
         """
         dialog = session["dialog"]
-        token_cache = session.get("token_cache")
-        if token_cache is None:
-            token_cache = [self.inference.count_tokens(msg["content"]) for msg in dialog]
-            session["token_cache"] = token_cache
         
         # Always keep system message
         if len(dialog) <= 1:
-            session["total_tokens"] = token_cache[0] if token_cache else 0
             return
 
-        if len(token_cache) != len(dialog):
-            token_cache[:] = [self.inference.count_tokens(msg["content"]) for msg in dialog]
-        
-        total_tokens = session.get("total_tokens")
-        if total_tokens is None:
-            total_tokens = sum(token_cache)
-        
-        # Remove oldest messages (except system) if over limit
-        while total_tokens > self.config.max_history_tokens and len(dialog) > 2:
-            # Remove oldest user-assistant pair
-            if len(token_cache) > 1:
-                total_tokens -= token_cache.pop(1)
-            if len(dialog) > 1:
-                dialog.pop(1)
-            if len(dialog) > 1 and len(token_cache) > 1:
-                dialog.pop(1)
-                total_tokens -= token_cache.pop(1)
-
-        # Keep dialog and cache aligned in case only one element removed above
-        while len(token_cache) > len(dialog):
-            total_tokens -= token_cache.pop()
-
-        total_tokens = sum(token_cache)
-        session["total_tokens"] = total_tokens
-
-        logger.debug(f"Dialog trimmed to {len(dialog)} messages, ~{total_tokens} tokens")
+        # Simple approach: keep last N messages (much faster than token counting)
+        max_messages = 20  # Keep last 20 messages (system + 19 others)
+        if len(dialog) > max_messages:
+            # Keep system message + last max_messages-1
+            session["dialog"] = [dialog[0]] + dialog[-(max_messages-1):]
+            logger.debug(f"Dialog trimmed to {len(session['dialog'])} messages")
     
     def _evict_oldest_session(self):
         """Evict the oldest session when limit is reached."""
