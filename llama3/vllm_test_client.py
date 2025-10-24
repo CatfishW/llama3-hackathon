@@ -83,36 +83,33 @@ class vLLMClient:
         """Callback for incoming messages."""
         topic_parts = msg.topic.split('/')
 
-        session_id = None
-        client_segment = None
-
-        if len(topic_parts) >= 3:
-            session_id = topic_parts[2]
-        if len(topic_parts) >= 4:
-            client_segment = topic_parts[3] if len(topic_parts) == 4 else '/'.join(topic_parts[3:])
-
-        # Fallback: handle legacy topics without full structure
-        if session_id is None:
-            session_id = topic_parts[-1]
+        # Expected: <project>/assistant_response/<session>/<client>/<request_id>
+        if len(topic_parts) < 5:
+            return
+        
+        session_id = topic_parts[2]
+        client_segment = topic_parts[3]
+        request_id = topic_parts[4]
 
         # Drop responses that do not target this client instance
-        if client_segment and client_segment != self.client_id:
+        if client_segment != self.client_id:
             return
+        
         response = msg.payload.decode('utf-8')
         
         # Only process if this is the current session to avoid duplicates
         if session_id != self.current_session:
             return
         
-        # Check if we've already received this response
+        # Use request_id for per-request deduplication
         if session_id not in self.responses:
-            self.responses[session_id] = []
+            self.responses[session_id] = {}
         
-        # Avoid duplicate responses
-        if response in self.responses[session_id]:
+        # Avoid duplicate responses per request
+        if request_id in self.responses[session_id]:
             return
             
-        self.responses[session_id].append(response)
+        self.responses[session_id][request_id] = response
         
         # Display response with nice formatting
         if self.waiting_for_response:
@@ -191,13 +188,15 @@ class vLLMClient:
         
         self.last_request_time = time.time()
         
+        # Generate unique request ID for this message
+        request_id = uuid.uuid4().hex[:16]
+        
         # Set current session to filter messages
         self.current_session = session_id
         self.waiting_for_response = True
         
-        # Subscribe to response topic (only once per session)
-        response_topic_exact = f"{project}/assistant_response/{session_id}/{self.client_id}"
-        response_topic_filter = f"{project}/assistant_response/{session_id}/#"
+        # Subscribe to response topic using request ID (unique per message)
+        response_topic_filter = f"{project}/assistant_response/{session_id}/{self.client_id}/{request_id}"
         if response_topic_filter not in self._subscriptions:
             self.client.subscribe(response_topic_filter, qos=1)
             self._subscriptions.add(response_topic_filter)
@@ -206,8 +205,9 @@ class vLLMClient:
         payload = {
             "sessionId": session_id,
             "message": message,
-            "replyTopic": response_topic_exact,
-            "clientId": self.client_id
+            "replyTopic": response_topic_filter,
+            "clientId": self.client_id,
+            "requestId": request_id
         }
         
         if temperature is not None:
@@ -297,7 +297,7 @@ class vLLMClient:
             return
         
         # Subscribe to response topic immediately
-        response_topic_filter = f"{project}/assistant_response/{session_id}/#"
+        response_topic_filter = f"{project}/assistant_response/{session_id}/{self.client_id}/#"
         if response_topic_filter not in self._subscriptions:
             self.client.subscribe(response_topic_filter, qos=1)
             self._subscriptions.add(response_topic_filter)

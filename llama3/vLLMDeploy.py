@@ -1044,6 +1044,7 @@ class QueuedMessage:
     user_message: str
     response_topic: str
     client_id: Optional[str] = None
+    request_id: Optional[str] = None
     temperature: float = None
     top_p: float = None
     max_tokens: int = None
@@ -1172,12 +1173,15 @@ class MessageProcessor:
             
             # Publish response with QoS 0 for better performance
             response_topic = msg.response_topic.rstrip("/")
-            if msg.client_id:
+            if msg.client_id and msg.request_id:
+                # Ensure the response topic includes both client and request IDs for precise routing
+                response_topic = f"{msg.response_topic.rstrip('/')}/{msg.client_id}/{msg.request_id}"
+            elif msg.client_id:
                 topic_parts = response_topic.split("/")
                 if topic_parts[-1] != msg.client_id:
                     response_topic = f"{response_topic}/{msg.client_id}"
 
-            self.mqtt_client.publish(response_topic, response, qos=0)
+            self.mqtt_client.publish(response_topic, response, qos=1)
             debug_logger.debug(f"Response published to topic: {response_topic}\n")
             
         except Exception as e:
@@ -1354,6 +1358,7 @@ class MQTTHandler:
                 custom_system_prompt = data.get("systemPrompt")  # Optional custom system prompt
                 reply_topic_override = data.get("replyTopic")
                 client_id = data.get("clientId")
+                request_id = data.get("requestId")
                 
                 # Debug log: parsed message
                 debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
@@ -1364,6 +1369,8 @@ class MQTTHandler:
                     debug_logger.debug(f"Custom system prompt: {custom_system_prompt[:100]}...")
                 if client_id:
                     debug_logger.debug(f"Client id: {client_id}")
+                if request_id:
+                    debug_logger.debug(f"Request id: {request_id}")
                 
                 if not user_message.strip():
                     logger.warning(f"Empty message received from session: {session_id}")
@@ -1380,6 +1387,7 @@ class MQTTHandler:
                 custom_system_prompt = None
                 reply_topic_override = None
                 client_id = None
+                request_id = None
                 debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic with session ID
@@ -1396,6 +1404,7 @@ class MQTTHandler:
                 user_message=user_message,
                 response_topic=response_topic_full,
                 client_id=client_id,
+                request_id=request_id,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
