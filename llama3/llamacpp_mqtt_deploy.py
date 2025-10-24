@@ -33,7 +33,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 import fire
 import paho.mqtt.client as mqtt
-import requests
+from openai import OpenAI, OpenAIError
 
 # ============================================================================
 # Configuration and Logging Setup
@@ -86,7 +86,7 @@ class DeploymentConfig:
     default_temperature: float = 0.6
     default_top_p: float = 0.9
     default_max_tokens: int = 512
-    skip_thinking: bool = True  # Remove QwQ-style thinking from outputs
+    skip_thinking: bool = True  # Disable deep thinking mode (adds /no_think directive)
     
     # Session Management
     max_history_tokens: int = 10000
@@ -139,7 +139,7 @@ Keep responses concise and supportive. Never reveal correct answers directly."""
 
 class LlamaCppClient:
     """
-    HTTP client for llama.cpp server inference.
+    HTTP client for llama.cpp server inference using OpenAI package.
     """
     
     def __init__(self, config: DeploymentConfig):
@@ -155,6 +155,14 @@ class LlamaCppClient:
         
         logger.info(f"Initializing Llama.cpp client: {self.server_url}")
         
+        # Initialize OpenAI client with llama.cpp server as base URL
+        # Note: api_key is required by OpenAI client but not used by llama.cpp
+        self.client = OpenAI(
+            base_url=self.server_url,
+            api_key="not-needed",  # llama.cpp doesn't require API key
+            timeout=self.timeout
+        )
+        
         # Test connection to server
         if not self._test_connection():
             raise RuntimeError(
@@ -163,47 +171,37 @@ class LlamaCppClient:
                 f"llama-server -m ./your-model.gguf --port 8080"
             )
         
-        # Get server info
-        self._log_server_info()
+        logger.info("OpenAI client initialized successfully")
     
     def _test_connection(self) -> bool:
         """Test connection to llama.cpp server."""
         try:
-            response = requests.get(
-                f"{self.server_url}/health",
-                timeout=5
+            logger.info("Testing connection to llama.cpp server...")
+            # Try a simple chat completion call to test connectivity
+            self.client.chat.completions.create(
+                model="default",
+                messages=[{"role": "system", "content": "test"}],
+                max_tokens=1
             )
-            return response.status_code == 200
+            logger.info("Connection test successful")
+            return True
         except Exception as e:
             logger.error(f"Connection test failed: {e}")
             return False
     
-    def _log_server_info(self):
-        """Log server information."""
-        try:
-            response = requests.get(
-                f"{self.server_url}/props",
-                timeout=5
-            )
-            if response.status_code == 200:
-                props = response.json()
-                logger.info(f"Server info: {json.dumps(props, indent=2)}")
-        except Exception as e:
-            logger.warning(f"Could not retrieve server properties: {e}")
-    
     def generate(
         self,
-        prompt: str,
+        messages: List[Dict[str, str]],
         temperature: float = None,
         top_p: float = None,
         max_tokens: int = None,
         debug_info: dict = None
     ) -> str:
         """
-        Generate response for a prompt using llama.cpp server.
+        Generate response using OpenAI-compatible chat completion API.
         
         Args:
-            prompt: Input prompt
+            messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (default from config)
             top_p: Top-p sampling (default from config)
             max_tokens: Maximum tokens to generate (default from config)
@@ -222,69 +220,46 @@ class LlamaCppClient:
             debug_logger.debug("=" * 80)
             debug_logger.debug(f"GENERATION REQUEST | Session: {debug_info.get('session_id', 'unknown')}")
             debug_logger.debug(f"Temperature: {temperature}, Top-P: {top_p}, Max Tokens: {max_tokens}")
+            debug_logger.debug(f"Thinking Mode: {'DISABLED' if self.config.skip_thinking else 'ENABLED'}")
             debug_logger.debug("-" * 80)
-            debug_logger.debug(f"FULL PROMPT TO LLM:\n{prompt}")
+            debug_logger.debug(f"MESSAGES TO LLM:\n{json.dumps(messages, indent=2, ensure_ascii=False)}")
             debug_logger.debug("-" * 80)
         
         try:
-            # Prepare request payload
-            payload = {
-                "prompt": prompt,
-                "temperature": temperature,
-                "top_p": top_p,
-                "n_predict": max_tokens,
-                "stop": ["</think>", "<think>"],
-            }
-            
             start_time = time.time()
             
-            # Call llama.cpp completion endpoint
-            response = requests.post(
-                f"{self.server_url}/completion",
-                json=payload,
-                timeout=self.timeout
+            # Prepare extra body parameters for llama.cpp
+            extra_body = {
+                "enable_thinking": not self.config.skip_thinking
+            }
+            
+            # Call chat completions using OpenAI client
+            response = self.client.chat.completions.create(
+                model="default",
+                messages=messages,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                extra_body=extra_body
             )
             
             generation_time = time.time() - start_time
             
-            if response.status_code != 200:
-                error_msg = f"Server error {response.status_code}: {response.text}"
-                logger.error(error_msg)
-                if debug_info:
-                    debug_logger.error(f"Server error: {error_msg}")
-                return f"Error: {error_msg}"
-            
-            # Extract generated text
-            result = response.json()
-            generated_text = result.get("content", "")
-            
-            # Post-process to remove QwQ thinking (if enabled)
-            if self.config.skip_thinking:
-                cleaned = self._clean_qwq_output(generated_text)
-            else:
-                cleaned = generated_text
+            # Extract generated text from response
+            generated_text = response.choices[0].message.content
             
             # Debug log: generation output
             if debug_info:
-                debug_logger.debug(f"LLM RAW OUTPUT:\n{generated_text}")
-                if generated_text != cleaned:
-                    debug_logger.debug("-" * 80)
-                    debug_logger.debug(f"CLEANED OUTPUT:\n{cleaned}")
+                debug_logger.debug(f"LLM OUTPUT:\n{generated_text}")
                 debug_logger.debug("-" * 80)
                 debug_logger.debug(f"Generation Time: {generation_time:.3f}s")
-                debug_logger.debug(f"Output Length: {len(cleaned)} chars")
+                debug_logger.debug(f"Output Length: {len(generated_text)} chars")
                 debug_logger.debug("=" * 80 + "\n")
             
-            return cleaned
+            return generated_text
             
-        except requests.Timeout:
-            error_msg = f"Server request timeout (>{self.timeout}s)"
-            logger.error(error_msg)
-            if debug_info:
-                debug_logger.error(error_msg)
-            return f"Error: {error_msg}"
-        except requests.RequestException as e:
-            error_msg = f"Request failed: {str(e)}"
+        except OpenAIError as e:
+            error_msg = f"OpenAI API error: {str(e)}"
             logger.error(error_msg)
             if debug_info:
                 debug_logger.error(error_msg)
@@ -295,150 +270,7 @@ class LlamaCppClient:
             if debug_info:
                 debug_logger.error(error_msg)
             return f"Error: {error_msg}"
-    
-    def stream_generate(
-        self,
-        prompt: str,
-        temperature: float = None,
-        top_p: float = None,
-        max_tokens: int = None,
-        debug_info: Optional[dict] = None
-    ) -> Iterator[str]:
-        """Stream tokens for a single prompt.
 
-        This wraps the llama.cpp streaming API and yields incremental text
-        (already cleaned when ``skip_thinking`` is enabled) as they become available.
-        """
-
-        if not prompt:
-            return
-
-        temperature = temperature or self.config.default_temperature
-        top_p = top_p or self.config.default_top_p
-        max_tokens = max_tokens or self.config.default_max_tokens
-
-        if debug_info:
-            debug_logger.debug("STREAM GENERATION START")
-            debug_logger.debug(
-                f"Session: {debug_info.get('session_id', 'unknown')} | Temp: {temperature} | TopP: {top_p} | MaxTokens: {max_tokens}"
-            )
-
-        try:
-            payload = {
-                "prompt": prompt,
-                "temperature": temperature,
-                "top_p": top_p,
-                "n_predict": max_tokens,
-                "stop": ["</think>", "<think>"],
-                "stream": True,
-            }
-            
-            response = requests.post(
-                f"{self.server_url}/completion",
-                json=payload,
-                timeout=self.timeout,
-                stream=True
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Stream generation failed: {response.status_code}")
-                yield f"Error: {response.status_code}"
-                return
-            
-            emitted = ""
-            latest_raw = ""
-            
-            # Process streaming response
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                
-                try:
-                    chunk = json.loads(line)
-                    latest_raw = chunk.get("content", "")
-                    
-                    if not latest_raw:
-                        continue
-                    
-                    cleaned = (
-                        self._clean_qwq_output(latest_raw)
-                        if self.config.skip_thinking
-                        else latest_raw
-                    )
-                    
-                    if not cleaned.startswith(emitted):
-                        emitted = ""
-                    
-                    delta = cleaned[len(emitted):]
-                    if delta:
-                        emitted += delta
-                        if debug_info:
-                            debug_logger.debug(f"STREAM DELTA | {delta!r}")
-                        yield delta
-                
-                except json.JSONDecodeError:
-                    continue
-            
-            # Ensure any trailing text is flushed
-            cleaned_final = (
-                self._clean_qwq_output(latest_raw)
-                if self.config.skip_thinking
-                else latest_raw
-            )
-            trailing = cleaned_final[len(emitted):]
-            if trailing:
-                if debug_info:
-                    debug_logger.debug(f"STREAM TRAILING | {trailing!r}")
-                yield trailing
-        
-        except requests.Timeout:
-            logger.error("Stream request timeout")
-            if debug_info:
-                debug_logger.error("STREAM TIMEOUT")
-            yield "Error: Request timeout"
-        except Exception as exc:
-            logger.error(f"Streaming generation failed: {exc}")
-            if debug_info:
-                debug_logger.error(f"STREAM ERROR | Session: {debug_info.get('session_id', 'unknown')}")
-                debug_logger.error(str(exc))
-            yield f"Error: {str(exc)}"
-    
-    def _clean_qwq_output(self, text: str) -> str:
-        """
-        Clean QwQ model's thinking process from the output.
-        QwQ models output reasoning before the final answer.
-        
-        Args:
-            text: Raw model output
-            
-        Returns:
-            Cleaned output with thinking removed
-        """
-        # Check for "Final Answer" marker
-        if "**Final Answer**" in text:
-            parts = text.split("**Final Answer**")
-            if len(parts) > 1:
-                answer = parts[-1].strip()
-                answer = answer.lstrip("*: \n")
-                return answer
-        
-        # Check for common thinking patterns and extract last substantial paragraph
-        thinking_markers = [
-            "Alright,", "Okay,", "Let me think", "Let me check",
-            "Let me confirm", "The user is asking", "I need to"
-        ]
-        
-        marker_count = sum(1 for marker in thinking_markers if marker in text)
-        
-        if marker_count > 2:
-            paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
-            
-            for paragraph in reversed(paragraphs):
-                has_thinking = any(marker.lower() in paragraph.lower() for marker in thinking_markers)
-                if not has_thinking and len(paragraph) > 20:
-                    return paragraph
-        
-        return text.strip()
     
     def count_tokens(self, text: str) -> int:
         """
@@ -453,28 +285,17 @@ class LlamaCppClient:
         # Rough estimation: ~4 characters per token
         return len(text) // 4
     
-    def format_chat(self, messages: List[Dict[str, str]]) -> str:
+    def format_chat(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
-        Format messages into a chat prompt.
+        Return messages as-is for OpenAI-compatible API.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
             
         Returns:
-            Formatted prompt string
+            Messages list for API call
         """
-        try:
-            # Simple chat formatting
-            parts = []
-            for msg in messages:
-                role = msg['role'].capitalize()
-                content = msg['content']
-                parts.append(f"{role}: {content}")
-            parts.append("Assistant:")
-            return "\n\n".join(parts)
-        except Exception as e:
-            logger.warning(f"Chat formatting failed: {e}")
-            return "\n\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\n\nAssistant:"
+        return messages
 
 
 # ============================================================================
@@ -626,8 +447,8 @@ class SessionManager:
                 session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
                 debug_logger.debug(f"Trimmed to last {max_messages} messages")
             
-            # Format prompt
-            prompt = self.client.format_chat(session["dialog"])
+            # Prepare messages for API call
+            messages = self.client.format_chat(session["dialog"])
         
         # Now do inference WITHOUT holding session lock!
         try:
@@ -643,7 +464,7 @@ class SessionManager:
             # Use semaphore to limit concurrent calls
             with self.inference_semaphore:
                 response = self.client.generate(
-                    prompt,
+                    messages,
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
@@ -1182,11 +1003,27 @@ def main(
         mqtt_username: MQTT username (optional)
         mqtt_password: MQTT password (optional)
         num_workers: Number of worker threads
-        skip_thinking: Remove thinking process from outputs (default: True)
+        skip_thinking: Disable thinking mode (adds /no_think to prompt).
+                      For Qwen3-30B with deep thinking enabled, set to False to show thinking.
+                      Default: True (thinking mode disabled for faster responses)
+    
+    Thinking Mode Control:
+        When skip_thinking=True (default):
+        - Adds /no_think directive to disable Qwen3 deep thinking
+        - Faster response times with direct answers
+        - Lower token consumption
+        
+        When skip_thinking=False:
+        - Allows full thinking/reasoning process
+        - Longer response times but potentially better reasoning
+        - Higher token consumption (thinking tokens count as output)
     
     Examples:
-        # Deploy for maze game only
+        # Deploy for maze game only (thinking disabled)
         python llamacpp_mqtt_deploy.py --projects maze
+        
+        # Deploy with thinking enabled for better reasoning
+        python llamacpp_mqtt_deploy.py --projects "maze driving" --skip_thinking False
         
         # Deploy for multiple projects (space-separated)
         python llamacpp_mqtt_deploy.py --projects "maze driving bloodcell"
@@ -1203,7 +1040,8 @@ def main(
             --projects general \\
             --temperature 0.7 \\
             --top_p 0.95 \\
-            --max_tokens 1024
+            --max_tokens 1024 \\
+            --skip_thinking False
     """
     
     logger.info("=" * 80)
