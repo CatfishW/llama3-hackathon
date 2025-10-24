@@ -1480,4 +1480,4 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
-#python vLLMDeploy.py --model ./QwQ-32B --visible_devices "2" --mqtt_username TangClinic --mqtt_password Tang123
+#python vLLMDeploy.py --model Qwen/Qwen3-VL-4B-Instruct-FP8 --visible_devices "2" --mqtt_username TangClinic --mqtt_password Tang123
