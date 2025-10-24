@@ -98,13 +98,19 @@ class DeploymentConfig:
     skip_thinking: bool = True  # Remove QwQ-style thinking from outputs
     
     # Session Management
-    max_history_tokens: int = 3000
+    max_history_tokens: int = 10000
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds
     
     # Performance Configuration
-    num_worker_threads: int = 4
+    num_worker_threads: int = 8  # Increased from 4 for better concurrency
     batch_timeout: float = 0.1  # seconds
+    max_queue_size: int = 1000  # Maximum messages in queue
+    enable_batching: bool = True  # Enable vLLM batching optimization
+    
+    # Rate Limiting
+    max_requests_per_session: int = 10  # Max requests per minute per session
+    rate_limit_window: int = 60  # Rate limit window in seconds
     
     # Projects
     projects: Dict[str, ProjectConfig] = field(default_factory=dict)
@@ -625,6 +631,10 @@ class SessionManager:
         self.session_locks: Dict[str, threading.RLock] = {}
         self.global_lock = threading.RLock()
         
+        # Rate limiting: track request timestamps per session
+        self.request_timestamps: Dict[str, List[float]] = {}
+        self.rate_limit_lock = threading.RLock()
+        
         # Start cleanup thread
         self.cleanup_thread = threading.Thread(target=self._cleanup_sessions, daemon=True)
         self.cleanup_thread.start()
@@ -707,6 +717,10 @@ class SessionManager:
         Returns:
             Generated response
         """
+        # Rate limiting check
+        if not self._check_rate_limit(session_id):
+            return "Error: Rate limit exceeded. Please slow down your requests."
+        
         # Debug log: incoming user message
         debug_logger.info("╔" + "═" * 78 + "╗")
         debug_logger.info(f"║ NEW MESSAGE | Session: {session_id[:16]}... | Project: {project_name}")
@@ -717,9 +731,16 @@ class SessionManager:
         # Get or create session
         session = self.get_or_create_session(session_id, project_name, system_prompt)
         
-        # Thread-safe processing
-        with self.session_locks.get(session_id, threading.RLock()):
-            try:
+        # Use a non-blocking approach - if session is locked, return queue message
+        session_lock = self.session_locks.get(session_id, threading.RLock())
+        acquired = session_lock.acquire(blocking=False)
+        
+        if not acquired:
+            # Session is currently being processed, inform user
+            logger.warning(f"Session {session_id[:8]}... is busy, skipping concurrent request")
+            return "Please wait, your previous message is still being processed..."
+        
+        try:
                 # Add user message
                 session["dialog"].append({"role": "user", "content": user_message})
                 session["message_count"] += 1
@@ -783,12 +804,47 @@ class SessionManager:
                 
                 return response
                 
-            except Exception as e:
-                error_msg = f"Error processing message: {str(e)}"
-                logger.error(f"Session {session_id}: {error_msg}")
-                debug_logger.error(f"ERROR in session {session_id}: {error_msg}")
-                debug_logger.info("╚" + "═" * 78 + "╝\n")
-                return error_msg
+        except Exception as e:
+            error_msg = f"Error processing message: {str(e)}"
+            logger.error(f"Session {session_id}: {error_msg}")
+            debug_logger.error(f"ERROR in session {session_id}: {error_msg}")
+            debug_logger.info("╚" + "═" * 78 + "╝\n")
+            return error_msg
+        finally:
+            # Always release the lock
+            session_lock.release()
+    
+    def _check_rate_limit(self, session_id: str) -> bool:
+        """
+        Check if a session is within rate limits.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            True if within rate limit, False otherwise
+        """
+        current_time = time.time()
+        
+        with self.rate_limit_lock:
+            # Get request history for this session
+            if session_id not in self.request_timestamps:
+                self.request_timestamps[session_id] = []
+            
+            timestamps = self.request_timestamps[session_id]
+            
+            # Remove timestamps outside the rate limit window
+            cutoff_time = current_time - self.config.rate_limit_window
+            timestamps[:] = [ts for ts in timestamps if ts > cutoff_time]
+            
+            # Check if we're over the limit
+            if len(timestamps) >= self.config.max_requests_per_session:
+                logger.warning(f"Rate limit exceeded for session: {session_id[:8]}...")
+                return False
+            
+            # Add current timestamp
+            timestamps.append(current_time)
+            return True
     
     def _trim_dialog(self, session: Dict):
         """
@@ -887,6 +943,7 @@ class QueuedMessage:
     temperature: float = None
     top_p: float = None
     max_tokens: int = None
+    custom_system_prompt: Optional[str] = None  # Optional custom system prompt
     priority: int = 0  # Lower = higher priority
     timestamp: float = field(default_factory=time.time)
 
@@ -913,13 +970,14 @@ class MessageProcessor:
         self.config = config
         self.session_manager = session_manager
         self.mqtt_client = mqtt_client
-        self.message_queue = queue.PriorityQueue(maxsize=1000)
+        self.message_queue = queue.PriorityQueue(maxsize=config.max_queue_size)
         self.running = True
         
         # Statistics
         self.stats = {
             "processed": 0,
             "errors": 0,
+            "rejected": 0,  # Track rejected messages
             "total_latency": 0.0
         }
         self.stats_lock = threading.Lock()
@@ -933,9 +991,15 @@ class MessageProcessor:
         """
         try:
             # Priority queue: (priority, timestamp, message)
-            self.message_queue.put((message.priority, message.timestamp, message), timeout=5)
+            self.message_queue.put((message.priority, message.timestamp, message), block=False)
+            logger.debug(f"Enqueued message from session {message.session_id[:8]}...")
         except queue.Full:
-            logger.error("Message queue is full, dropping message")
+            logger.error(f"Message queue full! Rejecting message from session {message.session_id[:8]}...")
+            # Publish error response immediately
+            error_msg = "Server is overloaded. Please try again in a moment."
+            self.mqtt_client.publish(message.response_topic, error_msg, qos=0)
+            with self.stats_lock:
+                self.stats["rejected"] += 1
     
     def process_loop(self):
         """Main processing loop for a worker thread."""
@@ -976,13 +1040,19 @@ class MessageProcessor:
             msg: Message to process
         """
         try:
-            # Get project config for system prompt
-            project_config = self.config.projects.get(msg.project_name)
-            if not project_config:
-                logger.warning(f"Unknown project: {msg.project_name}, using general prompt")
-                system_prompt = SYSTEM_PROMPTS["general"]
+            # Determine system prompt: use custom if provided, otherwise use project default
+            if msg.custom_system_prompt:
+                system_prompt = msg.custom_system_prompt
+                logger.debug(f"Using custom system prompt for session: {msg.session_id}")
+                debug_logger.debug(f"Custom system prompt: {system_prompt[:100]}...")
             else:
-                system_prompt = project_config.system_prompt
+                # Get project config for system prompt
+                project_config = self.config.projects.get(msg.project_name)
+                if not project_config:
+                    logger.warning(f"Unknown project: {msg.project_name}, using general prompt")
+                    system_prompt = SYSTEM_PROMPTS["general"]
+                else:
+                    system_prompt = project_config.system_prompt
             
             # Process message
             response = self.session_manager.process_message(
@@ -995,15 +1065,15 @@ class MessageProcessor:
                 max_tokens=msg.max_tokens
             )
             
-            # Publish response
-            self.mqtt_client.publish(msg.response_topic, response, qos=1)
+            # Publish response with QoS 0 for better performance
+            self.mqtt_client.publish(msg.response_topic, response, qos=0)
             debug_logger.debug(f"Response published to topic: {msg.response_topic}\n")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             debug_logger.error(f"Error in message processor: {e}")
             error_response = f"Error: {str(e)}"
-            self.mqtt_client.publish(msg.response_topic, error_response, qos=1)
+            self.mqtt_client.publish(msg.response_topic, error_response, qos=0)
             debug_logger.debug(f"Error response published to topic: {msg.response_topic}\n")
     
     def get_stats(self) -> Dict:
@@ -1111,12 +1181,15 @@ class MQTTHandler:
                 temperature = data.get("temperature")
                 top_p = data.get("topP")
                 max_tokens = data.get("maxTokens")
+                custom_system_prompt = data.get("systemPrompt")  # Optional custom system prompt
                 
                 # Debug log: parsed message
                 debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
                 debug_logger.debug(f"Message: {user_message}")
                 if temperature or top_p or max_tokens:
                     debug_logger.debug(f"Custom params - Temp: {temperature}, TopP: {top_p}, MaxTokens: {max_tokens}")
+                if custom_system_prompt:
+                    debug_logger.debug(f"Custom system prompt: {custom_system_prompt[:100]}...")
                 
                 if not user_message.strip():
                     logger.warning(f"Empty message received from session: {session_id}")
@@ -1130,6 +1203,7 @@ class MQTTHandler:
                 temperature = None
                 top_p = None
                 max_tokens = None
+                custom_system_prompt = None
                 debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic with session ID
@@ -1143,7 +1217,8 @@ class MQTTHandler:
                 response_topic=response_topic_full,
                 temperature=temperature,
                 top_p=top_p,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                custom_system_prompt=custom_system_prompt
             )
             
             # Enqueue for processing
@@ -1388,6 +1463,9 @@ def main(
     else:
         logger.info("Quantization: None (FP16/BF16)")
     logger.info(f"Skip thinking output: {skip_thinking}")
+    logger.info(f"Worker threads: {num_workers}")
+    logger.info(f"Max queue size: {config.max_queue_size}")
+    logger.info(f"Rate limiting: {config.max_requests_per_session} req/{config.rate_limit_window}s per session")
     
     try:
         # 1. Initialize vLLM inference engine
@@ -1448,10 +1526,15 @@ def main(
             while True:
                 time.sleep(60)
                 stats = message_processor.get_stats()
+                queue_size = message_processor.message_queue.qsize()
                 logger.info(
-                    f"Stats: Processed={stats['processed']}, Errors={stats['errors']}, "
+                    f"📊 Stats: Processed={stats['processed']}, Errors={stats['errors']}, "
+                    f"Rejected={stats.get('rejected', 0)}, QueueSize={queue_size}, "
                     f"AvgLatency={stats['avg_latency']:.3f}s"
                 )
+                # Warn if queue is getting full
+                if queue_size > config.max_queue_size * 0.7:
+                    logger.warning(f"⚠️  Queue is {queue_size}/{config.max_queue_size} ({queue_size*100//config.max_queue_size}% full) - Server may be overloaded!")
         
         stats_thread = threading.Thread(target=report_stats, daemon=True)
         stats_thread.start()

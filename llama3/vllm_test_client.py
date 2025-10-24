@@ -25,7 +25,8 @@ class vLLMClient:
         broker: str = "47.89.252.2",
         port: int = 1883,
         username: Optional[str] = None,
-        password: Optional[str] = None
+        password: Optional[str] = None,
+        min_request_interval: float = 0.5  # Minimum seconds between requests
     ):
         """
         Initialize MQTT client.
@@ -35,6 +36,7 @@ class vLLMClient:
             port: MQTT broker port
             username: MQTT username (optional)
             password: MQTT password (optional)
+            min_request_interval: Minimum seconds between requests (rate limiting)
         """
         self.broker = broker
         self.port = port
@@ -42,6 +44,8 @@ class vLLMClient:
         self.responses = {}
         self.waiting_for_response = False
         self.current_session = None
+        self.min_request_interval = min_request_interval
+        self.last_request_time = 0.0
         
         # Create MQTT client
         client_id = f"vllm-test-{uuid.uuid4().hex[:8]}"
@@ -145,7 +149,8 @@ class vLLMClient:
         message: str,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        system_prompt: Optional[str] = None
     ):
         """
         Send a message to the vLLM service.
@@ -157,7 +162,17 @@ class vLLMClient:
             temperature: Sampling temperature (optional)
             top_p: Top-p sampling (optional)
             max_tokens: Maximum tokens to generate (optional)
+            system_prompt: Custom system prompt (optional)
         """
+        # Rate limiting: wait if necessary
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            wait_time = self.min_request_interval - time_since_last
+            time.sleep(wait_time)
+        
+        self.last_request_time = time.time()
+        
         # Set current session to filter messages
         self.current_session = session_id
         self.waiting_for_response = True
@@ -178,10 +193,12 @@ class vLLMClient:
             payload["topP"] = top_p
         if max_tokens is not None:
             payload["maxTokens"] = max_tokens
+        if system_prompt is not None:
+            payload["systemPrompt"] = system_prompt
         
-        # Send message
+        # Send message with QoS 0 for better performance
         user_topic = f"{project}/user_input"
-        self.client.publish(user_topic, json.dumps(payload), qos=1)
+        self.client.publish(user_topic, json.dumps(payload), qos=0)
         
         # Display user message with formatting
         print(f"\n┌{'─' * 58}┐")
@@ -209,7 +226,8 @@ class vLLMClient:
         session_id: Optional[str] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        system_prompt: Optional[str] = None
     ):
         """
         Start an interactive chat session.
@@ -220,6 +238,7 @@ class vLLMClient:
             temperature: Sampling temperature
             top_p: Top-p sampling
             max_tokens: Maximum tokens to generate
+            system_prompt: Custom system prompt (optional)
         """
         if not session_id:
             session_id = f"user-{uuid.uuid4().hex[:8]}"
@@ -235,12 +254,18 @@ class vLLMClient:
         print("╠" + "═" * 58 + "╣")
         print("║" + f" 📁 Project: {project}".ljust(58) + "║")
         print("║" + f" 🔑 Session: {session_id}".ljust(58) + "║")
+        if system_prompt:
+            # Show first 40 chars of custom system prompt
+            prompt_preview = system_prompt[:40] + "..." if len(system_prompt) > 40 else system_prompt
+            print("║" + f" 🎯 Custom Prompt: {prompt_preview}".ljust(58) + "║")
         print("║" + " " * 58 + "║")
         print("╠" + "═" * 58 + "╣")
         print("║" + " 💡 Commands:".ljust(58) + "║")
         print("║" + "    • Type your message and press Enter".ljust(58) + "║")
         print("║" + "    • Type 'exit', 'quit', or 'q' to end session".ljust(58) + "║")
         print("║" + "    • Type 'clear' to clear conversation history".ljust(58) + "║")
+        if not system_prompt:
+            print("║" + "    • Type 'prompt <text>' to set custom system prompt".ljust(58) + "║")
         print("║" + " " * 58 + "║")
         print("═" * 60 + "\n")
         
@@ -253,6 +278,7 @@ class vLLMClient:
         self.client.subscribe(response_topic, qos=1)
         
         message_count = 0
+        current_system_prompt = system_prompt  # Track current system prompt
         
         try:
             while True:
@@ -281,7 +307,18 @@ class vLLMClient:
                     print("\n📖 Available commands:")
                     print("  • exit/quit/q - End the chat session")
                     print("  • clear - Clear the screen")
+                    print("  • prompt <text> - Set custom system prompt")
                     print("  • help/? - Show this help message\n")
+                    continue
+                
+                # Handle custom system prompt command
+                if user_input.lower().startswith('prompt '):
+                    new_prompt = user_input[7:].strip()
+                    if new_prompt:
+                        current_system_prompt = new_prompt
+                        print(f"\n✓ System prompt updated: {new_prompt[:60]}...\n" if len(new_prompt) > 60 else f"\n✓ System prompt updated: {new_prompt}\n")
+                    else:
+                        print("\n⚠️  Please provide a prompt text after 'prompt' command\n")
                     continue
                 
                 # Send message
@@ -291,7 +328,8 @@ class vLLMClient:
                     message=user_input,
                     temperature=temperature,
                     top_p=top_p,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    system_prompt=current_system_prompt
                 )
                 
                 message_count += 1
@@ -324,6 +362,7 @@ def main(
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    system_prompt: Optional[str] = None,
 ):
     """
     Start an interactive chat session with the vLLM deployment.
@@ -338,6 +377,7 @@ def main(
         temperature: Sampling temperature (optional)
         top_p: Top-p sampling (optional)
         max_tokens: Maximum tokens to generate (optional)
+        system_prompt: Custom system prompt (optional)
     
     Examples:
         # Start a general chat
@@ -350,10 +390,13 @@ def main(
         python vllm_test_client.py --project maze --temperature 0.8 --max_tokens 256
         
         # With authentication
-        python vllm_test_client.py --project bloodcell --username user --password pass
+        python vllm_test_client.py --project driving --username TangClinic --password Tang123
+        
+        # With custom system prompt
+        python vllm_test_client.py --project general --system_prompt "You are a helpful coding assistant"
     """
     client = vLLMClient(broker, port, username, password)
-    client.chat(project, session, temperature, top_p, max_tokens)
+    client.chat(project, session, temperature, top_p, max_tokens, system_prompt)
 
 
 if __name__ == "__main__":
