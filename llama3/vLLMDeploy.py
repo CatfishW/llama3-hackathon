@@ -186,6 +186,16 @@ MODEL_SPECS: Tuple[ModelSpec, ...] = (
     ),
     ModelSpec(
         provider="modelscope",
+        model_id="Qwen/Qwen3-30B-A3B-Instruct-2507",
+        aliases=(
+            "qwen3-30b-a3b-instruct-2507",
+            "qwen3-30b-a3b",
+            "qwen3-30b",
+            "qwen/qwen3-30b-a3b-instruct-2507",
+        ),
+    ),
+    ModelSpec(
+        provider="modelscope",
         model_id="Qwen/Qwen2-72B-Instruct",
         aliases=("qwen2-72b-instruct", "qwen2-72b", "qwen2_instruct"),
     ),
