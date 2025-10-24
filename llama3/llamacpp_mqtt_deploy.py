@@ -67,6 +67,10 @@ class ProjectConfig:
     response_topic: str
     system_prompt: str
     enabled: bool = True
+    # Optional state topic for game state messages (e.g., maze/state)
+    state_topic: str = None
+    # Optional hint topic for hint responses (e.g., maze/hint/{sessionId})
+    hint_topic: str = None
 
 
 @dataclass
@@ -782,10 +786,19 @@ class MQTTHandler:
             # Subscribe to all enabled project topics
             for project_name, project_config in self.config.projects.items():
                 if project_config.enabled:
+                    # Subscribe to user input topic
                     topic = project_config.user_topic
                     client.subscribe(topic, qos=1)
                     logger.info(f"✓ Subscribed to INPUT topic: {topic} (project: {project_name})")
+                    
+                    # Subscribe to state topic if configured (for game state messages)
+                    if project_config.state_topic:
+                        client.subscribe(project_config.state_topic, qos=1)
+                        logger.info(f"✓ Subscribed to STATE topic: {project_config.state_topic} (project: {project_name})")
+                    
                     logger.info(f"  → Will publish responses to: {project_config.response_topic}")
+                    if project_config.hint_topic:
+                        logger.info(f"  → Will publish hints to: {project_config.hint_topic}")
         else:
             logger.error(f"✗ Failed to connect to MQTT broker, code: {rc}")
     
@@ -811,6 +824,45 @@ class MQTTHandler:
             "Missing or empty sessionId in payload; generated fallback id %s", generated
         )
         return generated
+
+    def _convert_state_to_message(self, state: dict, project_name: str) -> str:
+        """Convert game state dict to descriptive user message."""
+        try:
+            # Extract key state information
+            player_pos = state.get("player_pos", {})
+            exit_pos = state.get("exit_pos", {})
+            visible_map = state.get("visible_map", [])
+            germs = state.get("germs", [])
+            oxygen_pellets = state.get("oxygenPellets", [])
+            oxygen_collected = state.get("oxygenCollected", 0)
+            
+            # Convert to lists of [x, y] coords
+            def to_xy_list(objs):
+                out = []
+                for it in (objs or []):
+                    if isinstance(it, dict) and "x" in it and "y" in it:
+                        out.append([int(it["x"]), int(it["y"])])
+                    elif isinstance(it, (list, tuple)) and len(it) == 2:
+                        out.append([int(it[0]), int(it[1])])
+                return out
+            
+            # Create structured message
+            message_data = {
+                "player_pos": [player_pos.get("x", 0), player_pos.get("y", 0)] if isinstance(player_pos, dict) else player_pos,
+                "exit_pos": [exit_pos.get("x", 0), exit_pos.get("y", 0)] if isinstance(exit_pos, dict) else exit_pos,
+                "visible_map": visible_map,
+                "germs": to_xy_list(germs),
+                "oxygen": to_xy_list(oxygen_pellets),
+                "oxygen_collected": oxygen_collected
+            }
+            
+            return json.dumps(message_data, ensure_ascii=False)
+            
+        except Exception as e:
+            logger.error(f"Error converting state to message: {e}")
+            debug_logger.error(f"State conversion error: {e}")
+            # Return minimal fallback
+            return json.dumps({"error": "Invalid state data", "raw_state": str(state)[:200]})
 
     def _resolve_response_topic(self, base_topic: str, session_id: str, reply_topic: Optional[str]) -> str:
         """Choose the MQTT topic used for assistant responses."""
@@ -862,38 +914,63 @@ class MQTTHandler:
             debug_logger.debug(f"RAW MQTT MESSAGE | Topic: {msg.topic}")
             debug_logger.debug(f"Payload: {payload}")
             
-            # Find which project this message belongs to
+            # Find which project this message belongs to and message type
             project_name = None
             response_topic = None
+            is_state_message = False
+            project_config = None
             
             for pname, pconfig in self.config.projects.items():
                 if msg.topic == pconfig.user_topic:
                     project_name = pname
                     response_topic = pconfig.response_topic
+                    project_config = pconfig
+                    is_state_message = False
+                    break
+                elif pconfig.state_topic and msg.topic == pconfig.state_topic:
+                    project_name = pname
+                    # For state messages, use hint_topic if available, otherwise response_topic
+                    response_topic = pconfig.hint_topic if pconfig.hint_topic else pconfig.response_topic
+                    project_config = pconfig
+                    is_state_message = True
                     break
             
             if not project_name:
                 logger.warning(f"❌ Received message from unknown topic: {msg.topic}")
-                logger.warning(f"   Expected topics: {[p.user_topic for p in self.config.projects.values()]}")
+                expected = []
+                for p in self.config.projects.values():
+                    expected.append(p.user_topic)
+                    if p.state_topic:
+                        expected.append(p.state_topic)
+                logger.warning(f"   Expected topics: {expected}")
                 debug_logger.warning(f"Unknown topic: {msg.topic}")
                 return
             
-            # Parse message
+            # Parse message based on type
             try:
                 data = json.loads(payload)
-                session_id = self._normalize_session_id(data.get("sessionId"))
-                user_message = data.get("message", "")
+                
+                if is_state_message:
+                    # Game state message - convert to descriptive text
+                    session_id = self._normalize_session_id(data.get("sessionId"))
+                    user_message = self._convert_state_to_message(data, project_name)
+                    logger.info(f"📊 Processing STATE message for session: {session_id}")
+                else:
+                    # Regular user input message
+                    session_id = self._normalize_session_id(data.get("sessionId"))
+                    user_message = data.get("message", "")
+                    logger.info(f"💬 Processing USER message for session: {session_id}")
                 
                 temperature = data.get("temperature")
                 top_p = data.get("topP")
                 max_tokens = data.get("maxTokens")
-                custom_system_prompt = data.get("systemPrompt")
+                custom_system_prompt = data.get("systemPrompt") or data.get("prompt_template", {}).get("content")
                 reply_topic_override = data.get("replyTopic")
                 client_id = data.get("clientId")
                 request_id = data.get("requestId")
                 
-                debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
-                debug_logger.debug(f"Message: {user_message}")
+                debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}, Type: {'STATE' if is_state_message else 'USER'}")
+                debug_logger.debug(f"Message: {user_message[:200]}...")
                 if temperature or top_p or max_tokens:
                     debug_logger.debug(f"Custom params - Temp: {temperature}, TopP: {top_p}, MaxTokens: {max_tokens}")
                 if custom_system_prompt:
@@ -909,6 +986,7 @@ class MQTTHandler:
                     return
                 
             except json.JSONDecodeError:
+                # Not JSON, treat as plain text user message
                 session_id = self._normalize_session_id(None)
                 user_message = payload
                 temperature = None
@@ -918,6 +996,7 @@ class MQTTHandler:
                 reply_topic_override = None
                 client_id = None
                 request_id = None
+                is_state_message = False
                 debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic
@@ -1080,13 +1159,25 @@ def main(
     for project_name in projects_list:
         system_prompt = SYSTEM_PROMPTS.get(project_name, SYSTEM_PROMPTS["general"])
         
-        project_configs[project_name] = ProjectConfig(
-            name=project_name,
-            user_topic=f"{project_name}/user_input",
-            response_topic=f"{project_name}/assistant_response",
-            system_prompt=system_prompt,
-            enabled=True
-        )
+        # Special handling for maze project - also subscribe to state topic
+        if project_name == "maze":
+            project_configs[project_name] = ProjectConfig(
+                name=project_name,
+                user_topic=f"{project_name}/user_input",
+                state_topic=f"{project_name}/state",  # Game state messages
+                response_topic=f"{project_name}/assistant_response",
+                hint_topic=f"{project_name}/hint",  # Hint responses for game
+                system_prompt=system_prompt,
+                enabled=True
+            )
+        else:
+            project_configs[project_name] = ProjectConfig(
+                name=project_name,
+                user_topic=f"{project_name}/user_input",
+                response_topic=f"{project_name}/assistant_response",
+                system_prompt=system_prompt,
+                enabled=True
+            )
     
     # Create deployment config
     config = DeploymentConfig(
