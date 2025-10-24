@@ -749,11 +749,47 @@ class SessionManager:
         
         # Get session lock but DON'T hold it during inference!
         session_lock = self.session_locks.get(session_key, threading.RLock())
-        
+        project_config = self.config.projects.get(project_name)
+
         # Build the prompt first (with minimal locking)
         with session_lock:
+            repeat_count = session.get("repeat_count", 0)
+            assistant_repeat_count = session.get("assistant_repeat_count", 0)
+            last_raw_user = session.get("last_user_message_raw")
+            adjusted_message = user_message
+
+            if last_raw_user == user_message:
+                repeat_count += 1
+            else:
+                repeat_count = 0
+
+            session["repeat_count"] = repeat_count
+            session["last_user_message_raw"] = user_message
+
+            if (
+                project_config
+                and project_config.name == "maze"
+                and (repeat_count >= 1 or assistant_repeat_count >= 1)
+            ):
+                # Give the model explicit context when the state or response keeps repeating.
+                stuck_payload = {
+                    "stuck": True,
+                    "state_repeat_count": repeat_count + 1,
+                    "assistant_repeat_count": assistant_repeat_count + 1,
+                    "instruction": (
+                        "Player appears stuck. Provide a fresh hint or pick a different tool "
+                        "(show_path, highlight_zone, reveal_map, etc.) to unblock progress."
+                    ),
+                }
+                adjusted_message = f"{user_message}\n\nSTUCK_CONTEXT: {json.dumps(stuck_payload, ensure_ascii=False)}"
+                debug_logger.debug(
+                    "Injected stuck context | repeat_count=%s assistant_repeat_count=%s",
+                    repeat_count,
+                    assistant_repeat_count,
+                )
+
             # Add user message to dialog
-            session["dialog"].append({"role": "user", "content": user_message})
+            session["dialog"].append({"role": "user", "content": adjusted_message})
             session["message_count"] += 1
             
             debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
@@ -778,7 +814,6 @@ class SessionManager:
             if client_id:
                 debug_info['client_id'] = client_id
             
-            project_config = self.config.projects.get(project_name)
             if project_config and project_config.tools:
                 debug_info['tools_used'] = [tool['function']['name'] for tool in project_config.tools if 'function' in tool]
 
@@ -802,6 +837,12 @@ class SessionManager:
             with session_lock:
                 session["dialog"].append({"role": "assistant", "content": response})
                 session["last_access"] = time.time()
+                previous_response = session.get("last_assistant_response", "")
+                if previous_response.strip() == response.strip():
+                    session["assistant_repeat_count"] = session.get("assistant_repeat_count", 0) + 1
+                else:
+                    session["assistant_repeat_count"] = 0
+                session["last_assistant_response"] = response
             
             return response
                 
@@ -1621,7 +1662,7 @@ def main(
     server_timeout: int = 300,
     
     # Generation parameters
-    temperature: float = 0.6,
+    temperature: float = 1.2,
     top_p: float = 0.9,
     max_tokens: int = 512,
     
