@@ -1,0 +1,45 @@
+# Debug logs (contain sensitive user data)
+debug_info.log
+debug_info_*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (too large for git)
+*.bin
+*.safetensors
+*.gguf
+*.pth
+
+# Data files
+*.parquet
+*.json.gz
+*.csv.gz
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

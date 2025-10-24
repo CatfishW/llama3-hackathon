@@ -37,12 +37,24 @@ from vllm import LLM, SamplingParams
 # Configuration and Logging Setup
 # ============================================================================
 
+# Main logger for console
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+# Debug logger for detailed information (file only)
+debug_logger = logging.getLogger('debug')
+debug_logger.setLevel(logging.DEBUG)
+debug_handler = logging.FileHandler('debug_info.log', mode='a', encoding='utf-8')
+debug_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+debug_logger.addHandler(debug_handler)
+debug_logger.propagate = False  # Don't propagate to root logger
 
 
 @dataclass
@@ -76,6 +88,7 @@ class DeploymentConfig:
     default_temperature: float = 0.6
     default_top_p: float = 0.9
     default_max_tokens: int = 512
+    skip_thinking: bool = True  # Remove QwQ-style thinking from outputs
     
     # Session Management
     max_history_tokens: int = 3000
@@ -142,20 +155,61 @@ class vLLMInference:
             os.environ["CUDA_VISIBLE_DEVICES"] = str(config.visible_devices)
             logger.info(f"Setting CUDA_VISIBLE_DEVICES to: {config.visible_devices}")
         
-        # Initialize vLLM
+        # Initialize vLLM with quantization support
         try:
-            self.llm = LLM(
-                model=config.model_name,
-                tensor_parallel_size=config.tensor_parallel_size,
-                max_model_len=config.max_model_len,
-                gpu_memory_utilization=config.gpu_memory_utilization,
-                quantization=config.quantization,
-                trust_remote_code=True,
-                enforce_eager=False,  # Use CUDA graphs for better performance
-            )
-            logger.info("vLLM model initialized successfully")
+            # Build initialization kwargs
+            init_kwargs = {
+                "model": config.model_name,
+                "tensor_parallel_size": config.tensor_parallel_size,
+                "max_model_len": config.max_model_len,
+                "gpu_memory_utilization": config.gpu_memory_utilization,
+                "trust_remote_code": True,
+                "enforce_eager": False,  # Use CUDA graphs for better performance
+            }
+            
+            # Add quantization if specified
+            if config.quantization:
+                quantization_lower = config.quantization.lower()
+                
+                # Validate and set quantization
+                supported_quant = ["awq", "gptq", "squeezellm", "fp8", "bitsandbytes"]
+                if quantization_lower in supported_quant:
+                    init_kwargs["quantization"] = quantization_lower
+                    logger.info(f"Enabling {quantization_lower.upper()} quantization")
+                    
+                    # Special handling for different quantization methods
+                    if quantization_lower == "fp8":
+                        # FP8 quantization - requires specific hardware
+                        logger.info("FP8 quantization requires Ada Lovelace or newer GPUs")
+                    elif quantization_lower == "bitsandbytes":
+                        # BitsAndBytes (4-bit/8-bit) quantization
+                        logger.info("Using BitsAndBytes quantization (4-bit/8-bit)")
+                    elif quantization_lower in ["awq", "gptq"]:
+                        # AWQ/GPTQ require pre-quantized models
+                        logger.info(f"Using {quantization_lower.upper()} - ensure model is pre-quantized")
+                else:
+                    logger.warning(
+                        f"Unsupported quantization: {config.quantization}. "
+                        f"Supported methods: {', '.join(supported_quant)}"
+                    )
+                    logger.warning("Proceeding without quantization")
+            
+            # Initialize model
+            self.llm = LLM(**init_kwargs)
+            
+            # Log success with quantization status
+            if config.quantization:
+                logger.info(f"vLLM model initialized successfully with {config.quantization.upper()} quantization")
+            else:
+                logger.info("vLLM model initialized successfully (no quantization)")
+                
         except Exception as e:
             logger.error(f"Failed to initialize vLLM: {e}")
+            if config.quantization:
+                logger.error(
+                    f"Quantization '{config.quantization}' may not be compatible with this model. "
+                    "Try without quantization or use a pre-quantized model."
+                )
             raise
         
         # Get tokenizer for token counting
@@ -166,7 +220,8 @@ class vLLMInference:
         prompts: List[str],
         temperature: float = None,
         top_p: float = None,
-        max_tokens: int = None
+        max_tokens: int = None,
+        debug_info: dict = None
     ) -> List[str]:
         """
         Generate responses for a batch of prompts.
@@ -176,6 +231,7 @@ class vLLMInference:
             temperature: Sampling temperature (default from config)
             top_p: Top-p sampling (default from config)
             max_tokens: Maximum tokens to generate (default from config)
+            debug_info: Optional debug info dict to log details
             
         Returns:
             List of generated response strings
@@ -188,24 +244,114 @@ class vLLMInference:
         top_p = top_p or self.config.default_top_p
         max_tokens = max_tokens or self.config.default_max_tokens
         
-        # Create sampling params
+        # Debug log: generation parameters
+        if debug_info:
+            debug_logger.debug("=" * 80)
+            debug_logger.debug(f"GENERATION REQUEST | Session: {debug_info.get('session_id', 'unknown')}")
+            debug_logger.debug(f"Temperature: {temperature}, Top-P: {top_p}, Max Tokens: {max_tokens}")
+            debug_logger.debug("-" * 80)
+            debug_logger.debug(f"FULL PROMPT TO LLM:\n{prompts[0]}")
+            debug_logger.debug("-" * 80)
+        
+        # Create sampling params with stop strings to prevent QwQ thinking
         sampling_params = SamplingParams(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            stop=[
+                "<|im_end|>",
+                "</s>",
+                "<|endoftext|>",
+                "\n\nUser:",
+                "\n\nHuman:",
+                "**Final Answer**",  # Stop before QwQ's "Final Answer" marker
+            ],
+            skip_special_tokens=True,
         )
         
         try:
             # Generate with vLLM (automatic batching)
+            start_time = time.time()
             outputs = self.llm.generate(prompts, sampling_params)
+            generation_time = time.time() - start_time
             
             # Extract generated text
             results = [output.outputs[0].text for output in outputs]
-            return results
+            
+            # Post-process to remove QwQ thinking (if enabled)
+            cleaned_results = []
+            for result in results:
+                if self.config.skip_thinking:
+                    cleaned = self._clean_qwq_output(result)
+                else:
+                    cleaned = result
+                cleaned_results.append(cleaned)
+            
+            # Debug log: generation output
+            if debug_info:
+                debug_logger.debug(f"LLM RAW OUTPUT:\n{results[0]}")
+                if results[0] != cleaned_results[0]:
+                    debug_logger.debug("-" * 80)
+                    debug_logger.debug(f"CLEANED OUTPUT:\n{cleaned_results[0]}")
+                debug_logger.debug("-" * 80)
+                debug_logger.debug(f"Generation Time: {generation_time:.3f}s")
+                debug_logger.debug(f"Output Length: {len(cleaned_results[0])} chars")
+                debug_logger.debug("=" * 80 + "\n")
+            
+            return cleaned_results
             
         except Exception as e:
             logger.error(f"Generation failed: {e}")
+            if debug_info:
+                debug_logger.error(f"GENERATION ERROR | Session: {debug_info.get('session_id', 'unknown')}")
+                debug_logger.error(f"Error: {str(e)}")
+                debug_logger.error("=" * 80 + "\n")
             return [f"Error: {str(e)}"] * len(prompts)
+    
+    def _clean_qwq_output(self, text: str) -> str:
+        """
+        Clean QwQ model's thinking process from the output.
+        QwQ models output reasoning before the final answer.
+        
+        Args:
+            text: Raw model output
+            
+        Returns:
+            Cleaned output with thinking removed
+        """
+        # Check for "Final Answer" marker
+        if "**Final Answer**" in text:
+            # Extract everything after "Final Answer"
+            parts = text.split("**Final Answer**")
+            if len(parts) > 1:
+                answer = parts[-1].strip()
+                # Remove leading markers
+                answer = answer.lstrip("*: \n")
+                return answer
+        
+        # Check for common thinking patterns and extract last substantial paragraph
+        # QwQ often has "Alright," "Okay," "Let me think" patterns
+        thinking_markers = [
+            "Alright,", "Okay,", "Let me think", "Let me check",
+            "Let me confirm", "The user is asking", "I need to"
+        ]
+        
+        # If text contains multiple thinking markers, try to extract the actual answer
+        marker_count = sum(1 for marker in thinking_markers if marker in text)
+        
+        if marker_count > 2:  # Likely contains thinking
+            # Split into sentences/paragraphs
+            paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+            
+            # Find the last paragraph that looks like an answer (not thinking)
+            for paragraph in reversed(paragraphs):
+                # Skip if it contains thinking markers
+                has_thinking = any(marker.lower() in paragraph.lower() for marker in thinking_markers)
+                if not has_thinking and len(paragraph) > 20:  # Substantial content
+                    return paragraph
+        
+        # If no patterns found, return original (might be clean already)
+        return text.strip()
     
     def count_tokens(self, text: str) -> int:
         """
@@ -349,6 +495,13 @@ class SessionManager:
         Returns:
             Generated response
         """
+        # Debug log: incoming user message
+        debug_logger.info("╔" + "═" * 78 + "╗")
+        debug_logger.info(f"║ NEW MESSAGE | Session: {session_id[:16]}... | Project: {project_name}")
+        debug_logger.info("╠" + "═" * 78 + "╣")
+        debug_logger.info(f"USER MESSAGE:\n{user_message}")
+        debug_logger.info("─" * 80)
+        
         # Get or create session
         session = self.get_or_create_session(session_id, project_name, system_prompt)
         
@@ -359,21 +512,43 @@ class SessionManager:
                 session["dialog"].append({"role": "user", "content": user_message})
                 session["message_count"] += 1
                 
+                # Debug log: conversation history before trimming
+                debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
+                debug_logger.debug(f"Message count: {session['message_count']}")
+                
                 # Trim history if needed
                 self._trim_dialog(session)
                 
+                # Debug log: conversation history after trimming
+                debug_logger.debug(f"After trimming: {len(session['dialog'])} messages")
+                for i, msg in enumerate(session['dialog']):
+                    debug_logger.debug(f"  [{i}] {msg['role']}: {msg['content'][:100]}...")
+                
                 # Format prompt
                 prompt = self.inference.format_chat(session["dialog"])
+                
+                # Prepare debug info
+                debug_info = {
+                    'session_id': session_id,
+                    'project': project_name,
+                    'message_count': session['message_count'],
+                    'user_message': user_message
+                }
                 
                 # Generate response
                 responses = self.inference.generate(
                     [prompt],
                     temperature=temperature,
                     top_p=top_p,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    debug_info=debug_info
                 )
                 
                 response = responses[0] if responses else "Error: No response generated"
+                
+                # Debug log: final response to user
+                debug_logger.info(f"ASSISTANT RESPONSE:\n{response}")
+                debug_logger.info("╚" + "═" * 78 + "╝\n")
                 
                 # Add assistant response to history
                 session["dialog"].append({"role": "assistant", "content": response})
@@ -384,6 +559,8 @@ class SessionManager:
             except Exception as e:
                 error_msg = f"Error processing message: {str(e)}"
                 logger.error(f"Session {session_id}: {error_msg}")
+                debug_logger.error(f"ERROR in session {session_id}: {error_msg}")
+                debug_logger.info("╚" + "═" * 78 + "╝\n")
                 return error_msg
     
     def _trim_dialog(self, session: Dict):
@@ -577,11 +754,14 @@ class MessageProcessor:
             
             # Publish response
             self.mqtt_client.publish(msg.response_topic, response, qos=1)
+            debug_logger.debug(f"Response published to topic: {msg.response_topic}\n")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            debug_logger.error(f"Error in message processor: {e}")
             error_response = f"Error: {str(e)}"
             self.mqtt_client.publish(msg.response_topic, error_response, qos=1)
+            debug_logger.debug(f"Error response published to topic: {msg.response_topic}\n")
     
     def get_stats(self) -> Dict:
         """Get processing statistics."""
@@ -659,6 +839,10 @@ class MQTTHandler:
             # Decode message
             payload = msg.payload.decode('utf-8')
             
+            # Debug log: raw MQTT message
+            debug_logger.debug(f"RAW MQTT MESSAGE | Topic: {msg.topic}")
+            debug_logger.debug(f"Payload: {payload}")
+            
             # Find which project this message belongs to
             project_name = None
             response_topic = None
@@ -671,6 +855,7 @@ class MQTTHandler:
             
             if not project_name:
                 logger.warning(f"Received message from unknown topic: {msg.topic}")
+                debug_logger.warning(f"Unknown topic: {msg.topic}")
                 return
             
             # Parse message (expect JSON with sessionId and message)
@@ -684,8 +869,15 @@ class MQTTHandler:
                 top_p = data.get("topP")
                 max_tokens = data.get("maxTokens")
                 
+                # Debug log: parsed message
+                debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
+                debug_logger.debug(f"Message: {user_message}")
+                if temperature or top_p or max_tokens:
+                    debug_logger.debug(f"Custom params - Temp: {temperature}, TopP: {top_p}, MaxTokens: {max_tokens}")
+                
                 if not user_message.strip():
                     logger.warning(f"Empty message received from session: {session_id}")
+                    debug_logger.warning(f"Empty message from session: {session_id}")
                     return
                 
             except json.JSONDecodeError:
@@ -695,6 +887,7 @@ class MQTTHandler:
                 temperature = None
                 top_p = None
                 max_tokens = None
+                debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic with session ID
             response_topic_full = f"{response_topic}/{session_id}"
@@ -713,9 +906,11 @@ class MQTTHandler:
             # Enqueue for processing
             self.message_processor.enqueue(queued_msg)
             logger.debug(f"Enqueued message from session: {session_id}")
+            debug_logger.debug(f"Message enqueued for processing | Session: {session_id}\n")
             
         except Exception as e:
             logger.error(f"Error handling MQTT message: {e}")
+            debug_logger.error(f"Error handling MQTT message: {e}\n")
     
     def connect(self):
         """Connect to MQTT broker."""
@@ -768,6 +963,9 @@ def main(
     
     # Performance
     num_workers: int = 4,
+    
+    # Output processing
+    skip_thinking: bool = True,
 ):
     """
     Deploy vLLM model with MQTT interface for multiple projects.
@@ -790,6 +988,7 @@ def main(
         mqtt_username: MQTT username (optional)
         mqtt_password: MQTT password (optional)
         num_workers: Number of worker threads
+        skip_thinking: Remove QwQ-style thinking process from outputs (default: True)
     
     Examples:
         # Deploy for maze game only
@@ -804,13 +1003,31 @@ def main(
         # With custom MQTT settings
         python vLLMDeploy.py --projects driving --mqtt_username user --mqtt_password pass
         
-        # With quantization
-        python vLLMDeploy.py --projects general --quantization awq
+        # With AWQ quantization (requires pre-quantized model)
+        python vLLMDeploy.py --projects general --quantization awq --model TheBloke/QwQ-32B-AWQ
+        
+        # With GPTQ quantization (requires pre-quantized model)
+        python vLLMDeploy.py --projects general --quantization gptq --model TheBloke/QwQ-32B-GPTQ
+        
+        # With BitsAndBytes 4-bit quantization (quantizes on-the-fly)
+        python vLLMDeploy.py --projects general --quantization bitsandbytes
+        
+        # With FP8 quantization (Ada Lovelace+ GPUs only)
+        python vLLMDeploy.py --projects general --quantization fp8
+        
+        # Keep QwQ thinking output (for debugging)
+        python vLLMDeploy.py --projects general --skip_thinking False
     """
     
     logger.info("=" * 80)
     logger.info("vLLM Multi-Project MQTT Deployment")
     logger.info("=" * 80)
+    
+    # Initialize debug log
+    debug_logger.info("\n" + "=" * 80)
+    debug_logger.info("vLLM DEPLOYMENT STARTED")
+    debug_logger.info(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    debug_logger.info("=" * 80 + "\n")
     
     # Parse projects parameter - handle both string and list
     if isinstance(projects, str):
@@ -852,6 +1069,7 @@ def main(
         max_history_tokens=max_history_tokens,
         max_concurrent_sessions=max_concurrent_sessions,
         num_worker_threads=num_workers,
+        skip_thinking=skip_thinking,
         projects=project_configs
     )
     
@@ -860,6 +1078,11 @@ def main(
     logger.info(f"Max model length: {max_model_len}")
     logger.info(f"Tensor parallel size: {tensor_parallel_size}")
     logger.info(f"GPU memory utilization: {gpu_memory_utilization}")
+    if quantization:
+        logger.info(f"Quantization: {quantization.upper()}")
+    else:
+        logger.info("Quantization: None (FP16/BF16)")
+    logger.info(f"Skip thinking output: {skip_thinking}")
     
     try:
         # 1. Initialize vLLM inference engine
@@ -909,6 +1132,9 @@ def main(
         logger.info("-" * 80)
         logger.info("Deployment ready! Listening for messages...")
         logger.info("=" * 80)
+        logger.info("📝 Debug logging enabled: debug_info.log")
+        logger.info("   (Contains full user inputs, LLM prompts, and outputs)")
+        logger.info("-" * 80)
         logger.info("Press Ctrl+C to stop")
         logger.info("=" * 80)
         

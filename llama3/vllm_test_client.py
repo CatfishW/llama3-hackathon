@@ -40,6 +40,8 @@ class vLLMClient:
         self.port = port
         self.connected = False
         self.responses = {}
+        self.waiting_for_response = False
+        self.current_session = None
         
         # Create MQTT client
         client_id = f"vllm-test-{uuid.uuid4().hex[:8]}"
@@ -60,27 +62,56 @@ class vLLMClient:
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         """Callback for connection."""
         if rc == 0:
-            print(f"✓ Connected to MQTT broker at {self.broker}:{self.port}")
+            print(f"✅ Connected to MQTT broker at {self.broker}:{self.port}\n")
             self.connected = True
         else:
-            print(f"✗ Failed to connect to MQTT broker, code: {rc}")
+            print(f"❌ Failed to connect to MQTT broker, code: {rc}\n")
     
     def _on_disconnect(self, client, userdata, flags, rc, properties=None):
         """Callback for disconnection."""
         self.connected = False
         if rc != 0:
-            print(f"✗ Unexpected disconnect from MQTT broker, code: {rc}")
+            print(f"\n⚠️  Unexpected disconnect from MQTT broker, code: {rc}\n")
     
     def _on_message(self, client, userdata, msg):
         """Callback for incoming messages."""
         session_id = msg.topic.split('/')[-1]
         response = msg.payload.decode('utf-8')
         
+        # Only process if this is the current session to avoid duplicates
+        if session_id != self.current_session:
+            return
+        
+        # Check if we've already received this response
         if session_id not in self.responses:
             self.responses[session_id] = []
+        
+        # Avoid duplicate responses
+        if response in self.responses[session_id]:
+            return
+            
         self.responses[session_id].append(response)
         
-        print(f"\n🤖 Assistant: {response}\n")
+        # Display response with nice formatting
+        if self.waiting_for_response:
+            print(f"\n┌{'─' * 58}┐")
+            print(f"│ 🤖 Assistant{' ' * 45}│")
+            print(f"├{'─' * 58}┤")
+            
+            # Word wrap the response for better readability
+            words = response.split()
+            line = "│ "
+            for word in words:
+                if len(line) + len(word) + 1 > 58:
+                    print(f"{line}{' ' * (59 - len(line))}│")
+                    line = "│ " + word + " "
+                else:
+                    line += word + " "
+            if len(line) > 2:
+                print(f"{line}{' ' * (59 - len(line))}│")
+            
+            print(f"└{'─' * 58}┘\n")
+            self.waiting_for_response = False
     
     def connect(self):
         """Connect to MQTT broker."""
@@ -99,7 +130,7 @@ class vLLMClient:
             
             return True
         except Exception as e:
-            print(f"✗ Connection error: {e}")
+            print(f"❌ Connection error: {e}\n")
             return False
     
     def disconnect(self):
@@ -127,7 +158,11 @@ class vLLMClient:
             top_p: Top-p sampling (optional)
             max_tokens: Maximum tokens to generate (optional)
         """
-        # Subscribe to response topic
+        # Set current session to filter messages
+        self.current_session = session_id
+        self.waiting_for_response = True
+        
+        # Subscribe to response topic (only once per session)
         response_topic = f"{project}/assistant_response/{session_id}"
         self.client.subscribe(response_topic, qos=1)
         
@@ -148,7 +183,25 @@ class vLLMClient:
         user_topic = f"{project}/user_input"
         self.client.publish(user_topic, json.dumps(payload), qos=1)
         
-        print(f"👤 You: {message}")
+        # Display user message with formatting
+        print(f"\n┌{'─' * 58}┐")
+        print(f"│ 👤 You{' ' * 51}│")
+        print(f"├{'─' * 58}┤")
+        
+        # Word wrap the message
+        words = message.split()
+        line = "│ "
+        for word in words:
+            if len(line) + len(word) + 1 > 58:
+                print(f"{line}{' ' * (59 - len(line))}│")
+                line = "│ " + word + " "
+            else:
+                line += word + " "
+        if len(line) > 2:
+            print(f"{line}{' ' * (59 - len(line))}│")
+        
+        print(f"└{'─' * 58}┘")
+        print("\n⏳ Waiting for response...", end='', flush=True)
     
     def chat(
         self,
@@ -171,31 +224,65 @@ class vLLMClient:
         if not session_id:
             session_id = f"user-{uuid.uuid4().hex[:8]}"
         
-        print("=" * 60)
-        print(f"vLLM Chat Client")
-        print(f"Project: {project}")
-        print(f"Session: {session_id}")
-        print("=" * 60)
-        print("Type your message and press Enter.")
-        print("Type 'exit' or 'quit' to end the session.")
-        print("=" * 60)
-        print()
+        # Set current session
+        self.current_session = session_id
+        
+        # Display welcome banner
+        print("\n" + "═" * 60)
+        print("║" + " " * 58 + "║")
+        print("║" + "🚀 vLLM Chat Client".center(58) + "║")
+        print("║" + " " * 58 + "║")
+        print("╠" + "═" * 58 + "╣")
+        print("║" + f" 📁 Project: {project}".ljust(58) + "║")
+        print("║" + f" 🔑 Session: {session_id}".ljust(58) + "║")
+        print("║" + " " * 58 + "║")
+        print("╠" + "═" * 58 + "╣")
+        print("║" + " 💡 Commands:".ljust(58) + "║")
+        print("║" + "    • Type your message and press Enter".ljust(58) + "║")
+        print("║" + "    • Type 'exit', 'quit', or 'q' to end session".ljust(58) + "║")
+        print("║" + "    • Type 'clear' to clear conversation history".ljust(58) + "║")
+        print("║" + " " * 58 + "║")
+        print("═" * 60 + "\n")
         
         # Connect to broker
         if not self.connect():
             return
         
+        # Subscribe to response topic immediately
+        response_topic = f"{project}/assistant_response/{session_id}"
+        self.client.subscribe(response_topic, qos=1)
+        
+        message_count = 0
+        
         try:
             while True:
-                # Get user input
-                user_input = input("👤 You: ").strip()
+                # Get user input with prompt
+                try:
+                    user_input = input("� > ").strip()
+                except EOFError:
+                    break
                 
                 if not user_input:
                     continue
                 
+                # Handle commands
                 if user_input.lower() in ['exit', 'quit', 'q']:
-                    print("\nGoodbye!")
+                    print("\n" + "─" * 60)
+                    print(f"👋 Session ended. Total messages: {message_count}")
+                    print("─" * 60 + "\n")
                     break
+                
+                if user_input.lower() == 'clear':
+                    print("\n" * 50)  # Clear screen
+                    print("✓ Conversation history cleared (locally)\n")
+                    continue
+                
+                if user_input.lower() in ['help', '?']:
+                    print("\n📖 Available commands:")
+                    print("  • exit/quit/q - End the chat session")
+                    print("  • clear - Clear the screen")
+                    print("  • help/? - Show this help message\n")
+                    continue
                 
                 # Send message
                 self.send_message(
@@ -207,11 +294,22 @@ class vLLMClient:
                     max_tokens=max_tokens
                 )
                 
-                # Wait for response (with timeout)
-                time.sleep(0.5)
+                message_count += 1
+                
+                # Wait for response with timeout
+                timeout = 60  # 60 seconds timeout
+                start_time = time.time()
+                while self.waiting_for_response and (time.time() - start_time) < timeout:
+                    time.sleep(0.1)
+                
+                if self.waiting_for_response:
+                    print("\n⚠️  Timeout waiting for response\n")
+                    self.waiting_for_response = False
                 
         except KeyboardInterrupt:
-            print("\n\nInterrupted by user")
+            print("\n\n" + "─" * 60)
+            print("⚠️  Interrupted by user")
+            print("─" * 60 + "\n")
         finally:
             self.disconnect()
 
