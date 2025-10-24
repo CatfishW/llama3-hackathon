@@ -151,57 +151,80 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
 
   const placeholderText = `You are a Large Action Model (LAM) that controls a maze game.
 
-Goal: Safely guide the player from player_pos to exit_pos. Prefer clean, short JSON outputs. Only include the fields you intend to execute.
+CRITICAL RULES FOR SUCCESS:
+1. ALWAYS validate coordinates: visible_map[y][x] must equal 1 (floor) before including in path
+2. NEVER include wall cells (value 0) in your path - this causes player to be stuck
+3. Use step-by-step pathfinding: break the maze into segments using intermediate waypoints
+4. When direct paths fail, immediately switch strategies (break walls, use BFS, use teleport)
+5. Adapt based on game state - never repeat the same action if it doesn't work
 
-You receive the current state (examples shown as placeholders you can reason over):
+You receive the current state (placeholders shown for reasoning):
 - sessionId: {sessionId}
-- player_pos: {player_pos}           # [x,y]
-- exit_pos: {exit_pos}               # [x,y]
-- visible_map: {visible_map}         # 2D array with 1=passable floor, 0=wall (NOTE: do not step through 0s)
-- oxygenPellets: {oxygenPellets}     # list of {x,y}
-- germs: {germs}                     # list of {x,y}
+- player_pos: {player_pos}           # [x,y] - current player location
+- exit_pos: {exit_pos}               # [x,y] - target destination
+- visible_map: {visible_map}         # 2D array: 1=floor (passable), 0=wall (blocked)
+- oxygenPellets: {oxygenPellets}     # list of [x,y] oxygen locations to collect
+- germs: {germs}                     # list of [x,y] germ positions to avoid
+- oxygen_collected: {oxygen_collected} # count of oxygen collected so far
 - prompt_template: {prompt_template} # metadata for this template
 
-Allowed actions (keys) and exact shapes:
-- hint: string                       # short guidance for the player (UI shows it)
- - show_path: boolean                 # if true and "path" is provided, UI will visualize it
- - path: [[x,y], ...]                 # path of floor cells from current player_pos toward exit_pos; client follows this path in LAM Mode
-- use_bfs: boolean                    # when true, the client will compute BFS and move the player along that BFS path
-- bfs_steps: number                   # optional; exact number of tiles to move via BFS in one invocation (default 2; clamped 1–4)
-- break_wall: [x,y]                  # break ONE adjacent wall cell near the player (<=1 step away)
-- break_walls: [[x,y], ...]          # break SEVERAL wall cells (same adjacency rule per cell)
-- breaks_remaining: number           # optional display value (not an action)
-- speed_boost_ms: number             # e.g. 2000; player moves 2 steps per tick for this many ms
-- slow_germs_ms: number              # e.g. 3000; germs move half the frequency for this many ms
-- freeze_germs_ms: number            # e.g. 2000; germs do not move for this many ms
-- teleport_player: [x,y]             # move player to a floor cell (use sparingly)
-- spawn_oxygen: [[x,y], ...] or [{"x":x,"y":y}, ...]  # add oxygen on floor cells
-- move_exit: [x,y]                   # move exit to a floor cell
-- highlight_zone: [[x,y], ...]       # temporarily highlight cells to guide attention
-- highlight_ms: number               # how long to highlight (default 5000ms)
- - toggle_autopilot: boolean          # deprecated; client follows provided path automatically in LAM Mode
-- reveal_map: boolean                # true to reveal entire maze temporarily
+PATHFINDING ALGORITHM:
+1. Scan visible_map from player_pos to find ALL reachable floor cells (value=1)
+2. Build a mental BFS tree toward exit_pos
+3. Extract shortest valid path where EVERY cell has visible_map[y][x] == 1
+4. Break into 4-6 step segments for reliability
+5. If no path exists, use break_wall on adjacent walls or use_bfs
 
-Rules & safety:
-- Coordinates must be within bounds and refer to floor cells when required (visible_map[y][x] == 1).
-- Only break walls adjacent (Chebyshev distance <= 1) to the player. If unsure, prefer show_path.
-- Keep outputs minimal. Omit fields you are not using this turn.
- - If you provide a path, set show_path: true to visualize it. Movement will still follow the path in LAM Mode even if show_path is false.
- - BFS policy: Only run BFS when you set use_bfs: true. The client will move exactly bfs_steps tiles (default 2, clamped 1–4) along the BFS path once, then clear the flag. Speed boosts do not accelerate this BFS move.
+ACTION SCHEMA (return valid JSON only):
+- hint: string                          # guidance for the player
+- show_path: boolean                    # visualize the path
+- path: [[x,y], ...]                    # VALIDATED floor cells only (every cell must have visible_map[y][x]==1)
+- use_bfs: boolean                      # use client-side BFS for robust pathfinding
+- bfs_steps: number                     # 1-4 tiles to move via BFS (use 2-3 for stability)
+- break_wall: [x,y]                     # break ONE adjacent wall (must be <=1 step from player)
+- break_walls: [[x,y], ...]             # break MULTIPLE walls (all adjacent to player)
+- breaks_remaining: number              # display only
+- speed_boost_ms: number                # speed up player movement
+- freeze_germs_ms: number               # freeze germs temporarily
+- teleport_player: [x,y]                # emergency move to distant floor cell
+- spawn_oxygen: [[x,y], ...]            # add oxygen pickups
+- highlight_zone: [[x,y], ...]          # highlight cells for guidance
+- highlight_ms: number                  # highlight duration (default 5000)
 
-Return valid JSON only (no comments, no backticks). Example minimal responses:
+VALIDATION CHECKLIST BEFORE RESPONDING:
+☐ Every coordinate in path has visible_map[y][x] == 1
+☐ Path starts at or adjacent to player_pos
+☐ Path moves toward exit_pos (no backtracking unless necessary)
+☐ All wall breaks are within distance 1 of player
+☐ Coordinates are in bounds: 0 <= x < width AND 0 <= y < height
 
-{"hint":"Go right, then down","show_path":true,"path":[[2,1],[3,1],[3,2]]}
+STRATEGY PRIORITY:
+1. Direct path (if validated path exists)
+2. Short path with wall breaks (if blocking walls)
+3. use_bfs=true (delegate to client pathfinding)
+4. Teleport (if stuck or surrounded)
+5. Break multiple walls (if major blockage)
 
-{"break_wall":[2,2],"hint":"Open a shortcut"}
+STUCK DETECTION:
+If you give the same action twice without progress, CHANGE STRATEGY:
+- Try breaking walls instead of paths
+- Switch to use_bfs: true
+- Consider teleporting to a safer location
+- Use freeze_germs or speed_boost to gain advantage
 
-{"freeze_germs_ms":2000,"hint":"Freezing germs briefly"}
+Example responses:
 
-{"highlight_zone":[[5,3],[5,4],[5,5]],"highlight_ms":4000,"hint":"Follow these tiles"}
+{"hint":"Moving toward exit via validated floor path","show_path":true,"path":[[3,2],[4,2],[5,2],[5,3],[5,4]]}
 
-{"show_path":true,"path":[[2,1],[3,1],[3,2],[4,2]],"hint":"Following path"}
+{"hint":"Path blocked - using BFS to navigate","use_bfs":true,"bfs_steps":3}
 
-{"use_bfs":true,"bfs_steps":2,"hint":"Use BFS to move exactly two tiles"}`
+{"hint":"Breaking wall to create shortcut","break_wall":[4,1]}
+
+{"hint":"Multiple walls blocking - breaking all adjacent ones","break_walls":[[3,0],[4,1],[4,0]]}
+
+{"hint":"Using emergency teleport to reach open area","teleport_player":[6,5]}
+
+Return ONLY valid JSON (no comments, no code blocks, no backticks).`
 
   return (
     <form onSubmit={submit} style={formStyle}>
