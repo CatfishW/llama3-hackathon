@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # Llama.cpp Web Server
+  llamacpp-web:
+    build: .
+    container_name: llamacpp-web
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "False"
+      HOST: 0.0.0.0
+      PORT: 5000
+      MQTT_BROKER: ${MQTT_BROKER:-47.89.252.2}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+    networks:
+      - llamacpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - mqtt
+    labels:
+      - "com.llamacpp.description=Llama.cpp Web Chat Server"
+
+  # MQTT Broker (Mosquitto)
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: llamacpp-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mqtt-data:/mosquitto/data
+      - mqtt-logs:/mosquitto/log
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - llamacpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-t", "$$SYS/broker/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.llamacpp.description=MQTT Broker"
+
+  # Nginx Reverse Proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: llamacpp-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - llamacpp-network
+    restart: unless-stopped
+    depends_on:
+      - llamacpp-web
+    labels:
+      - "com.llamacpp.description=Nginx Reverse Proxy"
+
+networks:
+  llamacpp-network:
+    driver: bridge
+
+volumes:
+  mqtt-data:
+  mqtt-logs:
