@@ -1171,8 +1171,14 @@ class MessageProcessor:
             )
             
             # Publish response with QoS 0 for better performance
-            self.mqtt_client.publish(msg.response_topic, response, qos=0)
-            debug_logger.debug(f"Response published to topic: {msg.response_topic}\n")
+            response_topic = msg.response_topic.rstrip("/")
+            if msg.client_id:
+                topic_parts = response_topic.split("/")
+                if topic_parts[-1] != msg.client_id:
+                    response_topic = f"{response_topic}/{msg.client_id}"
+
+            self.mqtt_client.publish(response_topic, response, qos=0)
+            debug_logger.debug(f"Response published to topic: {response_topic}\n")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")

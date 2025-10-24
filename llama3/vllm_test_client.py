@@ -83,13 +83,17 @@ class vLLMClient:
         """Callback for incoming messages."""
         topic_parts = msg.topic.split('/')
 
-        session_id = topic_parts[-1]
+        session_id = None
         client_segment = None
 
-        # Expected topic layout: <project>/assistant_response/<session>/<client>
+        if len(topic_parts) >= 3:
+            session_id = topic_parts[2]
         if len(topic_parts) >= 4:
-            client_segment = topic_parts[-1]
-            session_id = topic_parts[-2]
+            client_segment = topic_parts[3] if len(topic_parts) == 4 else '/'.join(topic_parts[3:])
+
+        # Fallback: handle legacy topics without full structure
+        if session_id is None:
+            session_id = topic_parts[-1]
 
         # Drop responses that do not target this client instance
         if client_segment and client_segment != self.client_id:
@@ -192,16 +196,17 @@ class vLLMClient:
         self.waiting_for_response = True
         
         # Subscribe to response topic (only once per session)
-        response_topic = f"{project}/assistant_response/{session_id}/{self.client_id}"
-        if response_topic not in self._subscriptions:
-            self.client.subscribe(response_topic, qos=1)
-            self._subscriptions.add(response_topic)
+        response_topic_exact = f"{project}/assistant_response/{session_id}/{self.client_id}"
+        response_topic_filter = f"{project}/assistant_response/{session_id}/#"
+        if response_topic_filter not in self._subscriptions:
+            self.client.subscribe(response_topic_filter, qos=1)
+            self._subscriptions.add(response_topic_filter)
         
         # Prepare payload
         payload = {
             "sessionId": session_id,
             "message": message,
-            "replyTopic": response_topic,
+            "replyTopic": response_topic_exact,
             "clientId": self.client_id
         }
         
@@ -292,10 +297,10 @@ class vLLMClient:
             return
         
         # Subscribe to response topic immediately
-        response_topic = f"{project}/assistant_response/{session_id}/{self.client_id}"
-        if response_topic not in self._subscriptions:
-            self.client.subscribe(response_topic, qos=1)
-            self._subscriptions.add(response_topic)
+        response_topic_filter = f"{project}/assistant_response/{session_id}/#"
+        if response_topic_filter not in self._subscriptions:
+            self.client.subscribe(response_topic_filter, qos=1)
+            self._subscriptions.add(response_topic_filter)
         
         message_count = 0
         current_system_prompt = system_prompt  # Track current system prompt
