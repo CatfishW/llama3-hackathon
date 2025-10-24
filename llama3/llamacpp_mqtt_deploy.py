@@ -129,6 +129,11 @@ Speak like a junior high school student with cool Gen-Z slang and humor.""",
 Focus on concepts like force, mass, and acceleration. Learn from player explanations.
 Keep responses concise and supportive. Never reveal correct answers directly.""",
     
+    "prompt_portal": """You are an AI assistant helping users test and refine their prompt templates.
+Provide thoughtful, helpful responses that demonstrate how the prompt template affects your behavior.
+Be clear, concise, and adapt to the style and tone specified in the user's prompt template.
+If the prompt asks you to respond in a specific format (JSON, etc.), follow that format exactly.""",
+    
     "general": """You are a helpful AI assistant. Provide clear, concise, and accurate responses."""
 }
 
@@ -712,7 +717,14 @@ class MessageProcessor:
                 response_topic = response_topic.rstrip("/")
                 
                 # Publish with QoS 0
-                self.mqtt_client.publish(response_topic, response, qos=0)
+                result = self.mqtt_client.publish(response_topic, response, qos=0)
+                
+                # Log publish status
+                if result.rc == 0:
+                    logger.info(f"📤 Published response to: {response_topic} ({len(response)} chars)")
+                else:
+                    logger.warning(f"⚠️  Publish may have failed to: {response_topic} (rc={result.rc})")
+                
                 debug_logger.debug(f"Response published to topic: {response_topic}\n")
                 
             except queue.Empty:
@@ -765,16 +777,17 @@ class MQTTHandler:
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         """Callback for MQTT connection."""
         if rc == 0:
-            logger.info(f"Connected to MQTT broker at {self.config.mqtt_broker}:{self.config.mqtt_port}")
+            logger.info(f"✓ Connected to MQTT broker at {self.config.mqtt_broker}:{self.config.mqtt_port}")
             
             # Subscribe to all enabled project topics
             for project_name, project_config in self.config.projects.items():
                 if project_config.enabled:
                     topic = project_config.user_topic
                     client.subscribe(topic, qos=1)
-                    logger.info(f"Subscribed to topic: {topic} (project: {project_name})")
+                    logger.info(f"✓ Subscribed to INPUT topic: {topic} (project: {project_name})")
+                    logger.info(f"  → Will publish responses to: {project_config.response_topic}")
         else:
-            logger.error(f"Failed to connect to MQTT broker, code: {rc}")
+            logger.error(f"✗ Failed to connect to MQTT broker, code: {rc}")
     
     def _on_disconnect(self, client, userdata, flags, rc, properties=None):
         """Callback for MQTT disconnection."""
@@ -845,6 +858,7 @@ class MQTTHandler:
         try:
             payload = msg.payload.decode('utf-8')
             
+            logger.info(f"📨 Received message on topic: {msg.topic}")
             debug_logger.debug(f"RAW MQTT MESSAGE | Topic: {msg.topic}")
             debug_logger.debug(f"Payload: {payload}")
             
@@ -859,7 +873,8 @@ class MQTTHandler:
                     break
             
             if not project_name:
-                logger.warning(f"Received message from unknown topic: {msg.topic}")
+                logger.warning(f"❌ Received message from unknown topic: {msg.topic}")
+                logger.warning(f"   Expected topics: {[p.user_topic for p in self.config.projects.values()]}")
                 debug_logger.warning(f"Unknown topic: {msg.topic}")
                 return
             
