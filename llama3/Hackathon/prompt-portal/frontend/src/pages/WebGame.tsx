@@ -859,9 +859,17 @@ export default function WebGame() {
     ? Math.max(0, Math.min(50, Math.floor(germCount as any)))
     : 0
     const germs: { pos: Vec2; dir: Vec2; speed: number }[] = []
-  for (let i = 0; i < spawnGerms && avail.length; i++) {
-      const idx = randInt(avail.length)
-      const pos = avail[idx]; avail.splice(idx,1)
+  // Filter out positions too close to player start (safe zone of 3 tiles radius)
+  const safeZoneRadius = 3
+  const germAvail = avail.filter(p => {
+    const dx = p.x - start.x
+    const dy = p.y - start.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    return distance >= safeZoneRadius
+  })
+  for (let i = 0; i < spawnGerms && germAvail.length; i++) {
+      const idx = randInt(germAvail.length)
+      const pos = germAvail[idx]; germAvail.splice(idx,1)
       const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0, y:1},{x:0,y:-1} ]
       germs.push({ pos, dir: dirs[randInt(4)], speed: 4 })
     }
@@ -931,8 +939,10 @@ export default function WebGame() {
     // Prefill currently selected or first and open modal (no page refresh)
     setSelectedTemplateId(templateId || templates[0].id)
     setSelectedMode('manual')
+    // Reset to mode selection step to ensure modal shows properly
     setStartStep('mode')
-    setShowTemplatePicker(true)
+    // Use a small delay to ensure state is updated before showing modal
+    setTimeout(() => setShowTemplatePicker(true), 0)
   }, [templates, templateId, doStartGame])
 
   // Publish state to backend -> MQTT
