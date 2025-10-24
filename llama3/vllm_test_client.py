@@ -50,6 +50,7 @@ class vLLMClient:
         
         # Create MQTT client
         client_id = f"vllm-test-{uuid.uuid4().hex[:8]}"
+        self.client_id = client_id
         self.client = mqtt.Client(
             client_id=client_id,
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2
@@ -80,7 +81,19 @@ class vLLMClient:
     
     def _on_message(self, client, userdata, msg):
         """Callback for incoming messages."""
-        session_id = msg.topic.split('/')[-1]
+        topic_parts = msg.topic.split('/')
+
+        session_id = topic_parts[-1]
+        client_segment = None
+
+        # Expected topic layout: <project>/assistant_response/<session>/<client>
+        if len(topic_parts) >= 4:
+            client_segment = topic_parts[-1]
+            session_id = topic_parts[-2]
+
+        # Drop responses that do not target this client instance
+        if client_segment and client_segment != self.client_id:
+            return
         response = msg.payload.decode('utf-8')
         
         # Only process if this is the current session to avoid duplicates
@@ -179,7 +192,7 @@ class vLLMClient:
         self.waiting_for_response = True
         
         # Subscribe to response topic (only once per session)
-        response_topic = f"{project}/assistant_response/{session_id}"
+        response_topic = f"{project}/assistant_response/{session_id}/{self.client_id}"
         if response_topic not in self._subscriptions:
             self.client.subscribe(response_topic, qos=1)
             self._subscriptions.add(response_topic)
@@ -188,7 +201,8 @@ class vLLMClient:
         payload = {
             "sessionId": session_id,
             "message": message,
-            "replyTopic": response_topic
+            "replyTopic": response_topic,
+            "clientId": self.client_id
         }
         
         if temperature is not None:
@@ -278,7 +292,7 @@ class vLLMClient:
             return
         
         # Subscribe to response topic immediately
-        response_topic = f"{project}/assistant_response/{session_id}"
+        response_topic = f"{project}/assistant_response/{session_id}/{self.client_id}"
         if response_topic not in self._subscriptions:
             self.client.subscribe(response_topic, qos=1)
             self._subscriptions.add(response_topic)

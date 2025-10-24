@@ -753,12 +753,12 @@ class SessionManager:
         """
         self.config = config
         self.inference = inference
-        self.sessions: Dict[str, Dict] = {}
-        self.session_locks: Dict[str, threading.RLock] = {}
+        self.sessions: Dict[Tuple[str, str], Dict] = {}
+        self.session_locks: Dict[Tuple[str, str], threading.RLock] = {}
         self.global_lock = threading.RLock()
         
         # Rate limiting: track request timestamps per session
-        self.request_timestamps: Dict[str, List[float]] = {}
+        self.request_timestamps: Dict[Tuple[str, str], List[float]] = {}
         self.rate_limit_lock = threading.RLock()
         
         # Global inference semaphore to limit concurrent vLLM calls
@@ -787,36 +787,42 @@ class SessionManager:
         Returns:
             Session dictionary
         """
+        session_key = (project_name, session_id)
+
         # Fast path: check if session exists without locking
-        if session_id in self.sessions:
-            session = self.sessions[session_id]
-            session["last_access"] = time.time()
-            return session
+        existing = self.sessions.get(session_key)
+        if existing:
+            existing["last_access"] = time.time()
+            return existing
         
         # Slow path: create new session with minimal locking
         with self.global_lock:
             # Double-check after acquiring lock (another thread might have created it)
-            if session_id in self.sessions:
-                session = self.sessions[session_id]
-                session["last_access"] = time.time()
-                return session
+            existing = self.sessions.get(session_key)
+            if existing:
+                existing["last_access"] = time.time()
+                return existing
                 
             # Check session limit
             if len(self.sessions) >= self.config.max_concurrent_sessions:
                 self._evict_oldest_session()
 
             # Create session without token counting (use lazy initialization)
-            self.sessions[session_id] = {
+            session = {
                 "dialog": [{"role": "system", "content": system_prompt}],
                 "project": project_name,
+                "session_id": session_id,
                 "created_at": time.time(),
                 "last_access": time.time(),
                 "message_count": 0,
             }
-            self.session_locks[session_id] = threading.RLock()
-            logger.info(f"Created new session: {session_id[:16]}... for project: {project_name}")
+            self.sessions[session_key] = session
+            self.session_locks[session_key] = threading.RLock()
+            logger.info(
+                f"Created new session: {project_name}/{session_id[:16]}..."
+            )
             
-        return self.sessions[session_id]
+        return self.sessions[session_key]
     
     def process_message(
         self,
@@ -826,7 +832,8 @@ class SessionManager:
         user_message: str,
         temperature: float = None,
         top_p: float = None,
-        max_tokens: int = None
+        max_tokens: int = None,
+        client_id: Optional[str] = None
     ) -> str:
         """
         Process a user message and generate a response.
@@ -839,27 +846,32 @@ class SessionManager:
             temperature: Sampling temperature
             top_p: Top-p sampling
             max_tokens: Maximum tokens
+            client_id: Optional client identifier for debugging
             
         Returns:
             Generated response
         """
         # Rate limiting check
-        if not self._check_rate_limit(session_id):
+        if not self._check_rate_limit(project_name, session_id):
             return "Error: Rate limit exceeded. Please slow down your requests."
         
         # Debug log: incoming user message
         debug_logger.info("╔" + "═" * 78 + "╗")
-        debug_logger.info(f"║ NEW MESSAGE | Session: {session_id[:16]}... | Project: {project_name}")
+        client_suffix = f" | Client: {client_id}" if client_id else ""
+        debug_logger.info(
+            f"║ NEW MESSAGE | Session: {session_id[:16]}... | Project: {project_name}{client_suffix}"
+        )
         debug_logger.info("╠" + "═" * 78 + "╣")
         debug_logger.info(f"USER MESSAGE:\n{user_message}")
         debug_logger.info("─" * 80)
         
         # Get or create session
         session = self.get_or_create_session(session_id, project_name, system_prompt)
+        session_key = (project_name, session_id)
         
         # Get session lock but DON'T hold it during inference!
         # Only lock during session data manipulation
-        session_lock = self.session_locks.get(session_id, threading.RLock())
+        session_lock = self.session_locks.get(session_key, threading.RLock())
         
         # Build the prompt first (with minimal locking)
         with session_lock:
@@ -890,6 +902,8 @@ class SessionManager:
                 'message_count': session['message_count'],
                 'user_message': user_message
             }
+            if client_id:
+                debug_info['client_id'] = client_id
             
             # Use semaphore to limit concurrent vLLM inference calls
             # Multiple different sessions can run concurrently here!
@@ -918,29 +932,28 @@ class SessionManager:
                 
         except Exception as e:
             error_msg = f"Error processing message: {str(e)}"
-            logger.error(f"Session {session_id}: {error_msg}")
-            debug_logger.error(f"ERROR in session {session_id}: {error_msg}")
+            logger.error(f"Session {project_name}/{session_id}: {error_msg}")
+            debug_logger.error(f"ERROR in session {project_name}/{session_id}: {error_msg}")
             debug_logger.info("╚" + "═" * 78 + "╝\n")
             return error_msg
     
-    def _check_rate_limit(self, session_id: str) -> bool:
+    def _check_rate_limit(self, project_name: str, session_id: str) -> bool:
         """
         Check if a session is within rate limits.
         
         Args:
+            project_name: Project name
             session_id: Session identifier
             
         Returns:
             True if within rate limit, False otherwise
         """
         current_time = time.time()
+        session_key = (project_name, session_id)
         
         with self.rate_limit_lock:
             # Get request history for this session
-            if session_id not in self.request_timestamps:
-                self.request_timestamps[session_id] = []
-            
-            timestamps = self.request_timestamps[session_id]
+            timestamps = self.request_timestamps.setdefault(session_key, [])
             
             # Remove timestamps outside the rate limit window
             cutoff_time = current_time - self.config.rate_limit_window
@@ -948,7 +961,9 @@ class SessionManager:
             
             # Check if we're over the limit
             if len(timestamps) >= self.config.max_requests_per_session:
-                logger.warning(f"Rate limit exceeded for session: {session_id[:8]}...")
+                logger.warning(
+                    f"Rate limit exceeded for session: {project_name}/{session_id[:8]}..."
+                )
                 return False
             
             # Add current timestamp
@@ -981,16 +996,16 @@ class SessionManager:
         if not self.sessions:
             return
         
-        oldest_id = min(
+        oldest_key = min(
             self.sessions.keys(),
             key=lambda sid: self.sessions[sid]["last_access"]
         )
         
-        del self.sessions[oldest_id]
-        if oldest_id in self.session_locks:
-            del self.session_locks[oldest_id]
-        
-        logger.info(f"Evicted oldest session: {oldest_id}")
+        self.sessions.pop(oldest_key, None)
+        self.session_locks.pop(oldest_key, None)
+        self.request_timestamps.pop(oldest_key, None)
+        project_name, session_id = oldest_key
+        logger.info(f"Evicted oldest session: {project_name}/{session_id[:16]}...")
     
     def _cleanup_sessions(self):
         """Background thread to cleanup expired sessions."""
@@ -1001,17 +1016,20 @@ class SessionManager:
             expired = []
             
             with self.global_lock:
-                for sid, session in self.sessions.items():
+                for sid, session in list(self.sessions.items()):
                     if current_time - session["last_access"] > self.config.session_timeout:
                         expired.append(sid)
                 
                 for sid in expired:
-                    del self.sessions[sid]
-                    if sid in self.session_locks:
-                        del self.session_locks[sid]
+                    self.sessions.pop(sid, None)
+                    self.session_locks.pop(sid, None)
+                    self.request_timestamps.pop(sid, None)
             
             if expired:
-                logger.info(f"Cleaned up {len(expired)} expired sessions")
+                logger.info(
+                    f"Cleaned up {len(expired)} expired sessions: "
+                    + ", ".join(f"{sid[0]}/{sid[1][:8]}" for sid in expired)
+                )
 
 
 # ============================================================================
@@ -1025,6 +1043,7 @@ class QueuedMessage:
     project_name: str
     user_message: str
     response_topic: str
+    client_id: Optional[str] = None
     temperature: float = None
     top_p: float = None
     max_tokens: int = None
@@ -1147,7 +1166,8 @@ class MessageProcessor:
                 user_message=msg.user_message,
                 temperature=msg.temperature,
                 top_p=msg.top_p,
-                max_tokens=msg.max_tokens
+                max_tokens=msg.max_tokens,
+                client_id=msg.client_id
             )
             
             # Publish response with QoS 0 for better performance
@@ -1272,15 +1292,17 @@ class MQTTHandler:
                 )
                 return session_topic
 
-            suffix = candidate[len(expected_prefix):]
+            suffix = candidate[len(expected_prefix):].strip("/")
             if not suffix:
                 logger.warning("Ignoring replyTopic missing session segment: %s", candidate)
                 return session_topic
 
-            if suffix != session_id:
-                logger.warning(
-                    "replyTopic session mismatch (payload='%s', message='%s'); using client override",
-                    suffix,
+            suffix_parts = suffix.split("/")
+            candidate_session = suffix_parts[0]
+            if candidate_session != session_id:
+                logger.debug(
+                    "replyTopic session mismatch (payload='%s', expected session='%s'); using client override",
+                    candidate_session,
                     session_id,
                 )
 
@@ -1325,6 +1347,7 @@ class MQTTHandler:
                 max_tokens = data.get("maxTokens")
                 custom_system_prompt = data.get("systemPrompt")  # Optional custom system prompt
                 reply_topic_override = data.get("replyTopic")
+                client_id = data.get("clientId")
                 
                 # Debug log: parsed message
                 debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
@@ -1333,6 +1356,8 @@ class MQTTHandler:
                     debug_logger.debug(f"Custom params - Temp: {temperature}, TopP: {top_p}, MaxTokens: {max_tokens}")
                 if custom_system_prompt:
                     debug_logger.debug(f"Custom system prompt: {custom_system_prompt[:100]}...")
+                if client_id:
+                    debug_logger.debug(f"Client id: {client_id}")
                 
                 if not user_message.strip():
                     logger.warning(f"Empty message received from session: {session_id}")
@@ -1348,6 +1373,7 @@ class MQTTHandler:
                 max_tokens = None
                 custom_system_prompt = None
                 reply_topic_override = None
+                client_id = None
                 debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic with session ID
@@ -1363,6 +1389,7 @@ class MQTTHandler:
                 project_name=project_name,
                 user_message=user_message,
                 response_topic=response_topic_full,
+                client_id=client_id,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
