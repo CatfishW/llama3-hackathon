@@ -21,12 +21,14 @@ Date: 2025
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import fire
@@ -83,6 +85,11 @@ class DeploymentConfig:
     gpu_memory_utilization: float = 0.90
     quantization: Optional[str] = None  # e.g., "awq", "gptq", None
     visible_devices: Optional[str] = None  # e.g., "0", "1,2", "2" to specify GPU(s)
+    model_provider: str = "auto"
+    model_cache_dir: str = "./models/modelscope"
+    model_revision: Optional[str] = None
+    auto_download: bool = True
+    remote_model_id: Optional[str] = None
     
     # Generation Configuration
     default_temperature: float = 0.6
@@ -131,6 +138,188 @@ Keep responses concise and supportive. Never reveal correct answers directly."""
 
 
 # ============================================================================
+# Model Registry and Download Utilities
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    provider: str
+    model_id: str
+    revision: Optional[str] = None
+    aliases: Tuple[str, ...] = ()
+
+
+MODEL_SPECS: Tuple[ModelSpec, ...] = (
+    ModelSpec(
+        provider="modelscope",
+        model_id="Qwen/QwQ-32B",
+        aliases=("qwq-32b", "qwen-qwq-32b", "qwen/qwq-32b", "qwen_qwq_32b"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="Qwen/Qwen1.5-14B-Chat",
+        aliases=("qwen1.5-14b-chat", "qwen15-14b-chat", "qwen-1.5-14b-chat"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="Qwen/Qwen2-72B-Instruct",
+        aliases=("qwen2-72b-instruct", "qwen2-72b", "qwen2_instruct"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="ZhipuAI/chatglm3-6b",
+        aliases=("chatglm3-6b", "chatglm3", "zhipuai/chatglm3-6b"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="Shanghai_AI_Laboratory/internlm2-chat-7b",
+        aliases=("internlm2-chat-7b", "internlm2-7b", "internlm2"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="01ai/Yi-34B-Chat",
+        aliases=("yi-34b-chat", "yi34b", "01ai/yi-34b-chat"),
+    ),
+)
+
+
+MODEL_ALIAS_LOOKUP: Dict[str, ModelSpec] = {}
+for spec in MODEL_SPECS:
+    keys = {spec.model_id.lower()}
+    keys.update(alias.lower() for alias in spec.aliases)
+    for key in keys:
+        MODEL_ALIAS_LOOKUP[key] = spec
+
+
+def resolve_model_identifier(
+    identifier: str,
+    provider_hint: str = "auto"
+) -> Tuple[str, str, Optional[str]]:
+    """Resolve a model identifier to provider, remote id/path, and revision."""
+    if not identifier:
+        raise ValueError("Model identifier is required")
+
+    candidate = identifier.strip()
+    lookup_key = candidate.lower()
+
+    spec = MODEL_ALIAS_LOOKUP.get(lookup_key)
+    if spec:
+        return spec.provider, spec.model_id, spec.revision
+
+    if "://" in candidate:
+        scheme, remainder = candidate.split("://", 1)
+        scheme_lower = scheme.lower()
+        if scheme_lower in {"modelscope", "modelspace"}:
+            return "modelscope", remainder, None
+        if scheme_lower in {"hf", "huggingface"}:
+            return "huggingface", remainder, None
+
+    if os.path.isdir(candidate) or os.path.isfile(candidate):
+        return "local", candidate, None
+
+    provider_hint_lower = (provider_hint or "auto").lower()
+    if provider_hint_lower in {"modelscope", "modelspace"}:
+        return "modelscope", candidate, None
+    if provider_hint_lower in {"huggingface", "hf"}:
+        return "huggingface", candidate, None
+    if provider_hint_lower == "local":
+        return "local", candidate, None
+
+    # Detect likely filesystem paths (relative or absolute)
+    if candidate.startswith(("./", "../", "\\", "/")):
+        return "local", candidate, None
+    if len(candidate) > 1 and candidate[1] == ":" and candidate[0].isalpha():
+        return "local", candidate, None
+
+    # Fallback: treat plain identifiers as ModelScope ids
+    return "modelscope", candidate, None
+
+
+class ModelDownloader:
+    """Ensure requested models are available locally before vLLM loads them."""
+
+    def __init__(
+        self,
+        provider: str,
+        cache_dir: Optional[str],
+        revision: Optional[str],
+        auto_download: bool,
+    ):
+        self.provider = (provider or "local").lower()
+        self.cache_dir = Path(cache_dir).expanduser() if cache_dir else None
+        self.revision = revision
+        self.auto_download = auto_download
+
+    def ensure(self, model_identifier: str) -> str:
+        """Return a filesystem path for the requested model."""
+        if self.provider in {"", "local"}:
+            return self._validate_local_path(model_identifier)
+        if self.provider in {"modelscope", "modelspace"}:
+            return self._download_modelscope(model_identifier)
+        if self.provider in {"huggingface", "hf"}:
+            raise RuntimeError(
+                "Hugging Face downloads are disabled in this deployment. "
+                "Please switch to ModelScope or provide a local path."
+            )
+        return self._validate_local_path(model_identifier)
+
+    def _validate_local_path(self, model_path: str) -> str:
+        path = Path(model_path).expanduser()
+        if path.exists():
+            return str(path.resolve())
+        if self.auto_download:
+            raise FileNotFoundError(
+                f"Auto-download requested but provider '{self.provider}' "
+                f"cannot fetch model '{model_path}'."
+            )
+        raise FileNotFoundError(
+            f"Model path '{model_path}' does not exist. "
+            "Provide a valid local path or enable automatic download."
+        )
+
+    def _download_modelscope(self, model_id: str) -> str:
+        model_id = model_id.strip()
+        if not model_id:
+            raise ValueError("Model id cannot be empty for ModelScope downloads")
+
+        try:
+            from modelscope import snapshot_download
+        except ImportError as exc:
+            raise RuntimeError(
+                "Optional dependency 'modelscope' is not installed. "
+                "Install it with `pip install modelscope`."
+            ) from exc
+
+        cache_dir = None
+        if self.cache_dir:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_dir = str(self.cache_dir)
+
+        download_action = "Ensuring"
+        if self.auto_download:
+            download_action = "Downloading"
+        else:
+            logger.info("Auto download disabled; reusing cached snapshot if available.")
+
+        logger.info(
+            f"{download_action} model '{model_id}' from ModelScope (cache: {cache_dir or 'default'})"
+        )
+
+        try:
+            local_path = snapshot_download(
+                model_id,
+                cache_dir=cache_dir,
+                revision=self.revision,
+            )
+        except Exception as exc:  # pragma: no cover - network errors vary
+            raise RuntimeError(
+                f"Failed to download model '{model_id}' from ModelScope: {exc}"
+            ) from exc
+
+        logger.info(f"Model available at: {local_path}")
+        return str(Path(local_path).resolve())
+
 # vLLM Inference Engine
 # ============================================================================
 
@@ -148,6 +337,10 @@ class vLLMInference:
         """     
         self.config = config
         logger.info(f"Initializing vLLM with model: {config.model_name}")       
+        if config.remote_model_id and config.model_provider not in {"", "local"}:
+            logger.info(
+                f"Remote identifier: {config.model_provider}://{config.remote_model_id}"
+            )
         
         # Set visible GPUs if specified
         import os
@@ -258,14 +451,7 @@ class vLLMInference:
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            stop=[
-                "<|im_end|>",
-                "</s>",
-                "<|endoftext|>",
-                "\n\nUser:",
-                "\n\nHuman:",
-                "**Final Answer**",  # Stop before QwQ's "Final Answer" marker
-            ],
+            stop=["</think>", "<think>"],
             skip_special_tokens=True,
         )
         
@@ -446,6 +632,10 @@ class SessionManager:
         if session_id in self.sessions:
             session = self.sessions[session_id]
             session["last_access"] = time.time()
+            if "token_cache" not in session:
+                token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"]]
+                session["token_cache"] = token_cache
+                session["total_tokens"] = sum(token_cache)
             return session
         
         # Create new session
@@ -455,13 +645,17 @@ class SessionManager:
                 if len(self.sessions) >= self.config.max_concurrent_sessions:
                     self._evict_oldest_session()
                 
+                system_tokens = self.inference.count_tokens(system_prompt)
+
                 # Create session
                 self.sessions[session_id] = {
                     "dialog": [{"role": "system", "content": system_prompt}],
                     "project": project_name,
                     "created_at": time.time(),
                     "last_access": time.time(),
-                    "message_count": 0
+                    "message_count": 0,
+                    "token_cache": [system_tokens],
+                    "total_tokens": system_tokens,
                 }
                 self.session_locks[session_id] = threading.RLock()
                 logger.info(f"Created new session: {session_id} for project: {project_name}")
@@ -511,6 +705,13 @@ class SessionManager:
                 # Add user message
                 session["dialog"].append({"role": "user", "content": user_message})
                 session["message_count"] += 1
+                token_cache = session.get("token_cache")
+                if token_cache is None:
+                    token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"][:-1]]
+                    session["token_cache"] = token_cache
+                user_tokens = self.inference.count_tokens(user_message)
+                token_cache.append(user_tokens)
+                session["total_tokens"] = session.get("total_tokens", sum(token_cache[:-1])) + user_tokens
                 
                 # Debug log: conversation history before trimming
                 debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
@@ -552,6 +753,14 @@ class SessionManager:
                 
                 # Add assistant response to history
                 session["dialog"].append({"role": "assistant", "content": response})
+                token_cache = session.get("token_cache")
+                if token_cache is None:
+                    token_cache = [self.inference.count_tokens(msg["content"]) for msg in session["dialog"][:-1]]
+                    session["token_cache"] = token_cache
+                assistant_tokens = self.inference.count_tokens(response)
+                token_cache.append(assistant_tokens)
+                session["total_tokens"] = session.get("total_tokens", sum(token_cache[:-1])) + assistant_tokens
+                self._trim_dialog(session)
                 session["last_access"] = time.time()
                 
                 return response
@@ -571,25 +780,41 @@ class SessionManager:
             session: Session dictionary to trim
         """
         dialog = session["dialog"]
+        token_cache = session.get("token_cache")
+        if token_cache is None:
+            token_cache = [self.inference.count_tokens(msg["content"]) for msg in dialog]
+            session["token_cache"] = token_cache
         
         # Always keep system message
         if len(dialog) <= 1:
+            session["total_tokens"] = token_cache[0] if token_cache else 0
             return
+
+        if len(token_cache) != len(dialog):
+            token_cache[:] = [self.inference.count_tokens(msg["content"]) for msg in dialog]
         
-        # Calculate total tokens
-        total_text = " ".join([msg["content"] for msg in dialog])
-        total_tokens = self.inference.count_tokens(total_text)
+        total_tokens = session.get("total_tokens")
+        if total_tokens is None:
+            total_tokens = sum(token_cache)
         
         # Remove oldest messages (except system) if over limit
         while total_tokens > self.config.max_history_tokens and len(dialog) > 2:
             # Remove oldest user-assistant pair
-            dialog.pop(1)
+            if len(token_cache) > 1:
+                total_tokens -= token_cache.pop(1)
             if len(dialog) > 1:
                 dialog.pop(1)
-            
-            total_text = " ".join([msg["content"] for msg in dialog])
-            total_tokens = self.inference.count_tokens(total_text)
-        
+            if len(dialog) > 1 and len(token_cache) > 1:
+                dialog.pop(1)
+                total_tokens -= token_cache.pop(1)
+
+        # Keep dialog and cache aligned in case only one element removed above
+        while len(token_cache) > len(dialog):
+            total_tokens -= token_cache.pop()
+
+        total_tokens = sum(token_cache)
+        session["total_tokens"] = total_tokens
+
         logger.debug(f"Dialog trimmed to {len(dialog)} messages, ~{total_tokens} tokens")
     
     def _evict_oldest_session(self):
@@ -940,6 +1165,10 @@ def main(
     
     # Model configuration
     model: str = "Qwen/QwQ-32B",
+    model_provider: str = "auto",
+    model_cache_dir: str = "./models/modelscope",
+    model_revision: Optional[str] = None,
+    auto_download: bool = True,
     max_model_len: int = 4096,
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.90,
@@ -972,7 +1201,11 @@ def main(
     
     Args:
         projects: Project names to enable (e.g., "maze driving bloodcell" or "maze,driving,bloodcell")
-        model: Model name or path (default: Qwen/QwQ-32B)
+    model: Model identifier, alias, or local path (default: Qwen/QwQ-32B)
+    model_provider: Force a download provider (auto, modelscope, local)
+    model_cache_dir: Directory used to cache remote model snapshots
+    model_revision: Optional revision or version for remote providers
+    auto_download: Automatically download model snapshots when needed
         max_model_len: Maximum model context length
         tensor_parallel_size: Number of GPUs for tensor parallelism
         gpu_memory_utilization: GPU memory utilization (0.0-1.0)
@@ -1003,17 +1236,23 @@ def main(
         # With custom MQTT settings
         python vLLMDeploy.py --projects driving --mqtt_username user --mqtt_password pass
         
-        # With AWQ quantization (requires pre-quantized model)
-        python vLLMDeploy.py --projects general --quantization awq --model TheBloke/QwQ-32B-AWQ
-        
-        # With GPTQ quantization (requires pre-quantized model)
-        python vLLMDeploy.py --projects general --quantization gptq --model TheBloke/QwQ-32B-GPTQ
-        
-        # With BitsAndBytes 4-bit quantization (quantizes on-the-fly)
-        python vLLMDeploy.py --projects general --quantization bitsandbytes
-        
-        # With FP8 quantization (Ada Lovelace+ GPUs only)
-        python vLLMDeploy.py --projects general --quantization fp8
+    # Automatically fetch from ModelScope using aliases
+    python vLLMDeploy.py --projects general --model qwq-32b
+
+    # Explicit ModelScope download with custom cache dir
+    python vLLMDeploy.py --projects general --model modelspace://Qwen/Qwen2-72B-Instruct --model_cache_dir ./models
+
+    # With AWQ quantization (requires pre-quantized model already downloaded)
+    python vLLMDeploy.py --projects general --quantization awq --model /data/QwQ-32B-AWQ
+
+    # With GPTQ quantization
+    python vLLMDeploy.py --projects general --quantization gptq --model /data/QwQ-32B-GPTQ
+
+    # With BitsAndBytes 4-bit quantization (quantizes on-the-fly)
+    python vLLMDeploy.py --projects general --quantization bitsandbytes --model qwq-32b
+
+    # With FP8 quantization (Ada Lovelace+ GPUs only)
+    python vLLMDeploy.py --projects general --quantization fp8 --model qwq-32b
         
         # Keep QwQ thinking output (for debugging)
         python vLLMDeploy.py --projects general --skip_thinking False
@@ -1051,18 +1290,46 @@ def main(
             enabled=True
         )
     
+    resolved_provider, resolved_remote_id, inferred_revision = resolve_model_identifier(
+        model,
+        model_provider,
+    )
+    effective_revision = model_revision or inferred_revision
+
+    cache_dir_resolved = str(Path(model_cache_dir).expanduser()) if model_cache_dir else None
+
+    downloader = ModelDownloader(
+        provider=resolved_provider,
+        cache_dir=cache_dir_resolved,
+        revision=effective_revision,
+        auto_download=auto_download,
+    )
+
+    try:
+        resolved_model_path = downloader.ensure(resolved_remote_id)
+    except Exception as exc:
+        logger.error(f"Unable to prepare model '{model}': {exc}")
+        raise
+
+    remote_model_display = resolved_remote_id if resolved_remote_id else model
+
     # Create deployment config
     config = DeploymentConfig(
         mqtt_broker=mqtt_broker,
         mqtt_port=mqtt_port,
         mqtt_username=mqtt_username,
         mqtt_password=mqtt_password,
-        model_name=model,
+        model_name=resolved_model_path,
         max_model_len=max_model_len,
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=gpu_memory_utilization,
         quantization=quantization,
         visible_devices=visible_devices,
+        model_provider=resolved_provider,
+    model_cache_dir=cache_dir_resolved or model_cache_dir or "",
+        model_revision=effective_revision,
+        auto_download=auto_download,
+        remote_model_id=resolved_remote_id,
         default_temperature=temperature,
         default_top_p=top_p,
         default_max_tokens=max_tokens,
@@ -1074,7 +1341,17 @@ def main(
     )
     
     logger.info(f"Enabled projects: {', '.join(projects_list)}")
-    logger.info(f"Model: {model}")
+    logger.info(f"Model source: {resolved_provider}")
+    if effective_revision:
+        logger.info(f"Model revision: {effective_revision}")
+    if resolved_provider in {"local", ""}:
+        logger.info(f"Model path: {resolved_model_path}")
+    else:
+        logger.info(f"Model id: {remote_model_display}")
+        logger.info(f"Resolved local path: {resolved_model_path}")
+    if cache_dir_resolved:
+        logger.info(f"Model cache dir: {cache_dir_resolved}")
+    logger.info(f"Auto download: {auto_download}")
     logger.info(f"Max model length: {max_model_len}")
     logger.info(f"Tensor parallel size: {tensor_parallel_size}")
     logger.info(f"GPU memory utilization: {gpu_memory_utilization}")
