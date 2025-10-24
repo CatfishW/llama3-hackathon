@@ -148,6 +148,7 @@ class ModelSpec:
     model_id: str
     revision: Optional[str] = None
     aliases: Tuple[str, ...] = ()
+    default_quantization: Optional[str] = None
 
 
 MODEL_SPECS: Tuple[ModelSpec, ...] = (
@@ -165,6 +166,17 @@ MODEL_SPECS: Tuple[ModelSpec, ...] = (
         provider="modelscope",
         model_id="Qwen/Qwen3-14B",
         aliases=("qwen3-14b", "qwen-3-14b", "qwen/qwen3-14b"),
+    ),
+    ModelSpec(
+        provider="modelscope",
+        model_id="Qwen/Qwen3-VL-4B-Instruct-FP8",
+        aliases=(
+            "qwen3-vl-4b-instruct-fp8",
+            "qwen3-vl-4b-instruct",
+            "qwen3-vl-4b",
+            "qwen/qwen3-vl-4b-instruct-fp8",
+        ),
+        default_quantization="fp8",
     ),
     ModelSpec(
         provider="modelscope",
@@ -200,7 +212,7 @@ for spec in MODEL_SPECS:
 def resolve_model_identifier(
     identifier: str,
     provider_hint: str = "auto"
-) -> Tuple[str, str, Optional[str]]:
+) -> Tuple[str, str, Optional[str], Optional[ModelSpec]]:
     """Resolve a model identifier to provider, remote id/path, and revision."""
     if not identifier:
         raise ValueError("Model identifier is required")
@@ -210,35 +222,35 @@ def resolve_model_identifier(
 
     spec = MODEL_ALIAS_LOOKUP.get(lookup_key)
     if spec:
-        return spec.provider, spec.model_id, spec.revision
+        return spec.provider, spec.model_id, spec.revision, spec
 
     if "://" in candidate:
         scheme, remainder = candidate.split("://", 1)
         scheme_lower = scheme.lower()
         if scheme_lower in {"modelscope", "modelspace"}:
-            return "modelscope", remainder, None
+            return "modelscope", remainder, None, None
         if scheme_lower in {"hf", "huggingface"}:
-            return "huggingface", remainder, None
+            return "huggingface", remainder, None, None
 
     if os.path.isdir(candidate) or os.path.isfile(candidate):
-        return "local", candidate, None
+        return "local", candidate, None, None
 
     provider_hint_lower = (provider_hint or "auto").lower()
     if provider_hint_lower in {"modelscope", "modelspace"}:
-        return "modelscope", candidate, None
+        return "modelscope", candidate, None, None
     if provider_hint_lower in {"huggingface", "hf"}:
-        return "huggingface", candidate, None
+        return "huggingface", candidate, None, None
     if provider_hint_lower == "local":
-        return "local", candidate, None
+        return "local", candidate, None, None
 
     # Detect likely filesystem paths (relative or absolute)
     if candidate.startswith(("./", "../", "\\", "/")):
-        return "local", candidate, None
+        return "local", candidate, None, None
     if len(candidate) > 1 and candidate[1] == ":" and candidate[0].isalpha():
-        return "local", candidate, None
+        return "local", candidate, None, None
 
     # Fallback: treat plain identifiers as ModelScope ids
-    return "modelscope", candidate, None
+    return "modelscope", candidate, None, None
 
 
 class ModelDownloader:
@@ -1257,6 +1269,9 @@ def main(
     # With BitsAndBytes 4-bit quantization (quantizes on-the-fly)
     python vLLMDeploy.py --projects general --quantization bitsandbytes --model qwq-32b
 
+    # Vision-language FP8 model (auto-applies FP8 quantization)
+    python vLLMDeploy.py --projects general --model qwen3-vl-4b-instruct-fp8
+
     # With FP8 quantization (Ada Lovelace+ GPUs only)
     python vLLMDeploy.py --projects general --quantization fp8 --model qwq-32b
         
@@ -1296,11 +1311,15 @@ def main(
             enabled=True
         )
     
-    resolved_provider, resolved_remote_id, inferred_revision = resolve_model_identifier(
+    resolved_provider, resolved_remote_id, inferred_revision, model_spec = resolve_model_identifier(
         model,
         model_provider,
     )
     effective_revision = model_revision or inferred_revision
+    quantization_source = "cli"
+    if not quantization and model_spec and model_spec.default_quantization:
+        quantization = model_spec.default_quantization
+        quantization_source = "model default"
 
     cache_dir_resolved = str(Path(model_cache_dir).expanduser()) if model_cache_dir else None
 
@@ -1362,7 +1381,10 @@ def main(
     logger.info(f"Tensor parallel size: {tensor_parallel_size}")
     logger.info(f"GPU memory utilization: {gpu_memory_utilization}")
     if quantization:
-        logger.info(f"Quantization: {quantization.upper()}")
+        if quantization_source == "model default":
+            logger.info(f"Quantization: {quantization.upper()} (model default)")
+        else:
+            logger.info(f"Quantization: {quantization.upper()}")
     else:
         logger.info("Quantization: None (FP16/BF16)")
     logger.info(f"Skip thinking output: {skip_thinking}")
