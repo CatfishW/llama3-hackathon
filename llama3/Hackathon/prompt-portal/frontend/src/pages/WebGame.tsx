@@ -17,7 +17,7 @@ export default function WebGame() {
   // Auth context
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { templates } = useTemplates()
+  const { templates, loading: templatesLoading } = useTemplates()
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   // Game mode selection
@@ -31,7 +31,7 @@ export default function WebGame() {
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [sessionId, setSessionId] = useState('session-' + Math.random().toString(36).slice(2, 8))
   const [connected, setConnected] = useState(false)
-  const [germCount, setGermCount] = useState(5)
+  const [germCount, setGermCount] = useState(0)
   const [status, setStatus] = useState('')
   // Score submission state
   const [scoreSubmitted, setScoreSubmitted] = useState(false)
@@ -82,6 +82,7 @@ export default function WebGame() {
   })
   useEffect(()=> { localStorage.setItem('mobile-controls-opacity', String(mobileControlsOpacity)) }, [mobileControlsOpacity])
   const [showControlsSettings, setShowControlsSettings] = useState(false)
+  const [pendingStart, setPendingStart] = useState(false)
 
   // Game state
   const tile = 24
@@ -927,23 +928,36 @@ export default function WebGame() {
   }, [])
 
   // Start a new game: open picker to confirm template and publish
-  const startGame = useCallback(() => {
+  const launchStartFlow = useCallback(() => {
+    setPendingStart(false)
     if (!templates || templates.length === 0) {
-      // No templates to choose; just start without publish
-      // Apply board size based on current gameMode (or selectedMode if applicable)
-  const targetCols = (gameModeRef.current === 'lam') ? 10 : 33
-  const targetRows = (gameModeRef.current === 'lam') ? 10 : 21
-  doStartGame(targetCols, targetRows)
+      const targetCols = (gameModeRef.current === 'lam') ? 10 : 33
+      const targetRows = (gameModeRef.current === 'lam') ? 10 : 21
+      doStartGame(targetCols, targetRows)
       return
     }
-    // Prefill currently selected or first and open modal (no page refresh)
     setSelectedTemplateId(templateId || templates[0].id)
     setSelectedMode('manual')
-    // Reset to mode selection step to ensure modal shows properly
     setStartStep('mode')
-    // Use a small delay to ensure state is updated before showing modal
     setTimeout(() => setShowTemplatePicker(true), 0)
   }, [templates, templateId, doStartGame])
+
+  const startGame = useCallback(() => {
+    if (templatesLoading) {
+      setPendingStart(true)
+      setStatus('Loading templates…')
+      return
+    }
+    setStatus('')
+    launchStartFlow()
+  }, [templatesLoading, launchStartFlow])
+
+  useEffect(() => {
+    if (pendingStart && !templatesLoading) {
+      setStatus('')
+      launchStartFlow()
+    }
+  }, [pendingStart, templatesLoading, launchStartFlow])
 
   // Publish state to backend -> MQTT
   const publishState = useCallback(async (force = false) => {
