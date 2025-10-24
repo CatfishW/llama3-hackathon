@@ -71,6 +71,13 @@ class ProjectConfig:
     state_topic: str = None
     # Optional hint topic for hint responses (e.g., maze/hint/{sessionId})
     hint_topic: str = None
+    # Optional template management topics
+    template_topic: str = None
+    clear_topic: str = None
+    delete_topic: str = None
+    # Optional tool definitions for function calling
+    tools: Optional[List[Dict]] = None
+    tool_choice: Optional[str] = None
 
 
 @dataclass
@@ -143,6 +150,197 @@ If the prompt asks you to respond in a specific format (JSON, etc.), follow that
 
 
 # ============================================================================
+# Tool Definitions
+# ============================================================================
+
+MAZE_ACTION_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "break_wall",
+            "description": "Break a wall at the specified coordinates to create a new opening.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "X coordinate of the wall"},
+                    "y": {"type": "integer", "description": "Y coordinate of the wall"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "break_walls",
+            "description": "Break multiple walls at once. Each wall is provided as [x, y].",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "walls": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "minItems": 2,
+                            "maxItems": 2
+                        },
+                        "description": "Array of [x, y] wall coordinates"
+                    }
+                },
+                "required": ["walls"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "speed_boost",
+            "description": "Give the player a temporary speed boost.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "duration_ms": {
+                        "type": "integer",
+                        "description": "Duration of the boost in milliseconds",
+                        "default": 1500
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "slow_germs",
+            "description": "Slow the germs (enemies) for a short period.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "duration_ms": {
+                        "type": "integer",
+                        "description": "Duration of the slow effect in milliseconds",
+                        "default": 3000
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "freeze_germs",
+            "description": "Freeze germs completely for a duration.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "duration_ms": {
+                        "type": "integer",
+                        "description": "Duration of the freeze effect in milliseconds",
+                        "default": 3500
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "teleport_player",
+            "description": "Teleport the player to a specific location on the map.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Destination X coordinate"},
+                    "y": {"type": "integer", "description": "Destination Y coordinate"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "spawn_oxygen",
+            "description": "Spawn oxygen pellets at the specified coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "locations": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "minItems": 2,
+                            "maxItems": 2
+                        },
+                        "description": "Array of [x, y] oxygen coordinates"
+                    }
+                },
+                "required": ["locations"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_exit",
+            "description": "Move the maze exit to a new location.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "New exit X coordinate"},
+                    "y": {"type": "integer", "description": "New exit Y coordinate"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "highlight_zone",
+            "description": "Highlight a set of cells to draw the player's attention.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cells": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "minItems": 2,
+                            "maxItems": 2
+                        },
+                        "description": "Array of [x, y] cell coordinates to highlight"
+                    },
+                    "duration_ms": {
+                        "type": "integer",
+                        "description": "Highlight duration in milliseconds",
+                        "default": 5000
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reveal_map",
+            "description": "Toggle full-map reveal mode on or off.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enabled": {"type": "boolean", "description": "True to reveal the map"}
+                },
+                "required": ["enabled"]
+            }
+        }
+    }
+]
+
+
+# ============================================================================
 # Llama.cpp API Client
 # ============================================================================
 
@@ -204,7 +402,9 @@ class LlamaCppClient:
         temperature: float = None,
         top_p: float = None,
         max_tokens: int = None,
-        debug_info: dict = None
+        debug_info: dict = None,
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = None
     ) -> str:
         """
         Generate response using OpenAI-compatible chat completion API.
@@ -215,6 +415,8 @@ class LlamaCppClient:
             top_p: Top-p sampling (default from config)
             max_tokens: Maximum tokens to generate (default from config)
             debug_info: Optional debug info dict to log details
+            tools: Optional tool definitions for structured function calling
+            tool_choice: Tool usage mode ("auto", "none", or specific tool name)
             
         Returns:
             Generated response string
@@ -233,6 +435,8 @@ class LlamaCppClient:
             debug_logger.debug("-" * 80)
             debug_logger.debug(f"MESSAGES TO LLM:\n{json.dumps(messages, indent=2, ensure_ascii=False)}")
             debug_logger.debug("-" * 80)
+            if tools:
+                debug_logger.debug(f"Tools supplied: {[tool['function']['name'] for tool in tools if 'function' in tool]}")
         
         try:
             start_time = time.time()
@@ -242,20 +446,124 @@ class LlamaCppClient:
                 "enable_thinking": not self.config.skip_thinking
             }
             
+            request_kwargs = {
+                "model": "default",
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "extra_body": extra_body
+            }
+
+            if tools:
+                request_kwargs["tools"] = tools
+                if tool_choice:
+                    request_kwargs["tool_choice"] = tool_choice
+            
             # Call chat completions using OpenAI client
-            response = self.client.chat.completions.create(
-                model="default",
-                messages=messages,
-                temperature=temperature,
-                top_p=top_p,
-                max_tokens=max_tokens,
-                extra_body=extra_body
-            )
+            response = self.client.chat.completions.create(**request_kwargs)
             
             generation_time = time.time() - start_time
             
             # Extract generated text from response
-            generated_text = response.choices[0].message.content
+            message = response.choices[0].message
+
+            generated_text = message.content or ""
+
+            # If the model returned tool calls, convert them into structured JSON
+            if tools and getattr(message, "tool_calls", None):
+                guidance: Dict[str, object] = {}
+
+                hint_text = (message.content or "").strip()
+                if hint_text:
+                    guidance["hint"] = hint_text
+
+                for tool_call in message.tool_calls:
+                    tool_name = tool_call.function.name if tool_call.function else None
+                    if not tool_name:
+                        continue
+                    try:
+                        args = json.loads(tool_call.function.arguments or "{}")
+                    except json.JSONDecodeError as exc:
+                        logger.warning(f"Failed to parse arguments for tool '{tool_name}': {exc}")
+                        if debug_info:
+                            debug_logger.warning(f"Tool '{tool_name}' argument parse error: {exc}")
+                        continue
+
+                    if tool_name == "break_wall":
+                        x = args.get("x")
+                        y = args.get("y")
+                        if x is not None and y is not None:
+                            guidance["break_wall"] = [int(x), int(y)]
+                    elif tool_name == "break_walls":
+                        walls = args.get("walls")
+                        if isinstance(walls, list):
+                            sanitized = []
+                            for wall in walls:
+                                if isinstance(wall, (list, tuple)) and len(wall) >= 2:
+                                    sanitized.append([int(wall[0]), int(wall[1])])
+                            if sanitized:
+                                guidance["break_walls"] = sanitized
+                    elif tool_name == "speed_boost":
+                        duration = args.get("duration_ms") or args.get("duration")
+                        if duration is not None:
+                            guidance["speed_boost_ms"] = int(duration)
+                    elif tool_name == "slow_germs":
+                        duration = args.get("duration_ms") or args.get("duration")
+                        if duration is not None:
+                            guidance["slow_germs_ms"] = int(duration)
+                    elif tool_name == "freeze_germs":
+                        duration = args.get("duration_ms") or args.get("duration")
+                        if duration is not None:
+                            guidance["freeze_germs_ms"] = int(duration)
+                    elif tool_name == "teleport_player":
+                        x = args.get("x")
+                        y = args.get("y")
+                        if x is not None and y is not None:
+                            guidance["teleport_player"] = [int(x), int(y)]
+                    elif tool_name == "spawn_oxygen":
+                        locs = args.get("locations")
+                        if isinstance(locs, list):
+                            oxygen_cells = []
+                            for loc in locs:
+                                if isinstance(loc, (list, tuple)) and len(loc) >= 2:
+                                    oxygen_cells.append([int(loc[0]), int(loc[1])])
+                            if oxygen_cells:
+                                existing = guidance.setdefault("spawn_oxygen", [])
+                                if isinstance(existing, list):
+                                    existing.extend(oxygen_cells)
+                                else:
+                                    guidance["spawn_oxygen"] = oxygen_cells
+                    elif tool_name == "move_exit":
+                        x = args.get("x")
+                        y = args.get("y")
+                        if x is not None and y is not None:
+                            guidance["move_exit"] = [int(x), int(y)]
+                    elif tool_name == "highlight_zone":
+                        cells = args.get("cells")
+                        if isinstance(cells, list):
+                            zone = []
+                            for cell in cells:
+                                if isinstance(cell, (list, tuple)) and len(cell) >= 2:
+                                    zone.append([int(cell[0]), int(cell[1])])
+                            if zone:
+                                guidance["highlight_zone"] = zone
+                        duration = args.get("duration_ms") or args.get("duration")
+                        if duration is not None:
+                            guidance["highlight_ms"] = int(duration)
+                    elif tool_name == "reveal_map":
+                        if "enabled" in args:
+                            guidance["reveal_map"] = bool(args.get("enabled"))
+
+                # Ensure hint key exists for downstream UI even if empty
+                guidance.setdefault("hint", hint_text or "")
+                try:
+                    generated_text = json.dumps(guidance, ensure_ascii=False)
+                except Exception as exc:
+                    logger.error(f"Failed to encode tool guidance as JSON: {exc}")
+                    if debug_info:
+                        debug_logger.error(f"Tool guidance JSON encode failed: {exc}")
+                    generated_text = hint_text or ""
             
             # Debug log: generation output
             if debug_info:
@@ -470,6 +778,10 @@ class SessionManager:
             if client_id:
                 debug_info['client_id'] = client_id
             
+            project_config = self.config.projects.get(project_name)
+            if project_config and project_config.tools:
+                debug_info['tools_used'] = [tool['function']['name'] for tool in project_config.tools if 'function' in tool]
+
             # Use semaphore to limit concurrent calls
             with self.inference_semaphore:
                 response = self.client.generate(
@@ -477,7 +789,9 @@ class SessionManager:
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
-                    debug_info=debug_info
+                    debug_info=debug_info,
+                    tools=project_config.tools if project_config else None,
+                    tool_choice=project_config.tool_choice if project_config else None
                 )
             
             # Debug log: final response to user
@@ -560,6 +874,92 @@ class SessionManager:
                     f"Cleaned up {len(expired)} expired sessions: "
                     + ", ".join(f"{sid[0]}/{sid[1][:8]}" for sid in expired)
                 )
+
+    # ------------------------------------------------------------------
+    # Session maintenance helpers (template resets, cleanup, etc.)
+    # ------------------------------------------------------------------
+
+    def update_project_prompt(self, project_name: str, new_prompt: str):
+        """Update the default system prompt for a project."""
+        project_config = self.config.projects.get(project_name)
+        if project_config:
+            project_config.system_prompt = new_prompt
+
+    def reset_session(
+        self,
+        project_name: str,
+        session_id: str,
+        system_prompt: Optional[str] = None,
+        reset_history: bool = True
+    ) -> bool:
+        """Reset a session's system prompt and optionally clear history."""
+        if not session_id:
+            return False
+
+        session_key = (project_name, session_id)
+        project_config = self.config.projects.get(project_name)
+        project_prompt = system_prompt or (project_config.system_prompt if project_config else "You are a helpful assistant.")
+
+        with self.global_lock:
+            session = self.sessions.get(session_key)
+            if not session:
+                # Create session so future messages pick up new prompt
+                session = self.get_or_create_session(session_id, project_name, project_prompt)
+            lock = self.session_locks.setdefault(session_key, threading.RLock())
+
+        with lock:
+            prompt_text = system_prompt or project_prompt
+            if not prompt_text and session["dialog"]:
+                prompt_text = session["dialog"][0].get("content", "")
+            if reset_history:
+                session["dialog"] = [{"role": "system", "content": prompt_text}]
+                session["message_count"] = 0
+            else:
+                session["dialog"][0] = {"role": "system", "content": prompt_text}
+            session["last_access"] = time.time()
+
+        return True
+
+    def reset_all_sessions(
+        self,
+        project_name: str,
+        system_prompt: Optional[str] = None,
+        reset_history: bool = True
+    ) -> int:
+        """Reset all sessions for a project. Returns the number of sessions touched."""
+        affected = 0
+        targets = [key for key in self.sessions.keys() if key[0] == project_name]
+        for _, session_id in targets:
+            if self.reset_session(project_name, session_id, system_prompt, reset_history):
+                affected += 1
+        return affected
+
+    def clear_session(self, project_name: str, session_id: str) -> bool:
+        """Clear a session's history while keeping its system prompt."""
+        return self.reset_session(project_name, session_id, reset_history=True)
+
+    def clear_all_sessions(self, project_name: str) -> int:
+        """Clear history for all sessions in a project."""
+        return self.reset_all_sessions(project_name, reset_history=True)
+
+    def delete_session(self, project_name: str, session_id: str) -> bool:
+        """Delete a specific session entirely."""
+        session_key = (project_name, session_id)
+        with self.global_lock:
+            removed = self.sessions.pop(session_key, None) is not None
+            self.session_locks.pop(session_key, None)
+            self.request_timestamps.pop(session_key, None)
+        return removed
+
+    def delete_all_sessions(self, project_name: str) -> int:
+        """Delete all sessions for a project."""
+        with self.global_lock:
+            targets = [key for key in self.sessions.keys() if key[0] == project_name]
+            for key in targets:
+                self.sessions.pop(key, None)
+                self.session_locks.pop(key, None)
+                self.request_timestamps.pop(key, None)
+        return len(targets)
 
 
 # ============================================================================
@@ -799,6 +1199,24 @@ class MQTTHandler:
                     logger.info(f"  → Will publish responses to: {project_config.response_topic}")
                     if project_config.hint_topic:
                         logger.info(f"  → Will publish hints to: {project_config.hint_topic}")
+
+                    if project_config.template_topic:
+                        tpl_base = project_config.template_topic.rstrip('/')
+                        client.subscribe(tpl_base, qos=1)
+                        client.subscribe(f"{tpl_base}/+", qos=1)
+                        logger.info(f"✓ Subscribed to TEMPLATE topic: {tpl_base} (project: {project_name})")
+
+                    if project_config.clear_topic:
+                        clr_base = project_config.clear_topic.rstrip('/')
+                        client.subscribe(clr_base, qos=1)
+                        client.subscribe(f"{clr_base}/+", qos=1)
+                        logger.info(f"✓ Subscribed to CLEAR topic: {clr_base} (project: {project_name})")
+
+                    if project_config.delete_topic:
+                        del_base = project_config.delete_topic.rstrip('/')
+                        client.subscribe(del_base, qos=1)
+                        client.subscribe(f"{del_base}/+", qos=1)
+                        logger.info(f"✓ Subscribed to DELETE topic: {del_base} (project: {project_name})")
         else:
             logger.error(f"✗ Failed to connect to MQTT broker, code: {rc}")
     
@@ -905,6 +1323,137 @@ class MQTTHandler:
 
         return session_topic
 
+    # ------------------------------------------------------------------
+    # Topic helpers for template & session maintenance commands
+    # ------------------------------------------------------------------
+
+    def _topic_matches(self, topic: str, base: Optional[str]) -> bool:
+        if not base:
+            return False
+        base_clean = base.rstrip('/')
+        return topic == base_clean or topic.startswith(f"{base_clean}/")
+
+    def _extract_topic_session(self, topic: str, base: Optional[str]) -> Optional[str]:
+        if not base:
+            return None
+        base_clean = base.rstrip('/')
+        if topic == base_clean:
+            return None
+        prefix = f"{base_clean}/"
+        if topic.startswith(prefix):
+            suffix = topic[len(prefix):].strip()
+            return suffix or None
+        return None
+
+    def _publish_hint_notice(self, project_config: ProjectConfig, session_id: Optional[str], payload: Dict[str, object]):
+        if not session_id or not project_config:
+            return
+        target_base = project_config.hint_topic or project_config.response_topic
+        if not target_base:
+            return
+        topic = f"{target_base.rstrip('/')}/{session_id}"
+        try:
+            message = json.dumps(payload, ensure_ascii=False)
+        except Exception as exc:
+            logger.error(f"Failed to encode hint notice for session {session_id}: {exc}")
+            return
+        logger.debug(f"Publishing hint notice to {topic}: {message}")
+        self.client.publish(topic, message, qos=0)
+
+    def _handle_template_message(self, project_name: str, project_config: ProjectConfig, payload_text: str, topic: str):
+        try:
+            payload = json.loads(payload_text) if payload_text else {}
+        except json.JSONDecodeError as exc:
+            logger.error(f"Invalid JSON in template message for {project_name}: {exc}")
+            return
+
+        raw_template = (
+            payload.get("template")
+            or payload.get("system_prompt")
+            or payload.get("prompt_template")
+        )
+        if isinstance(raw_template, dict):
+            raw_template = raw_template.get("content") or raw_template.get("template")
+
+        if not isinstance(raw_template, str) or not raw_template.strip():
+            logger.warning(f"Template update missing template content for project {project_name}")
+            return
+
+        new_prompt = raw_template.strip()
+        reset = bool(payload.get("reset", True))
+        if payload.get("max_breaks") is not None:
+            logger.info(f"Template payload requested max_breaks={payload.get('max_breaks')} (not managed by this deploy script)")
+        session_id = payload.get("session_id") or payload.get("sessionId")
+        if not session_id:
+            session_id = self._extract_topic_session(topic, project_config.template_topic)
+
+        logger.info(f"Template update for project '{project_name}' (session: {session_id or 'GLOBAL'}), reset={reset}")
+        self.message_processor.session_manager.update_project_prompt(project_name, new_prompt)
+
+        if session_id:
+            self.message_processor.session_manager.reset_session(
+                project_name,
+                session_id,
+                system_prompt=new_prompt,
+                reset_history=reset,
+            )
+            self._publish_hint_notice(project_config, session_id, {"hint": "Template updated"})
+        else:
+            if reset:
+                affected = self.message_processor.session_manager.reset_all_sessions(
+                    project_name,
+                    system_prompt=new_prompt,
+                    reset_history=True,
+                )
+                logger.info(f"Reset {affected} sessions after global template update for {project_name}")
+            else:
+                affected = self.message_processor.session_manager.reset_all_sessions(
+                    project_name,
+                    system_prompt=new_prompt,
+                    reset_history=False,
+                )
+                logger.info(f"Updated prompt for {affected} sessions without clearing history for {project_name}")
+
+    def _handle_clear_history_message(self, project_name: str, project_config: ProjectConfig, payload_text: str, topic: str):
+        try:
+            payload = json.loads(payload_text) if payload_text else {}
+        except json.JSONDecodeError as exc:
+            logger.error(f"Invalid JSON in clear-history message for {project_name}: {exc}")
+            return
+
+        target = payload.get("session_id") or payload.get("sessionId") or payload.get("target")
+        if not target:
+            target = self._extract_topic_session(topic, project_config.clear_topic)
+
+        if target and str(target).lower() != "all":
+            session_id = str(target)
+            cleared = self.message_processor.session_manager.clear_session(project_name, session_id)
+            logger.info(f"Clear history request for {project_name}/{session_id}: {'cleared' if cleared else 'not found'}")
+            if cleared:
+                self._publish_hint_notice(project_config, session_id, {"hint": "History cleared"})
+        else:
+            count = self.message_processor.session_manager.clear_all_sessions(project_name)
+            logger.info(f"Cleared history for {count} sessions in project {project_name}")
+
+    def _handle_delete_session_message(self, project_name: str, project_config: ProjectConfig, payload_text: str, topic: str):
+        try:
+            payload = json.loads(payload_text) if payload_text else {}
+        except json.JSONDecodeError as exc:
+            logger.error(f"Invalid JSON in delete-session message for {project_name}: {exc}")
+            return
+
+        target = payload.get("session_id") or payload.get("sessionId") or payload.get("target")
+        if not target:
+            target = self._extract_topic_session(topic, project_config.delete_topic)
+
+        if target and str(target).lower() != "all":
+            session_id = str(target)
+            removed = self.message_processor.session_manager.delete_session(project_name, session_id)
+            logger.info(f"Delete session request for {project_name}/{session_id}: {'deleted' if removed else 'not found'}")
+        else:
+            count = self.message_processor.session_manager.delete_all_sessions(project_name)
+            logger.info(f"Deleted {count} sessions for project {project_name}")
+
     def _on_message(self, client, userdata, msg):
         """Callback for incoming MQTT messages."""
         try:
@@ -914,6 +1463,18 @@ class MQTTHandler:
             debug_logger.debug(f"RAW MQTT MESSAGE | Topic: {msg.topic}")
             debug_logger.debug(f"Payload: {payload}")
             
+            # Handle template and maintenance commands first
+            for pname, pconfig in self.config.projects.items():
+                if self._topic_matches(msg.topic, pconfig.template_topic):
+                    self._handle_template_message(pname, pconfig, payload, msg.topic)
+                    return
+                if self._topic_matches(msg.topic, pconfig.clear_topic):
+                    self._handle_clear_history_message(pname, pconfig, payload, msg.topic)
+                    return
+                if self._topic_matches(msg.topic, pconfig.delete_topic):
+                    self._handle_delete_session_message(pname, pconfig, payload, msg.topic)
+                    return
+
             # Find which project this message belongs to and message type
             project_name = None
             response_topic = None
@@ -1167,8 +1728,13 @@ def main(
                 state_topic=f"{project_name}/state",  # Game state messages
                 response_topic=f"{project_name}/assistant_response",
                 hint_topic=f"{project_name}/hint",  # Hint responses for game
+                template_topic=f"{project_name}/template",
+                clear_topic=f"{project_name}/clear_history",
+                delete_topic=f"{project_name}/delete_session",
                 system_prompt=system_prompt,
-                enabled=True
+                enabled=True,
+                tools=MAZE_ACTION_TOOLS,
+                tool_choice="auto"
             )
         else:
             project_configs[project_name] = ProjectConfig(
