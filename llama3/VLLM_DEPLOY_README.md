@@ -168,11 +168,14 @@ python vLLMDeploy.py \
 {
   "sessionId": "user123",
   "message": "What should I do next?",
+  "replyTopic": "general/assistant_response/user123",
   "temperature": 0.7,
   "topP": 0.9,
   "maxTokens": 256
 }
 ```
+
+`replyTopic` is optional but recommended when running multiple clients; the server will fall back to `general/assistant_response/{sessionId}` when it is omitted.
 
 **Minimal Payload** (Plain text):
 ```

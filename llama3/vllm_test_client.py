@@ -42,6 +42,7 @@ class vLLMClient:
         self.port = port
         self.connected = False
         self.responses = {}
+        self._subscriptions = set()
         self.waiting_for_response = False
         self.current_session = None
         self.min_request_interval = min_request_interval
@@ -179,12 +180,15 @@ class vLLMClient:
         
         # Subscribe to response topic (only once per session)
         response_topic = f"{project}/assistant_response/{session_id}"
-        self.client.subscribe(response_topic, qos=1)
+        if response_topic not in self._subscriptions:
+            self.client.subscribe(response_topic, qos=1)
+            self._subscriptions.add(response_topic)
         
         # Prepare payload
         payload = {
             "sessionId": session_id,
-            "message": message
+            "message": message,
+            "replyTopic": response_topic
         }
         
         if temperature is not None:
@@ -275,7 +279,9 @@ class vLLMClient:
         
         # Subscribe to response topic immediately
         response_topic = f"{project}/assistant_response/{session_id}"
-        self.client.subscribe(response_topic, qos=1)
+        if response_topic not in self._subscriptions:
+            self.client.subscribe(response_topic, qos=1)
+            self._subscriptions.add(response_topic)
         
         message_count = 0
         current_system_prompt = system_prompt  # Track current system prompt

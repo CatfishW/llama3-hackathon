@@ -29,7 +29,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import fire
 import paho.mqtt.client as mqtt
@@ -516,6 +516,111 @@ class vLLMInference:
                 debug_logger.error(f"Error: {str(e)}")
                 debug_logger.error("=" * 80 + "\n")
             return [f"Error: {str(e)}"] * len(prompts)
+
+    def stream_generate(
+        self,
+        prompt: str,
+        temperature: float = None,
+        top_p: float = None,
+        max_tokens: int = None,
+        debug_info: Optional[dict] = None
+    ) -> Iterator[str]:
+        """Stream tokens for a single prompt.
+
+        This wraps the vLLM streaming API and yields incremental text deltas
+        (already cleaned when ``skip_thinking`` is enabled) as they become
+        available. If the deployed vLLM version does not support streaming,
+        the method falls back to non-streaming generation and yields the full
+        response once.
+        """
+
+        if not prompt:
+            return
+
+        temperature = temperature or self.config.default_temperature
+        top_p = top_p or self.config.default_top_p
+        max_tokens = max_tokens or self.config.default_max_tokens
+
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            stop=["</think>", "<think>"],
+            skip_special_tokens=True,
+        )
+
+        if debug_info:
+            debug_logger.debug("STREAM GENERATION START")
+            debug_logger.debug(
+                f"Session: {debug_info.get('session_id', 'unknown')} | Temp: {temperature} | TopP: {top_p} | MaxTokens: {max_tokens}"
+            )
+
+        try:
+            stream = self.llm.generate([prompt], sampling_params, use_streamer=True)
+        except TypeError:
+            logger.warning("vLLM version does not support streaming API; using batch generation")
+            results = self.generate(
+                [prompt],
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                debug_info=debug_info,
+            )
+            if results:
+                yield results[0]
+            return
+        except Exception as exc:
+            logger.error(f"Streaming generation failed to start: {exc}")
+            if debug_info:
+                debug_logger.error(f"STREAM ERROR INIT | Session: {debug_info.get('session_id', 'unknown')}")
+                debug_logger.error(str(exc))
+            yield f"Error: {str(exc)}"
+            return
+
+        emitted = ""
+        latest_raw = ""
+
+        try:
+            for chunk in stream:
+                if not chunk.outputs:
+                    continue
+
+                latest_raw = chunk.outputs[0].text
+                cleaned = (
+                    self._clean_qwq_output(latest_raw)
+                    if self.config.skip_thinking
+                    else latest_raw
+                )
+
+                if not cleaned.startswith(emitted):
+                    # Unexpected rewrite (likely due to cleaning); reset emitted to avoid gaps
+                    emitted = ""
+
+                delta = cleaned[len(emitted):]
+                if delta:
+                    emitted += delta
+                    if debug_info:
+                        debug_logger.debug(f"STREAM DELTA | {delta!r}")
+                    yield delta
+
+            # Ensure any trailing text is flushed if streaming stopped without delta
+            cleaned_final = (
+                self._clean_qwq_output(latest_raw)
+                if self.config.skip_thinking
+                else latest_raw
+            )
+            trailing = cleaned_final[len(emitted):]
+            if trailing:
+                if debug_info:
+                    debug_logger.debug(f"STREAM TRAILING | {trailing!r}")
+                yield trailing
+
+        except Exception as exc:
+            logger.error(f"Streaming generation failed mid-flight: {exc}")
+            if debug_info:
+                debug_logger.error(f"STREAM ERROR | Session: {debug_info.get('session_id', 'unknown')}")
+                debug_logger.error(str(exc))
+            yield f"Error: {str(exc)}"
     
     def _clean_qwq_output(self, text: str) -> str:
         """
@@ -1126,6 +1231,63 @@ class MQTTHandler:
         if rc != 0:
             logger.warning(f"Unexpected disconnect from MQTT broker, code: {rc}")
     
+    def _normalize_session_id(self, raw_session_id) -> str:
+        """Convert arbitrary session identifiers into a safe string."""
+        if isinstance(raw_session_id, str):
+            candidate = raw_session_id.strip()
+            if candidate:
+                return candidate
+        elif raw_session_id is not None:
+            candidate = str(raw_session_id).strip()
+            if candidate:
+                logger.debug(f"Session id coerced to string: original={raw_session_id!r} -> {candidate!r}")
+                return candidate
+
+        generated = f"default-{uuid.uuid4().hex[:8]}"
+        logger.debug(
+            "Missing or empty sessionId in payload; generated fallback id %s", generated
+        )
+        return generated
+
+    def _resolve_response_topic(self, base_topic: str, session_id: str, reply_topic: Optional[str]) -> str:
+        """Choose the MQTT topic used for assistant responses."""
+        session_topic = f"{base_topic}/{session_id}"
+
+        if isinstance(reply_topic, str):
+            candidate = reply_topic.strip()
+            if not candidate:
+                logger.warning("Ignoring empty replyTopic override")
+                return session_topic
+
+            if any(wildcard in candidate for wildcard in ("#", "+")):
+                logger.warning("Ignoring replyTopic with MQTT wildcards: %s", candidate)
+                return session_topic
+
+            expected_prefix = f"{base_topic}/"
+            if not candidate.startswith(expected_prefix):
+                logger.warning(
+                    "Ignoring replyTopic '%s' that does not start with expected prefix '%s'",
+                    candidate,
+                    expected_prefix,
+                )
+                return session_topic
+
+            suffix = candidate[len(expected_prefix):]
+            if not suffix:
+                logger.warning("Ignoring replyTopic missing session segment: %s", candidate)
+                return session_topic
+
+            if suffix != session_id:
+                logger.warning(
+                    "replyTopic session mismatch (payload='%s', message='%s'); using client override",
+                    suffix,
+                    session_id,
+                )
+
+            return candidate
+
+        return session_topic
+
     def _on_message(self, client, userdata, msg):
         """Callback for incoming MQTT messages."""
         try:
@@ -1154,7 +1316,7 @@ class MQTTHandler:
             # Parse message (expect JSON with sessionId and message)
             try:
                 data = json.loads(payload)
-                session_id = data.get("sessionId", f"default-{uuid.uuid4().hex[:8]}")
+                session_id = self._normalize_session_id(data.get("sessionId"))
                 user_message = data.get("message", "")
                 
                 # Optional parameters
@@ -1162,6 +1324,7 @@ class MQTTHandler:
                 top_p = data.get("topP")
                 max_tokens = data.get("maxTokens")
                 custom_system_prompt = data.get("systemPrompt")  # Optional custom system prompt
+                reply_topic_override = data.get("replyTopic")
                 
                 # Debug log: parsed message
                 debug_logger.debug(f"PARSED | Session: {session_id}, Project: {project_name}")
@@ -1178,16 +1341,21 @@ class MQTTHandler:
                 
             except json.JSONDecodeError:
                 # Fallback: treat entire payload as message
-                session_id = f"default-{uuid.uuid4().hex[:8]}"
+                session_id = self._normalize_session_id(None)
                 user_message = payload
                 temperature = None
                 top_p = None
                 max_tokens = None
                 custom_system_prompt = None
+                reply_topic_override = None
                 debug_logger.debug(f"JSON decode failed, using raw payload as message")
             
             # Format response topic with session ID
-            response_topic_full = f"{response_topic}/{session_id}"
+            response_topic_full = self._resolve_response_topic(
+                response_topic,
+                session_id,
+                reply_topic_override,
+            )
             
             # Create queued message
             queued_msg = QueuedMessage(
