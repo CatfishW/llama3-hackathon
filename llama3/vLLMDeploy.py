@@ -1078,6 +1078,9 @@ class MessageProcessor:
         self.message_queue = queue.PriorityQueue(maxsize=config.max_queue_size)
         self.running = True
         
+        # Separate queue for publishing responses (non-blocking)
+        self.publish_queue = queue.Queue()
+        
         # Statistics
         self.stats = {
             "processed": 0,
@@ -1171,25 +1174,20 @@ class MessageProcessor:
                 client_id=msg.client_id
             )
             
-            # Publish response with QoS 0 for better performance
-            response_topic = msg.response_topic.rstrip("/")
-            if msg.client_id and msg.request_id:
-                # Ensure the response topic includes both client and request IDs for precise routing
-                response_topic = f"{msg.response_topic.rstrip('/')}/{msg.client_id}/{msg.request_id}"
-            elif msg.client_id:
-                topic_parts = response_topic.split("/")
-                if topic_parts[-1] != msg.client_id:
-                    response_topic = f"{response_topic}/{msg.client_id}"
-
-            self.mqtt_client.publish(response_topic, response, qos=1)
-            debug_logger.debug(f"Response published to topic: {response_topic}\n")
+            # Queue response for publishing (non-blocking)
+            # This prevents blocking worker threads on MQTT publish
+            self.publish_queue.put((msg.response_topic, response), block=False)
+            debug_logger.debug(f"Response queued for publishing\n")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             debug_logger.error(f"Error in message processor: {e}")
             error_response = f"Error: {str(e)}"
-            self.mqtt_client.publish(msg.response_topic, error_response, qos=0)
-            debug_logger.debug(f"Error response published to topic: {msg.response_topic}\n")
+            try:
+                self.publish_queue.put((msg.response_topic, error_response), block=False)
+            except queue.Full:
+                logger.error(f"Publish queue full, dropping error response")
+            debug_logger.debug(f"Error response queued\n")
     
     def get_stats(self) -> Dict:
         """Get processing statistics."""
@@ -1200,6 +1198,25 @@ class MessageProcessor:
             else:
                 stats["avg_latency"] = 0.0
             return stats
+    
+    def publish_loop(self):
+        """Background loop for publishing responses (non-blocking)."""
+        while self.running:
+            try:
+                response_topic, response = self.publish_queue.get(timeout=1.0)
+                
+                # Format topic properly if needed
+                response_topic = response_topic.rstrip("/")
+                
+                # Publish with QoS 0 (fire and forget) to avoid blocking
+                self.mqtt_client.publish(response_topic, response, qos=0)
+                debug_logger.debug(f"Response published to topic: {response_topic}\n")
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Error publishing response: {e}")
+                debug_logger.error(f"Error in publish loop: {e}\n")
 
 
 # ============================================================================
@@ -1474,7 +1491,7 @@ def main(
     mqtt_password: Optional[str] = None,
     
     # Performance
-    num_workers: int = 4,
+    num_workers: int = 16,
     
     # Output processing
     skip_thinking: bool = True,
@@ -1693,6 +1710,12 @@ def main(
         for i in range(num_workers):
             thread_pool.submit(message_processor.process_loop)
         logger.info(f"Started {num_workers} worker threads")
+        
+        # Start publisher thread (separate from worker threads to avoid blocking)
+        logger.info("Starting response publisher thread...")
+        publisher_thread = threading.Thread(target=message_processor.publish_loop, daemon=True, name="vllm-publisher")
+        publisher_thread.start()
+        logger.info("Started response publisher thread")
         
         # 6. Connect to MQTT broker
         logger.info("-" * 80)
