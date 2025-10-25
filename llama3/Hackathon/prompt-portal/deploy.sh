@@ -19,9 +19,10 @@ NC='\033[0m' # No Color
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
-# Domain configuration
-USE_DOMAIN=true
-DOMAIN_NAME="lammp.agaii.org"
+# Domain configuration - Set these before running if you want automatic domain setup
+USE_DOMAIN=false
+DOMAIN_NAME=""
+SETUP_NGINX=false
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -31,44 +32,60 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 # Get server IP
 SERVER_IP="127.0.0.1"
 
-# Ask about domain name
-echo ""
-echo -e "${BLUE}Domain Configuration${NC}"
-read -p "Do you want to use a custom domain? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    read -p "Enter your domain name (e.g., lammp.agaii.org): " DOMAIN_NAME
-    if [ -n "$DOMAIN_NAME" ]; then
-        USE_DOMAIN=true
-        echo -e "${GREEN}✓ Will configure for domain: $DOMAIN_NAME${NC}"
-        
-        # Check DNS
-        DNS_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 2>/dev/null | tail -n1)
-        if [ -n "$DNS_IP" ] && [ "$DNS_IP" == "$SERVER_IP" ]; then
-            echo -e "${GREEN}✓ DNS is correctly configured!${NC}"
-        elif [ -n "$DNS_IP" ]; then
-            echo -e "${YELLOW}⚠ DNS points to $DNS_IP but server IP is $SERVER_IP${NC}"
-            echo -e "${YELLOW}  Please update your DNS A record${NC}"
+# Check for domain configuration via environment or command-line
+if [ -n "$DEPLOY_DOMAIN" ]; then
+    DOMAIN_NAME="$DEPLOY_DOMAIN"
+    USE_DOMAIN=true
+    echo -e "${GREEN}Using domain from environment: $DOMAIN_NAME${NC}"
+fi
+
+# Ask about domain name if not set
+if [ -z "$DOMAIN_NAME" ]; then
+    echo ""
+    echo -e "${BLUE}Domain Configuration${NC}"
+    read -p "Do you want to use a custom domain? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "Enter your domain name (e.g., lammp.agaii.org): " DOMAIN_NAME
+        if [ -n "$DOMAIN_NAME" ]; then
+            USE_DOMAIN=true
+            echo -e "${GREEN}✓ Will configure for domain: $DOMAIN_NAME${NC}"
+            
+            # Get actual server IP for DNS check
+            ACTUAL_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
+            
+            # Check DNS
+            DNS_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 2>/dev/null | tail -n1)
+            if [ -n "$DNS_IP" ] && [ "$DNS_IP" == "$ACTUAL_IP" ]; then
+                echo -e "${GREEN}✓ DNS is correctly configured!${NC}"
+            elif [ -n "$DNS_IP" ]; then
+                echo -e "${YELLOW}⚠ DNS points to $DNS_IP but server IP is $ACTUAL_IP${NC}"
+                echo -e "${YELLOW}  Backend will still work if server is accessible${NC}"
+            else
+                echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
+                echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $ACTUAL_IP${NC}"
+            fi
+            
+            # Ask about Nginx setup
+            echo ""
+            read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                SETUP_NGINX=true
+            fi
         else
-            echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
-            echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $SERVER_IP${NC}"
+            USE_DOMAIN=false
         fi
-        
-        # Ask about Nginx setup
-        echo ""
-        read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            SETUP_NGINX=true
-        else
-            SETUP_NGINX=false
-        fi
-    else
-        USE_DOMAIN=false
-        SETUP_NGINX=false
     fi
 else
-    SETUP_NGINX=false
+    # Domain was set via environment
+    if [ "$USE_DOMAIN" = true ]; then
+        echo -e "${GREEN}✓ Using domain: $DOMAIN_NAME${NC}"
+        # Check if Nginx should be set up
+        if [ "$DEPLOY_NGINX" = "true" ]; then
+            SETUP_NGINX=true
+        fi
+    fi
 fi
 
 echo ""
@@ -140,27 +157,36 @@ print_step "Skipping firewall configuration..."
 print_step "Setting up backend..."
 cd "$BACKEND_DIR"
 
-# Configure backend CORS for domain
-if [ "$USE_DOMAIN" = true ]; then
-    print_step "Configuring backend for domain..."
-    if [ -f .env ]; then
-        # Backup existing .env
-        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-        
-        # Update CORS_ORIGINS to include domain
-        if grep -q "CORS_ORIGINS" .env; then
-            # Add domain to existing CORS_ORIGINS
-            sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT},http://localhost:5173|" .env
-            echo -e "${GREEN}✓ Backend CORS configured for domain${NC}"
-        else
-            echo "CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://localhost:5173" >> .env
-        fi
-    else
-        print_warning ".env file not found, will use defaults"
-    fi
-else
-    print_step "Using existing backend .env configuration..."
+# Configure backend CORS
+print_step "Configuring backend CORS..."
+if [ ! -f .env ]; then
+    print_step "Creating .env file from example..."
+    cp .env.example .env
 fi
+
+# Backup existing .env
+cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+
+# Build CORS origins list
+CORS_LIST="http://localhost:5173,http://127.0.0.1:5173,http://localhost:${BACKEND_PORT},http://127.0.0.1:${BACKEND_PORT},http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}"
+
+if [ "$USE_DOMAIN" = true ] && [ -n "$DOMAIN_NAME" ]; then
+    print_step "Adding domain to CORS: $DOMAIN_NAME"
+    CORS_LIST="https://${DOMAIN_NAME},http://${DOMAIN_NAME},${CORS_LIST}"
+fi
+
+# Add server IP to CORS
+CORS_LIST="${CORS_LIST},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT}"
+
+# Update CORS_ORIGINS in .env
+if grep -q "CORS_ORIGINS" .env; then
+    sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=${CORS_LIST}|" .env
+else
+    echo "CORS_ORIGINS=${CORS_LIST}" >> .env
+fi
+
+echo -e "${GREEN}✓ Backend CORS configured${NC}"
+echo -e "${BLUE}   CORS origins: ${CORS_LIST}${NC}"
 
 # Check and preserve existing database
 print_step "Checking database status..."
