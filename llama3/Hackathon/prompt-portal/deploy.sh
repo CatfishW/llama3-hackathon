@@ -12,11 +12,16 @@ echo "🚀 Starting Prompt Portal Deployment..."
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration - Change these ports if 8000 or 5173 are not available
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
+
+# Domain configuration
+USE_DOMAIN=false
+DOMAIN_NAME=""
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -25,7 +30,39 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 
 # Get server IP
 SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
+
+# Ask about domain name
+echo ""
+echo -e "${BLUE}Domain Configuration${NC}"
+read -p "Do you want to use a custom domain? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    read -p "Enter your domain name (e.g., lammp.agaii.org): " DOMAIN_NAME
+    if [ -n "$DOMAIN_NAME" ]; then
+        USE_DOMAIN=true
+        echo -e "${GREEN}✓ Will configure for domain: $DOMAIN_NAME${NC}"
+        
+        # Check DNS
+        DNS_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 2>/dev/null | tail -n1)
+        if [ -n "$DNS_IP" ] && [ "$DNS_IP" == "$SERVER_IP" ]; then
+            echo -e "${GREEN}✓ DNS is correctly configured!${NC}"
+        elif [ -n "$DNS_IP" ]; then
+            echo -e "${YELLOW}⚠ DNS points to $DNS_IP but server IP is $SERVER_IP${NC}"
+            echo -e "${YELLOW}  Please update your DNS A record${NC}"
+        else
+            echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
+            echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $SERVER_IP${NC}"
+        fi
+    else
+        USE_DOMAIN=false
+    fi
+fi
+
+echo ""
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
+if [ "$USE_DOMAIN" = true ]; then
+    echo -e "${GREEN}Domain: $DOMAIN_NAME${NC}"
+fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
 
 # Function to print colored output
@@ -39,6 +76,10 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
 # Helpers to cleanly stop running services
@@ -86,8 +127,27 @@ print_step "Skipping firewall configuration..."
 print_step "Setting up backend..."
 cd "$BACKEND_DIR"
 
-# Skip backend environment configuration - using existing .env file
-print_step "Skipping backend environment configuration - using existing .env file..."
+# Configure backend CORS for domain
+if [ "$USE_DOMAIN" = true ]; then
+    print_step "Configuring backend for domain..."
+    if [ -f .env ]; then
+        # Backup existing .env
+        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+        
+        # Update CORS_ORIGINS to include domain
+        if grep -q "CORS_ORIGINS" .env; then
+            # Add domain to existing CORS_ORIGINS
+            sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT},http://localhost:5173|" .env
+            echo -e "${GREEN}✓ Backend CORS configured for domain${NC}"
+        else
+            echo "CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://localhost:5173" >> .env
+        fi
+    else
+        print_warning ".env file not found, will use defaults"
+    fi
+else
+    print_step "Using existing backend .env configuration..."
+fi
 
 # Check and preserve existing database
 print_step "Checking database status..."
@@ -146,17 +206,29 @@ EOF
 
 # Create production environment file
 print_step "Configuring frontend environment..."
-cat > .env.production << EOF
+if [ "$USE_DOMAIN" = true ]; then
+    cat > .env.production << EOF
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
+EOF
+
+    cat > .env.local << EOF
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
+EOF
+    echo -e "${GREEN}✓ Frontend configured for domain: $DOMAIN_NAME${NC}"
+else
+    cat > .env.production << EOF
 VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
 VITE_WS_BASE=ws://$SERVER_IP:$BACKEND_PORT
 EOF
 
-cat > .env.local << EOF
+    cat > .env.local << EOF
 VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
 VITE_WS_BASE=ws://$SERVER_IP:$BACKEND_PORT
 EOF
-
-echo -e "${GREEN}Frontend environment configured!${NC}"
+    echo -e "${GREEN}✓ Frontend configured for IP-based access${NC}"
+fi
 
 # Build frontend for production
 print_step "Building frontend..."
@@ -185,10 +257,10 @@ stop_backend
 stop_frontend
 sleep 1
 
-# Start backend in background (log to file)
+# Start backend in background (no logs)
 cd ../backend
 print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > backend.pid
 
@@ -203,7 +275,7 @@ done
 if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
     print_warning "Backend process exited unexpectedly. Attempting one restart..."
     stop_backend
-    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
+    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > backend.pid
     sleep 2
@@ -211,14 +283,12 @@ fi
 
 # Fail fast if backend is not running/healthy
 if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
-    print_error "Backend failed to start. See backend/backend.log for details."
-    tail -n 50 backend.log 2>/dev/null || true
+    print_error "Backend failed to start. Check if port $BACKEND_PORT is available."
     exit 1
 fi
 
 if ! curl -s --max-time 2 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
     print_error "Backend health check failed at http://127.0.0.1:$BACKEND_PORT/docs."
-    tail -n 50 backend.log 2>/dev/null || true
     exit 1
 fi
 
@@ -249,9 +319,38 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
-echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
-echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
-echo -e "📚 API Docs: ${GREEN}http://$SERVER_IP:$BACKEND_PORT/docs${NC}"
+
+if [ "$USE_DOMAIN" = true ]; then
+    echo -e "🌐 Domain: ${GREEN}$DOMAIN_NAME${NC}"
+    echo -e "🖥️  Server IP: ${GREEN}$SERVER_IP${NC}"
+    echo ""
+    
+    # Check if Nginx is needed
+    if command -v nginx &> /dev/null; then
+        echo -e "${GREEN}Nginx detected - you can configure reverse proxy:${NC}"
+        echo -e "  See: ${BLUE}DOMAIN_SETUP.md${NC} for Nginx + SSL setup"
+        echo ""
+        echo -e "After Nginx setup:"
+        echo -e "  🌐 Website: ${GREEN}https://$DOMAIN_NAME${NC}"
+        echo -e "  🔗 API: ${GREEN}https://$DOMAIN_NAME/api${NC}"
+        echo -e "  📚 API Docs: ${GREEN}https://$DOMAIN_NAME/api/docs${NC}"
+        echo ""
+    else
+        echo -e "${YELLOW}Note: Domain configured but Nginx not installed${NC}"
+        echo -e "For production with custom domain, install Nginx and run:"
+        echo -e "  ${BLUE}./setup-domain.sh${NC}"
+        echo ""
+    fi
+    
+    echo -e "Current access (before Nginx):"
+    echo -e "  🌐 Frontend: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
+    echo -e "  🔗 Backend: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
+else
+    echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
+    echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
+    echo -e "📚 API Docs: ${GREEN}http://$SERVER_IP:$BACKEND_PORT/docs${NC}"
+fi
+
 echo ""
 echo -e "${YELLOW}Service Management:${NC}"
 echo "  kill \$(cat backend/backend.pid)    # Stop backend"
@@ -264,9 +363,19 @@ echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
 echo "- Existing database is preserved (no data loss)"
 echo "- Logging and monitoring have been disabled"
+
+if [ "$USE_DOMAIN" = true ]; then
+    echo ""
+    echo -e "${GREEN}Domain Setup Next Steps:${NC}"
+    echo "1. Ensure DNS A record: $DOMAIN_NAME → $SERVER_IP"
+    echo "2. Install Nginx: sudo apt install nginx"
+    echo "3. Run domain setup: ./setup-domain.sh"
+    echo "4. Or manually configure (see DOMAIN_SETUP.md)"
+fi
+
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
-echo "1. Open http://173.61.35.162:$FRONTEND_PORT in your browser"
+echo "1. Open http://$SERVER_IP:$FRONTEND_PORT in your browser"
 echo "2. Register a new account"
 echo "3. Create your first prompt template"
 echo "4. Test the MQTT functionality"
@@ -291,5 +400,5 @@ if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
     echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
 else
     echo -e "${YELLOW}Deployment finished but not all services are healthy.${NC}"
-    echo -e "${YELLOW}Check backend/backend.log and address errors, then re-run this script.${NC}"
+    echo -e "${YELLOW}Check process status and try restarting.${NC}"
 fi

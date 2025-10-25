@@ -1,5 +1,7 @@
 # Prompt Portal (Frontend Prompt Template Submission Website)
 
+🌐 **Live at: [lammp.agaii.org](https://lammp.agaii.org)**
+
 This repository contains a full-stack web application to manage and evaluate **prompt templates** for a LAM-powered Maze Game.
 It supports **user registration/login (JWT)**, **prompt template CRUD**, **leaderboard**, and **real-time MQTT hint monitoring** with a **FastAPI** backend and a **React (Vite + TypeScript)** frontend.
 
@@ -93,7 +95,40 @@ prompt-portal/
 
 ---
 
-## Setup & Run
+## 🚀 Quick Start
+
+### Production Deployment with Custom Domain
+
+**For deploying to lammp.agaii.org:**
+
+```bash
+# 1. Configure DNS A record pointing to your server IP
+# 2. Run automated domain setup
+chmod +x setup-domain.sh
+./setup-domain.sh
+```
+
+See [DOMAIN_QUICK_GUIDE.md](./DOMAIN_QUICK_GUIDE.md) for quick instructions or [DOMAIN_SETUP.md](./DOMAIN_SETUP.md) for detailed documentation.
+
+### Standard Deployment
+
+For general server deployment without custom domain:
+
+```bash
+# Quick deployment (development mode)
+chmod +x deploy.sh
+./deploy.sh
+
+# Or production deployment with Nginx
+chmod +x deploy-production.sh
+./deploy-production.sh
+```
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+---
+
+## 💻 Local Development Setup
 
 ### 1) Backend
 
