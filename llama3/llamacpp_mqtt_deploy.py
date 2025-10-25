@@ -576,15 +576,8 @@ class LlamaCppClient:
             return generated_text
             
         except OpenAIError as e:
-            error_str = str(e)
-            # Check for context size exceeded error
-            if 'context size' in error_str.lower() or '400' in error_str:
-                error_msg = f"Context size exceeded. Try reducing max_tokens or enable better history trimming."
-                logger.error(f"OpenAI API error (context): {error_str}")
-                debug_logger.error(f"Context size exceeded in session {debug_info.get('session_id', 'unknown')}")
-            else:
-                error_msg = f"OpenAI API error: {error_str}"
-                logger.error(error_msg)
+            error_msg = f"OpenAI API error: {str(e)}"
+            logger.error(error_msg)
             if debug_info:
                 debug_logger.error(error_msg)
             return f"Error: {error_msg}"
@@ -606,9 +599,8 @@ class LlamaCppClient:
         Returns:
             Estimated number of tokens
         """
-        # More conservative estimation: ~3.5 characters per token for safety
-        # This helps prevent context overflow
-        return max(1, len(text) // 3 + len(text) % 3)
+        # Rough estimation: ~4 characters per token
+        return len(text) // 4
     
     def format_chat(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
@@ -802,31 +794,11 @@ class SessionManager:
             
             debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
             
-            # Token-based trimming: remove old messages if history exceeds max_history_tokens
-            total_tokens = sum(self.client.count_tokens(msg.get('content', '')) for msg in session['dialog'])
-            debug_logger.debug(f"Total conversation tokens: {total_tokens} / {self.config.max_history_tokens} limit")
-            
-            if total_tokens > self.config.max_history_tokens:
-                # Keep system message and trim from the beginning
-                system_msg = session['dialog'][0]
-                remaining = session['dialog'][1:]
-                
-                # Binary search to find how many messages to keep
-                while len(remaining) > 1:
-                    test_tokens = sum(self.client.count_tokens(msg.get('content', '')) for msg in remaining)
-                    if test_tokens <= self.config.max_history_tokens - self.client.count_tokens(system_msg.get('content', '')):
-                        break
-                    remaining = remaining[1:]  # Remove oldest message
-                
-                session['dialog'] = [system_msg] + remaining
-                new_total_tokens = sum(self.client.count_tokens(msg.get('content', '')) for msg in session['dialog'])
-                debug_logger.debug(f"Trimmed history to {len(session['dialog'])} messages, new token count: {new_total_tokens}")
-            
-            # Also enforce a max message count for safety
-            max_messages = 50
-            if len(session['dialog']) > max_messages:
-                session['dialog'] = [session['dialog'][0]] + session['dialog'][-(max_messages-1):]
-                debug_logger.debug(f"Also trimmed to last {max_messages} messages for safety")
+            # Simple trimming: keep only last N messages
+            max_messages = 20
+            if len(session["dialog"]) > max_messages:
+                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                debug_logger.debug(f"Trimmed to last {max_messages} messages")
             
             # Prepare messages for API call
             messages = self.client.format_chat(session["dialog"])
@@ -1030,52 +1002,6 @@ class SessionManager:
                 self.request_timestamps.pop(key, None)
         return len(targets)
 
-    def aggressive_cleanup(self, project_name: str, session_id: str, keep_system_only: bool = True) -> bool:
-        """
-        Aggressively clean up a session's history when context overflows.
-        
-        Args:
-            project_name: Project name
-            session_id: Session ID
-            keep_system_only: If True, keep only system message; if False, keep last user+assistant pair
-            
-        Returns:
-            True if cleanup was performed
-        """
-        session_key = (project_name, session_id)
-        
-        with self.global_lock:
-            session = self.sessions.get(session_key)
-            if not session:
-                return False
-            
-            lock = self.session_locks.get(session_key, threading.RLock())
-        
-        with lock:
-            original_len = len(session['dialog'])
-            
-            if keep_system_only:
-                # Keep only system message
-                session['dialog'] = [session['dialog'][0]] if session['dialog'] else []
-            else:
-                # Keep system message and last user/assistant pair
-                system_msg = session['dialog'][0] if session['dialog'] else None
-                user_msgs = [m for m in session['dialog'] if m.get('role') == 'user']
-                assistant_msgs = [m for m in session['dialog'] if m.get('role') == 'assistant']
-                
-                if user_msgs and assistant_msgs:
-                    session['dialog'] = [system_msg, user_msgs[-1], assistant_msgs[-1]]
-                elif user_msgs:
-                    session['dialog'] = [system_msg, user_msgs[-1]]
-                elif system_msg:
-                    session['dialog'] = [system_msg]
-            
-            session['message_count'] = len(session['dialog'])
-            new_len = len(session['dialog'])
-            
-            logger.warning(f"🧹 Aggressive cleanup for {project_name}/{session_id}: {original_len} → {new_len} messages")
-            return True
-
 
 # ============================================================================
 # Message Queue and Processing
@@ -1202,28 +1128,6 @@ class MessageProcessor:
                 max_tokens=msg.max_tokens,
                 client_id=msg.client_id
             )
-            
-            # Check if we got a context size error
-            if 'context size' in response.lower() or ('error' in response.lower() and '400' in response):
-                logger.warning(f"Context overflow detected for session {msg.session_id}, triggering cleanup...")
-                
-                # Try aggressive cleanup and retry once
-                self.session_manager.aggressive_cleanup(msg.project_name, msg.session_id, keep_system_only=False)
-                
-                # Retry with cleaned history
-                response = self.session_manager.process_message(
-                    session_id=msg.session_id,
-                    project_name=msg.project_name,
-                    system_prompt=system_prompt,
-                    user_message=msg.user_message,
-                    temperature=msg.temperature,
-                    top_p=msg.top_p,
-                    max_tokens=msg.max_tokens,
-                    client_id=msg.client_id
-                )
-                
-                if 'context size' not in response.lower():
-                    response = f"[Session history was too long and was reset]\n\n{response}"
             
             # Queue response for publishing
             self.publish_queue.put((msg.response_topic, response), block=False)
@@ -2012,5 +1916,5 @@ def main(
 if __name__ == "__main__":
     fire.Fire(main)
 '''
-llama-server -m qwen3-30b-a3b-instruct-2507-Q4_K_M.gguft --host 0.0.0.0 --port 8080 -c 568192 -ngl 40 -t 8 --parallel 8 --jinja
+llama-server -m qwen3-30b-a3b-instruct-2507-Q4_K_M.gguft --host 0.0.0.0 --port 8080 -c 28192 -ngl 35 -t 8 --parallel 8
 '''
