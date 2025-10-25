@@ -53,9 +53,22 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
             echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $SERVER_IP${NC}"
         fi
+        
+        # Ask about Nginx setup
+        echo ""
+        read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            SETUP_NGINX=true
+        else
+            SETUP_NGINX=false
+        fi
     else
         USE_DOMAIN=false
+        SETUP_NGINX=false
     fi
+else
+    SETUP_NGINX=false
 fi
 
 echo ""
@@ -261,7 +274,19 @@ fi
 
 # Create production environment file
 print_step "Configuring frontend environment..."
-if [ "$USE_DOMAIN" = true ]; then
+if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
+    # With Nginx, use clean URLs without ports
+    cat > .env.production << EOF
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
+EOF
+
+    cat > .env.local << EOF
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
+EOF
+    echo -e "${GREEN}✓ Frontend configured for domain with Nginx (HTTPS)${NC}"
+elif [ "$USE_DOMAIN" = true ]; then
     # Without Nginx, use HTTP with domain and port
     cat > .env.production << EOF
 VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
@@ -272,8 +297,7 @@ EOF
 VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
 VITE_WS_BASE=ws://$DOMAIN_NAME:$BACKEND_PORT
 EOF
-    echo -e "${GREEN}✓ Frontend configured for domain: $DOMAIN_NAME (HTTP)${NC}"
-    echo -e "${YELLOW}  Note: Using HTTP. For HTTPS, set up Nginx with ./setup-domain.sh${NC}"
+    echo -e "${GREEN}✓ Frontend configured for domain: $DOMAIN_NAME (HTTP with ports)${NC}"
 else
     cat > .env.production << EOF
 VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
@@ -361,6 +385,79 @@ sleep 3
 
 print_step "Skipping monitoring and backup scripts setup..."
 
+# Setup Nginx if requested
+if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
+    print_step "Setting up Nginx..."
+    cd "$ROOT_DIR"
+    
+    # Check if Nginx is installed
+    if ! command -v nginx &> /dev/null; then
+        print_info "Installing Nginx..."
+        sudo apt update > /dev/null 2>&1
+        sudo apt install -y nginx > /dev/null 2>&1
+    fi
+    
+    # Create Nginx configuration
+    print_step "Configuring Nginx for $DOMAIN_NAME..."
+    sudo tee /etc/nginx/sites-available/$DOMAIN_NAME > /dev/null << EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN_NAME;
+
+    # Serve frontend static files
+    location / {
+        root $FRONTEND_DIR/dist;
+        try_files \$uri \$uri/ /index.html;
+        index index.html;
+    }
+
+    # Proxy API requests to backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # WebSocket support for MQTT
+    location /api/mqtt/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/mqtt/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+}
+EOF
+    
+    # Enable the site
+    sudo ln -sf /etc/nginx/sites-available/$DOMAIN_NAME /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
+    
+    # Test and reload Nginx
+    if sudo nginx -t > /dev/null 2>&1; then
+        sudo systemctl reload nginx > /dev/null 2>&1
+        echo -e "${GREEN}✓ Nginx configured successfully!${NC}"
+        
+        # Try to set up SSL if certbot is available
+        if command -v certbot &> /dev/null; then
+            print_step "Setting up SSL certificate..."
+            sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos --email admin@$DOMAIN_NAME --redirect > /dev/null 2>&1 && {
+                echo -e "${GREEN}✓ SSL certificate installed!${NC}"
+            } || {
+                print_warning "SSL setup skipped. Run manually: sudo certbot --nginx -d $DOMAIN_NAME"
+            }
+        else
+            print_info "Certbot not installed. Install it for HTTPS: sudo apt install certbot python3-certbot-nginx"
+        fi
+    else
+        print_error "Nginx configuration test failed"
+    fi
+fi
+
 BACKEND_OK=0
 FRONTEND_OK=0
 if ps -p $BACKEND_PID > /dev/null 2>&1; then BACKEND_OK=1; fi
@@ -377,7 +474,24 @@ echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
 
-if [ "$USE_DOMAIN" = true ]; then
+if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
+    echo -e "🌐 Domain: ${GREEN}$DOMAIN_NAME${NC}"
+    echo -e "🖥️  Server IP: ${GREEN}$SERVER_IP${NC}"
+    echo ""
+    
+    # Check if SSL was set up
+    if sudo test -d /etc/letsencrypt/live/$DOMAIN_NAME 2>/dev/null; then
+        echo -e "🌐 Website: ${GREEN}https://$DOMAIN_NAME${NC} (No port needed!)"
+        echo -e "🔗 API: ${GREEN}https://$DOMAIN_NAME/api${NC}"
+        echo -e "📚 API Docs: ${GREEN}https://$DOMAIN_NAME/api/docs${NC}"
+    else
+        echo -e "🌐 Website: ${GREEN}http://$DOMAIN_NAME${NC} (No port needed!)"
+        echo -e "🔗 API: ${GREEN}http://$DOMAIN_NAME/api${NC}"
+        echo -e "📚 API Docs: ${GREEN}http://$DOMAIN_NAME/api/docs${NC}"
+        echo ""
+        echo -e "${YELLOW}For HTTPS: sudo certbot --nginx -d $DOMAIN_NAME${NC}"
+    fi
+elif [ "$USE_DOMAIN" = true ]; then
     echo -e "🌐 Domain: ${GREEN}$DOMAIN_NAME${NC}"
     echo -e "🖥️  Server IP: ${GREEN}$SERVER_IP${NC}"
     echo ""
@@ -385,17 +499,7 @@ if [ "$USE_DOMAIN" = true ]; then
     echo -e "🔗 Backend API: ${GREEN}http://$DOMAIN_NAME:$BACKEND_PORT${NC}"
     echo -e "📚 API Docs: ${GREEN}http://$DOMAIN_NAME:$BACKEND_PORT/docs${NC}"
     echo ""
-    
-    # Check if Nginx is needed
-    if command -v nginx &> /dev/null; then
-        echo -e "${YELLOW}For production with HTTPS:${NC}"
-        echo -e "  1. Run: ${BLUE}./setup-domain.sh${NC}"
-        echo -e "  2. Or see: ${BLUE}DOMAIN_SETUP.md${NC}"
-    else
-        echo -e "${YELLOW}For production with HTTPS:${NC}"
-        echo -e "  1. Install Nginx: ${BLUE}sudo apt install nginx${NC}"
-        echo -e "  2. Run: ${BLUE}./setup-domain.sh${NC}"
-    fi
+    echo -e "${YELLOW}To remove ports from URLs, re-run with Nginx setup${NC}"
 else
     echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
     echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
@@ -415,18 +519,15 @@ echo "- Backend secret key has been generated automatically"
 echo "- Existing database is preserved (no data loss)"
 echo "- Logging and monitoring have been disabled"
 
-if [ "$USE_DOMAIN" = true ]; then
-    echo ""
-    echo -e "${GREEN}Domain Setup Next Steps:${NC}"
-    echo "1. Ensure DNS A record: $DOMAIN_NAME → $SERVER_IP"
-    echo "2. Install Nginx: sudo apt install nginx"
-    echo "3. Run domain setup: ./setup-domain.sh"
-    echo "4. Or manually configure (see DOMAIN_SETUP.md)"
-fi
-
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
-if [ "$USE_DOMAIN" = true ]; then
+if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
+    if sudo test -d /etc/letsencrypt/live/$DOMAIN_NAME 2>/dev/null; then
+        echo "1. Open https://$DOMAIN_NAME in your browser"
+    else
+        echo "1. Open http://$DOMAIN_NAME in your browser"
+    fi
+elif [ "$USE_DOMAIN" = true ]; then
     echo "1. Open http://$DOMAIN_NAME:$FRONTEND_PORT in your browser"
 else
     echo "1. Open http://$SERVER_IP:$FRONTEND_PORT in your browser"
