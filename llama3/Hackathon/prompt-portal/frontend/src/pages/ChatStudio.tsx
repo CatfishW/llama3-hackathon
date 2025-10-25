@@ -571,8 +571,8 @@ export default function ChatStudio() {
   const simulateStreamingMessage = (messageId: number, fullContent: string) => {
     setStreamingMessageId(messageId)
     let currentIndex = 0
-    const chunkSize = 3 // Characters per chunk
-    const delayMs = 20 // Delay between chunks in milliseconds
+    const chunkSize = 5 // Characters per chunk
+    const delayMs = 5 // Delay between chunks in milliseconds
 
     const streamNextChunk = () => {
       if (currentIndex < fullContent.length) {
