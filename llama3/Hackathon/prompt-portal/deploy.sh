@@ -490,7 +490,7 @@ server {
     }
 
     # Proxy API requests to backend
-    location /api/ {
+    location /api {
         # Handle OPTIONS preflight requests
         if (\$request_method = 'OPTIONS') {
             add_header Access-Control-Allow-Origin * always;
@@ -502,7 +502,8 @@ server {
             return 204;
         }
         
-        proxy_pass http://127.0.0.1:$BACKEND_PORT/;
+        rewrite ^/api/(.*) /\$1 break;
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -515,8 +516,9 @@ server {
     }
 
     # WebSocket support for MQTT
-    location /api/mqtt/ws/ {
-        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/mqtt/ws/;
+    location /api/mqtt/ws {
+        rewrite ^/api/(.*) /\$1 break;
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -616,6 +618,12 @@ echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
 echo "- Existing database is preserved (no data loss)"
 echo "- Logging and monitoring have been disabled"
+echo ""
+echo -e "${YELLOW}Troubleshooting 'Method Not Allowed' errors:${NC}"
+echo "- Ensure your browser is accessing the correct protocol (HTTP/HTTPS)"
+echo "- If using HTTPS, make sure SSL certificates are properly configured"
+echo "- Check browser console for CORS errors"
+echo "- Backend CORS is configured for: \$CORS_LIST"
 
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
