@@ -84,6 +84,15 @@ export default function WebGame() {
   const [showControlsSettings, setShowControlsSettings] = useState(false)
   const [pendingStart, setPendingStart] = useState(false)
 
+  // MQTT state sending rate (in milliseconds)
+  const [mqttSendRate, setMqttSendRate] = useState<number>(() => {
+    if (typeof window === 'undefined') return 3000
+    const saved = localStorage.getItem('mqtt-send-rate')
+    const v = saved ? parseInt(saved) : 3000
+    return isNaN(v) ? 3000 : clamp(v, 500, 60000)
+  })
+  useEffect(() => { localStorage.setItem('mqtt-send-rate', String(mqttSendRate)) }, [mqttSendRate])
+
   // Game state
   const tile = 24
   // Dynamic board size: default 33x21; switch to 10x10 in LAM mode
@@ -963,8 +972,8 @@ export default function WebGame() {
   const publishState = useCallback(async (force = false) => {
     if (!templateId) return
     const now = performance.now()
-    const throttleMs = (gameModeRef.current === 'lam') ? 3000 : 15000
-    if (!force && now - lastPublishRef.current < throttleMs) return // throttle (3s in LAM, 15s in Manual)
+    const throttleMs = mqttSendRate
+    if (!force && now - lastPublishRef.current < throttleMs) return // throttle
     lastPublishRef.current = now
 
     const s = stateRef.current
@@ -1022,9 +1031,9 @@ export default function WebGame() {
     return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  // Periodic publisher: every 3s in LAM, 15s in Manual, while game is running
+  // Periodic publisher: uses mqttSendRate setting, while game is running
   useEffect(() => {
-    const periodMs = (gameMode === 'lam') ? 3000 : 15000
+    const periodMs = mqttSendRate
     const id = setInterval(() => {
       const s = stateRef.current
   if (templateId && s.started && !s.gameOver) {
@@ -1032,7 +1041,7 @@ export default function WebGame() {
       }
     }, periodMs)
     return () => clearInterval(id)
-  }, [templateId, publishState, gameMode])
+  }, [templateId, publishState, mqttSendRate])
 
   // Input handling
   const keysRef = useRef<Record<string, boolean>>({})
@@ -1637,6 +1646,22 @@ export default function WebGame() {
             <div>
               <label style={{ display: 'block', marginBottom: 6 }}>Germs</label>
               <input type="number" min={0} max={20} value={germCount} onChange={(e)=>setGermCount(parseInt(e.target.value||'0'))} style={{ width:'100%', padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 6 }}>MQTT Send Rate (ms)</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input 
+                  type="range" 
+                  min={500} 
+                  max={60000} 
+                  step={500} 
+                  value={mqttSendRate} 
+                  onChange={(e)=>setMqttSendRate(parseInt(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.1)', fontSize: '12px', minWidth: '60px', textAlign: 'center' }}>{mqttSendRate}ms</span>
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.7, marginTop: 4 }}>0.5s - 60s</div>
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 6 }}>Mode</label>

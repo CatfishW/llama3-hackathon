@@ -68,11 +68,186 @@ const bubbleStyles: Record<string, CSSProperties> = {
 function MessageBubble({ message }: { message: ChatMessage }) {
   const style = bubbleStyles[message.role] || bubbleStyles.assistant
   const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+
+  const copyToClipboard = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedIndex(index)
+      setTimeout(() => setCopiedIndex(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const renderContent = () => {
+    const content = message.content
+    
+    // Detect and render code blocks with syntax highlighting
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
+    const inlineCodeRegex = /`([^`]+)`/g
+    
+    const parts: JSX.Element[] = []
+    let lastIndex = 0
+    let match
+    
+    // Process code blocks first
+    const matches: Array<{ type: 'code' | 'inline', start: number, end: number, language?: string, content: string }> = []
+    
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      matches.push({
+        type: 'code',
+        start: match.index,
+        end: match.index + match[0].length,
+        language: match[1] || 'text',
+        content: match[2]
+      })
+    }
+    
+    // Sort matches by start position
+    matches.sort((a, b) => a.start - b.start)
+    
+    // Build the content with code blocks
+    matches.forEach((match, idx) => {
+      // Add text before code block
+      if (match.start > lastIndex) {
+        const textSegment = content.substring(lastIndex, match.start)
+        parts.push(
+          <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {renderInlineFormatting(textSegment)}
+          </span>
+        )
+      }
+      
+      // Add code block
+      parts.push(
+        <div
+          key={`code-${idx}`}
+          style={{
+            background: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(148,163,184,0.2)',
+            borderRadius: '8px',
+            padding: '12px',
+            margin: '8px 0',
+            overflowX: 'auto',
+            position: 'relative'
+          }}
+        >
+          <div style={{ 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '6px'
+          }}>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: 'rgba(148,163,184,0.7)', 
+              fontWeight: 600,
+              textTransform: 'uppercase'
+            }}>
+              {match.language}
+            </div>
+            <button
+              onClick={() => copyToClipboard(match.content, idx)}
+              style={{
+                background: copiedIndex === idx ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
+                border: `1px solid ${copiedIndex === idx ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+                borderRadius: '6px',
+                padding: '4px 8px',
+                fontSize: '0.65rem',
+                color: copiedIndex === idx ? '#86efac' : 'rgba(226,232,240,0.8)',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {copiedIndex === idx ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre style={{ 
+            margin: 0, 
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            fontSize: '0.8rem',
+            lineHeight: '1.5',
+            color: '#e2e8f0',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all'
+          }}>
+            {match.content}
+          </pre>
+        </div>
+      )
+      
+      lastIndex = match.end
+    })
+    
+    // Add remaining text
+    if (lastIndex < content.length) {
+      const textSegment = content.substring(lastIndex)
+      parts.push(
+        <span key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {renderInlineFormatting(textSegment)}
+        </span>
+      )
+    }
+    
+    return parts.length > 0 ? parts : renderInlineFormatting(content)
+  }
+  
+  const renderInlineFormatting = (text: string) => {
+    // Handle inline code
+    const inlineCodeRegex = /`([^`]+)`/g
+    const boldRegex = /\*\*(.+?)\*\*/g
+    const italicRegex = /\*(.+?)\*/g
+    const listItemRegex = /^[\s]*[-*]\s(.+)$/gm
+    const numberedListRegex = /^[\s]*\d+\.\s(.+)$/gm
+    
+    const parts: (string | JSX.Element)[] = []
+    let lastIndex = 0
+    let match
+    
+    // Find all inline code matches
+    const inlineMatches: Array<{ start: number, end: number, content: string }> = []
+    while ((match = inlineCodeRegex.exec(text)) !== null) {
+      inlineMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1]
+      })
+    }
+    
+    inlineMatches.forEach((m, idx) => {
+      if (m.start > lastIndex) {
+        parts.push(text.substring(lastIndex, m.start))
+      }
+      parts.push(
+        <code
+          key={`inline-${idx}`}
+          style={{
+            background: 'rgba(0,0,0,0.3)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            fontSize: '0.85em',
+            border: '1px solid rgba(148,163,184,0.2)'
+          }}
+        >
+          {m.content}
+        </code>
+      )
+      lastIndex = m.end
+    })
+    
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : text
+  }
 
   return (
     <div style={{ maxWidth: '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
-      <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', opacity: 0.85, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-        {message.content}
+      <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
+        {renderContent()}
       </div>
       <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
     </div>
@@ -510,10 +685,9 @@ export default function ChatStudio() {
     width: '280px',
     background: 'rgba(15, 23, 42, 0.45)',
     borderRight: '1px solid rgba(148,163,184,0.25)',
-    padding: '22px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '18px',
+    height: '100vh',
     overflow: 'hidden'
   }
 
@@ -522,13 +696,14 @@ export default function ChatStudio() {
     display: 'flex',
     flexDirection: 'column',
     background: 'rgba(15, 23, 42, 0.25)',
-    minHeight: 0
+    height: '100vh',
+    overflow: 'hidden'
   }
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: '100%', backdropFilter: 'blur(24px)' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100%', backdropFilter: 'blur(24px)', overflow: 'hidden' }}>
       <aside style={sidebarStyle}>
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, padding: '22px', paddingBottom: '12px' }}>
           <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '10px', color: '#e0e7ff' }}>Chats</div>
           <button
             onClick={handleCreateSession}
@@ -546,7 +721,16 @@ export default function ChatStudio() {
             + New Chat
           </button>
         </div>
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', paddingRight: '6px', flex: 1, minHeight: 0 }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '12px', 
+          overflowY: 'auto', 
+          overflowX: 'hidden',
+          padding: '0 22px 22px 22px',
+          flex: 1,
+          minHeight: 0
+        }}>
           {loadingSessions && <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading sessions…</div>}
           {!loadingSessions && !sessions.length && (
             <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No chats yet. Create your first session to begin.</div>
@@ -656,7 +840,17 @@ export default function ChatStudio() {
 
             <div
               ref={messageContainerRef}
-              style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }}
+              style={{ 
+                flex: 1, 
+                overflowY: 'auto', 
+                overflowX: 'hidden',
+                padding: '24px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '12px', 
+                minHeight: 0,
+                maxHeight: '100%'
+              }}
             >
               {loadingMessages ? (
                 <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Loading conversation…</div>
