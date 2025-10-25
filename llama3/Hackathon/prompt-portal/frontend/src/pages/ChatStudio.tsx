@@ -2,6 +2,21 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { chatbotAPI } from '../api'
 import { useTemplates } from '../contexts/TemplateContext'
 
+// Hook to detect mobile and handle responsive behavior
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState<boolean>(() => 
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  )
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  return isMobile
+}
+
 type ChatPreset = {
   key: string
   title: string
@@ -66,6 +81,7 @@ const bubbleStyles: Record<string, CSSProperties> = {
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
+  const isMobile = useIsMobile()
   const style = bubbleStyles[message.role] || bubbleStyles.assistant
   const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
@@ -245,7 +261,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div style={{ maxWidth: '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
+    <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
       <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
         {renderContent()}
       </div>
@@ -256,6 +272,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 export default function ChatStudio() {
   const { templates } = useTemplates()
+  const isMobile = useIsMobile()
 
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [presets, setPresets] = useState<ChatPreset[]>([])
@@ -271,6 +288,7 @@ export default function ChatStudio() {
   const [showPromptEditor, setShowPromptEditor] = useState<boolean>(false)
   const [savingPrompt, setSavingPrompt] = useState<boolean>(false)
   const [streamingMessageId, setStreamingMessageId] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(!isMobile)
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -682,13 +700,17 @@ export default function ChatStudio() {
   }
 
   const sidebarStyle: CSSProperties = {
-    width: '280px',
+    width: isMobile ? '100%' : '280px',
     background: 'rgba(15, 23, 42, 0.45)',
-    borderRight: '1px solid rgba(148,163,184,0.25)',
-    display: 'flex',
+    borderRight: isMobile ? 'none' : '1px solid rgba(148,163,184,0.25)',
+    borderBottom: isMobile ? '1px solid rgba(148,163,184,0.25)' : 'none',
+    display: isMobile && !sidebarOpen ? 'none' : 'flex',
     flexDirection: 'column',
-    height: '100vh',
-    overflow: 'hidden'
+    height: isMobile ? 'auto' : '100vh',
+    maxHeight: isMobile ? '60vh' : 'auto',
+    overflow: 'hidden',
+    position: isMobile ? 'relative' : 'static',
+    zIndex: isMobile ? 40 : 'auto'
   }
 
   const mainStyle: CSSProperties = {
@@ -696,91 +718,146 @@ export default function ChatStudio() {
     display: 'flex',
     flexDirection: 'column',
     background: 'rgba(15, 23, 42, 0.25)',
-    height: '100vh',
+    height: isMobile ? '100%' : '100vh',
     overflow: 'hidden'
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100%', backdropFilter: 'blur(24px)', overflow: 'hidden' }}>
-      <aside style={sidebarStyle}>
-        <div style={{ flexShrink: 0, padding: '22px', paddingBottom: '12px' }}>
-          <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '10px', color: '#e0e7ff' }}>Chats</div>
+    <div style={{ display: 'flex', height: '100vh', width: '100%', backdropFilter: 'blur(24px)', overflow: 'hidden', flexDirection: isMobile ? 'column' : 'row' }}>
+      {/* Mobile Header */}
+      {isMobile && (
+        <div style={{ 
+          background: 'rgba(20, 20, 35, 0.65)', 
+          backdropFilter: 'blur(14px)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          padding: '12px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 50
+        }}>
           <button
-            onClick={handleCreateSession}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
             style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '12px',
-              border: '1px solid rgba(94,234,212,0.55)',
-              background: 'linear-gradient(135deg, rgba(94,234,212,0.2), rgba(20,184,166,0.15))',
-              color: '#bef264',
-              fontWeight: 600,
-              cursor: 'pointer'
+              background: 'rgba(0,0,0,0.35)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.25)',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
             }}
           >
-            + New Chat
+            <i className={`fas ${sidebarOpen ? 'fa-times' : 'fa-bars'}`}></i>
           </button>
+          <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white' }}>
+            {selectedSession?.title || 'Chat'}
+          </div>
+          <div style={{ width: '44px' }}></div>
         </div>
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '12px', 
-          overflowY: 'auto', 
-          overflowX: 'hidden',
-          padding: '0 22px 22px 22px',
-          flex: 1,
-          minHeight: 0
-        }}>
-          {loadingSessions && <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading sessions…</div>}
-          {!loadingSessions && !sessions.length && (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No chats yet. Create your first session to begin.</div>
-          )}
-          {sessions.map(session => (
-            <div
-              key={session.id}
-              onClick={() => handleSelectSession(session.id)}
-              style={{
-                padding: '12px 14px',
-                borderRadius: '12px',
-                border: selectedSessionId === session.id ? '2px solid rgba(129,140,248,0.6)' : '1px solid rgba(148,163,184,0.2)',
-                background: selectedSessionId === session.id ? 'rgba(79,70,229,0.15)' : 'rgba(15, 23, 42, 0.4)',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px'
-              }}
-            >
-              <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{session.title}</div>
-              {session.last_message_preview && (
-                <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.85)' }}>
-                  {session.last_message_preview}
-                </div>
-              )}
-              <div style={{ fontSize: '0.7rem', color: 'rgba(148,163,184,0.75)' }}>
-                {new Date(session.updated_at).toLocaleDateString()} · {session.message_count} messages
-              </div>
+      )}
+
+      {/* Sidebar - hidden on mobile by default */}
+      {(!isMobile || sidebarOpen) && (
+        <>
+          <aside style={sidebarStyle}>
+            <div style={{ flexShrink: 0, padding: '22px', paddingBottom: '12px' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '10px', color: '#e0e7ff' }}>Chats</div>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDeleteSession(session.id)
-                }}
+                onClick={handleCreateSession}
                 style={{
-                  alignSelf: 'flex-end',
-                  padding: '4px 8px',
-                  fontSize: '0.7rem',
-                  background: 'transparent',
-                  border: '1px solid rgba(248,113,113,0.45)',
-                  color: 'rgba(248,113,113,0.9)',
-                  borderRadius: '8px',
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(94,234,212,0.55)',
+                  background: 'linear-gradient(135deg, rgba(94,234,212,0.2), rgba(20,184,166,0.15))',
+                  color: '#bef264',
+                  fontWeight: 600,
                   cursor: 'pointer'
                 }}
               >
-                Delete
+                + New Chat
               </button>
             </div>
-          ))}
-        </div>
-      </aside>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '12px', 
+              overflowY: 'auto', 
+              overflowX: 'hidden',
+              padding: '0 22px 22px 22px',
+              flex: 1,
+              minHeight: 0
+            }}>
+              {loadingSessions && <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading sessions…</div>}
+              {!loadingSessions && !sessions.length && (
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No chats yet. Create your first session to begin.</div>
+              )}
+              {sessions.map(session => (
+                <div
+                  key={session.id}
+                  onClick={() => {
+                    handleSelectSession(session.id)
+                    if (isMobile) setSidebarOpen(false)
+                  }}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: selectedSessionId === session.id ? '2px solid rgba(129,140,248,0.6)' : '1px solid rgba(148,163,184,0.2)',
+                    background: selectedSessionId === session.id ? 'rgba(79,70,229,0.15)' : 'rgba(15, 23, 42, 0.4)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#e2e8f0', wordBreak: 'break-word' }}>{session.title}</div>
+                  {session.last_message_preview && (
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {session.last_message_preview}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.7rem', color: 'rgba(148,163,184,0.75)' }}>
+                    {new Date(session.updated_at).toLocaleDateString()} · {session.message_count} messages
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteSession(session.id)
+                    }}
+                    style={{
+                      alignSelf: 'flex-end',
+                      padding: '4px 8px',
+                      fontSize: '0.7rem',
+                      background: 'transparent',
+                      border: '1px solid rgba(248,113,113,0.45)',
+                      color: 'rgba(248,113,113,0.9)',
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </aside>
+          {isMobile && sidebarOpen && (
+            <div 
+              onClick={() => setSidebarOpen(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.4)',
+                zIndex: 30
+              }}
+            />
+          )}
+        </>
+      )}
 
       <main style={mainStyle}>
         {errorMessage && (
@@ -791,8 +868,8 @@ export default function ChatStudio() {
 
         {selectedSession && sessionDraft ? (
           <>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(148,163,184,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ padding: isMobile ? '12px 16px' : '18px 24px', borderBottom: '1px solid rgba(148,163,184,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'center' : 'flex-start', gap: '10px', flexDirection: isMobile ? 'row' : 'row', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: isMobile ? 1 : 'unset', minWidth: 0 }}>
                 <input
                   value={sessionDraft.title}
                   onChange={(e) => {
@@ -800,41 +877,50 @@ export default function ChatStudio() {
                     setDraftDirtyFlag(true);
                   }}
                   style={{
-                    fontSize: '1.4rem',
+                    fontSize: isMobile ? '1.1rem' : '1.4rem',
                     fontWeight: 600,
                     background: 'transparent',
                     border: 'none',
-                    color: '#e2e8f0'
+                    color: '#e2e8f0',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
                   }}
                 />
-                <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.7)' }}>Session ID: {selectedSession.session_key}</div>
+                {!isMobile && <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.7)' }}>Session ID: {selectedSession.session_key}</div>}
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
                 <button
                   onClick={handleCopyLast}
                   disabled={!hasAssistantMessage}
                   style={{
                     ...actionButtonStyle,
                     opacity: hasAssistantMessage ? 1 : 0.5,
-                    cursor: hasAssistantMessage ? 'pointer' : 'default'
+                    cursor: hasAssistantMessage ? 'pointer' : 'default',
+                    fontSize: isMobile ? '0.65rem' : '0.75rem',
+                    padding: isMobile ? '6px 10px' : '8px 14px'
                   }}
                 >
-                  Copy Reply
+                  {isMobile ? 'Copy' : 'Copy Reply'}
                 </button>
-                <button onClick={handleExport} style={actionButtonStyle}>Export</button>
-                <button onClick={handleResetSession} style={actionButtonStyle}>Reset</button>
-                <button
-                  onClick={handleRegenerate}
-                  disabled={sending || !hasUserMessage}
-                  style={{
-                    ...actionButtonStyle,
-                    opacity: sending || !hasUserMessage ? 0.5 : 1,
-                    cursor: sending || !hasUserMessage ? 'default' : 'pointer'
-                  }}
-                >
-                  Regenerate
-                </button>
-                <button onClick={handleSaveDraft} disabled={!draftDirty} style={{ ...actionButtonStyle, border: '1px solid rgba(94,234,212,0.55)', color: '#bbf7d0', opacity: draftDirty ? 1 : 0.5 }}>Save</button>
+                <button onClick={handleExport} style={{...actionButtonStyle, fontSize: isMobile ? '0.65rem' : '0.75rem', padding: isMobile ? '6px 10px' : '8px 14px'}}>Export</button>
+                <button onClick={handleResetSession} style={{...actionButtonStyle, fontSize: isMobile ? '0.65rem' : '0.75rem', padding: isMobile ? '6px 10px' : '8px 14px'}}>Reset</button>
+                {!isMobile && (
+                  <>
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={sending || !hasUserMessage}
+                      style={{
+                        ...actionButtonStyle,
+                        opacity: sending || !hasUserMessage ? 0.5 : 1,
+                        cursor: sending || !hasUserMessage ? 'default' : 'pointer'
+                      }}
+                    >
+                      Regenerate
+                    </button>
+                    <button onClick={handleSaveDraft} disabled={!draftDirty} style={{ ...actionButtonStyle, border: '1px solid rgba(94,234,212,0.55)', color: '#bbf7d0', opacity: draftDirty ? 1 : 0.5 }}>Save</button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -844,7 +930,7 @@ export default function ChatStudio() {
                 flex: 1, 
                 overflowY: 'auto', 
                 overflowX: 'hidden',
-                padding: '24px', 
+                padding: isMobile ? '16px 12px' : '24px', 
                 display: 'flex', 
                 flexDirection: 'column', 
                 gap: '12px', 
@@ -861,14 +947,14 @@ export default function ChatStudio() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: '18px 24px', display: 'flex', gap: '18px' }}>
+            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: 1 }}>
                 <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder={sending ? 'Waiting for model response…' : 'Type your message…'}
                   disabled={sending}
-                  rows={3}
+                  rows={isMobile ? 2 : 3}
                   style={{
                     width: '100%',
                     resize: 'vertical',
@@ -876,40 +962,43 @@ export default function ChatStudio() {
                     border: '1px solid rgba(129,140,248,0.35)',
                     borderRadius: '12px',
                     padding: '14px',
-                    color: '#e2e8f0'
+                    color: '#e2e8f0',
+                    fontSize: isMobile ? '0.9rem' : '1rem'
                   }}
                 />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
                 <button
                   onClick={() => handleSendMessage()}
                   disabled={sending || !inputValue.trim()}
                   style={{
-                    padding: '12px 18px',
+                    padding: isMobile ? '10px 14px' : '12px 18px',
                     borderRadius: '12px',
                     border: '1px solid rgba(129,140,248,0.65)',
                     background: 'linear-gradient(135deg, rgba(129,140,248,0.35), rgba(79,70,229,0.35))',
                     color: '#ede9fe',
                     fontWeight: 600,
                     cursor: sending || !inputValue.trim() ? 'default' : 'pointer',
-                    opacity: sending || !inputValue.trim() ? 0.6 : 1
+                    opacity: sending || !inputValue.trim() ? 0.6 : 1,
+                    fontSize: isMobile ? '0.8rem' : '1rem',
+                    flex: isMobile ? 1 : 'unset'
                   }}
                 >
                   {sending ? 'Sending…' : 'Send'}
                 </button>
                 <button
                   onClick={() => setShowPromptEditor(prev => !prev)}
-                  style={{ ...actionButtonStyle }}
+                  style={{ ...actionButtonStyle, flex: isMobile ? 1 : 'unset' }}
                 >
-                  {showPromptEditor ? 'Hide Prompt' : 'Edit Prompt'}
+                  {showPromptEditor ? 'Hide' : 'Edit'}
                 </button>
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: '18px 24px', background: 'rgba(15,23,42,0.35)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '200px' }}>
-                  <label style={labelStyle}>Temperature ({sessionDraft.temperature ?? 'auto'})</label>
+            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', background: 'rgba(15,23,42,0.35)', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: isMobile ? '40vh' : 'auto', overflowY: isMobile ? 'auto' : 'visible' }}>
+              <div style={{ display: 'flex', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
+                  <label style={labelStyle}>Temp ({sessionDraft.temperature ?? 'auto'})</label>
                   <input
                     type="range"
                     min="0"
@@ -922,7 +1011,7 @@ export default function ChatStudio() {
                     }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '200px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
                   <label style={labelStyle}>Top-P ({sessionDraft.top_p ?? 'auto'})</label>
                   <input
                     type="range"
@@ -936,7 +1025,7 @@ export default function ChatStudio() {
                     }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '200px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
                   <label style={labelStyle}>Max Tokens ({sessionDraft.max_tokens ?? 'auto'})</label>
                   <input
                     type="number"
@@ -952,19 +1041,20 @@ export default function ChatStudio() {
                       border: '1px solid rgba(148,163,184,0.25)',
                       borderRadius: '8px',
                       color: '#e2e8f0',
-                      padding: '8px'
+                      padding: '8px',
+                      fontSize: isMobile ? '0.9rem' : '1rem'
                     }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '220px' }}>
+              <div style={{ display: 'flex', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
                   <label style={labelStyle}>Preset Persona</label>
                   <select
                     value={sessionDraft.preset_key ?? ''}
                     onChange={(e) => handlePresetApply(e.target.value)}
-                    style={selectStyle}
+                    style={{...selectStyle, fontSize: isMobile ? '0.9rem' : '1rem'}}
                   >
                     <option value="">Choose preset…</option>
                     {presets.map(p => (
@@ -972,12 +1062,12 @@ export default function ChatStudio() {
                     ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '220px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
                   <label style={labelStyle}>My Prompt Template</label>
                   <select
                     value={sessionDraft.template_id ?? ''}
                     onChange={(e) => handleTemplateChange(e.target.value ? Number(e.target.value) : null)}
-                    style={selectStyle}
+                    style={{...selectStyle, fontSize: isMobile ? '0.9rem' : '1rem'}}
                   >
                     <option value="">None</option>
                     {templates.map(t => (
@@ -1003,7 +1093,7 @@ export default function ChatStudio() {
 
               {showPromptEditor && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <label style={labelStyle}>System Prompt</label>
                     <span style={{
                       fontSize: '0.75rem',
@@ -1024,7 +1114,7 @@ export default function ChatStudio() {
                       setSessionDraft(prev => prev ? { ...prev, system_prompt: e.target.value, preset_key: null, prompt_source: 'custom' } : prev)
                       setDraftDirtyFlag(true);
                     }}
-                    rows={6}
+                    rows={isMobile ? 4 : 6}
                     style={{
                       width: '100%',
                       background: 'rgba(15,23,42,0.55)',
@@ -1035,6 +1125,24 @@ export default function ChatStudio() {
                       fontSize: '0.85rem'
                     }}
                   />
+                </div>
+              )}
+
+              {isMobile && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={sending || !hasUserMessage}
+                    style={{
+                      ...actionButtonStyle,
+                      opacity: sending || !hasUserMessage ? 0.5 : 1,
+                      cursor: sending || !hasUserMessage ? 'default' : 'pointer',
+                      flex: 1
+                    }}
+                  >
+                    Regenerate
+                  </button>
+                  <button onClick={handleSaveDraft} disabled={!draftDirty} style={{ ...actionButtonStyle, border: '1px solid rgba(94,234,212,0.55)', color: '#bbf7d0', opacity: draftDirty ? 1 : 0.5, flex: 1 }}>Save</button>
                 </div>
               )}
             </div>

@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#201020" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <meta name="theme-color" content="#201020" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LAM Maze Platform" />
+    <meta name="description" content="LAM Maze Game Platform - Prompt Portal" />
     <title>LAM Maze Game Platform - Prompt Portal</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -16,23 +18,35 @@
         box-sizing: border-box;
       }
       
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
       body {
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
         overflow-x: hidden;
         -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        font-size: 16px;
       }
       
       #root {
         min-height: 100vh;
         display: flex;
         flex-direction: column;
+        width: 100%;
       }
 
       /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
+        height: 8px;
       }
 
       ::-webkit-scrollbar-track {
@@ -52,13 +66,6 @@
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
-      }
-
-      /* Mobile responsiveness */
-      @media (max-width: 768px) {
-        body {
-          font-size: 14px;
-        }
       }
 
       /* Focus styles for accessibility */
@@ -85,6 +92,136 @@
       ::selection {
         background: rgba(78, 205, 196, 0.3);
         color: white;
+      }
+
+      /* Mobile-first responsive design */
+      @media (max-width: 768px) {
+        body {
+          font-size: 14px;
+          /* Safe area support for notched devices */
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+          padding-top: env(safe-area-inset-top);
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #root {
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* Optimize text for mobile */
+        input, textarea, select, button {
+          font-size: 16px; /* Prevents zoom on focus in iOS */
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          appearance: none;
+          border-radius: 8px;
+        }
+
+        input[type="range"] {
+          width: 100%;
+          height: 6px;
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(78, 205, 196, 0.8);
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(78, 205, 196, 0.4);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(78, 205, 196, 0.8);
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 2px 8px rgba(78, 205, 196, 0.4);
+        }
+
+        /* Prevent double-tap zoom */
+        button, a {
+          touch-action: manipulation;
+        }
+
+        /* Better touch targets on mobile */
+        button, input[type="button"], input[type="submit"] {
+          min-height: 44px;
+          min-width: 44px;
+          padding: 10px 14px;
+        }
+
+        /* Responsive flex layouts */
+        .mobile-flex-wrap {
+          flex-wrap: wrap;
+        }
+
+        .mobile-full-width {
+          width: 100% !important;
+        }
+      }
+
+      /* Tablet and above */
+      @media (min-width: 769px) and (max-width: 1024px) {
+        body {
+          font-size: 15px;
+        }
+      }
+
+      /* Desktop and large screens */
+      @media (min-width: 1025px) {
+        body {
+          font-size: 16px;
+        }
+      }
+
+      /* Landscape orientation adjustments */
+      @media (max-height: 600px) and (orientation: landscape) {
+        #root {
+          min-height: 100vh;
+        }
+
+        input, textarea, select {
+          max-height: 40px;
+        }
+
+        textarea {
+          max-height: 80px !important;
+        }
+      }
+
+      /* High DPI screens optimization */
+      @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        * {
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+      }
+
+      /* Support for dark mode preference */
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+      }
+
+      /* Reduced motion for accessibility */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
       }
     </style>
   </head>
