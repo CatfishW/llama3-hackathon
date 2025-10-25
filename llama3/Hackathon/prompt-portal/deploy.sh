@@ -397,6 +397,10 @@ if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
         sudo apt install -y nginx > /dev/null 2>&1
     fi
     
+    # Create nginx directories if they don't exist
+    sudo mkdir -p /etc/nginx/sites-available > /dev/null 2>&1
+    sudo mkdir -p /etc/nginx/sites-enabled > /dev/null 2>&1
+    
     # Create Nginx configuration
     print_step "Configuring Nginx for $DOMAIN_NAME..."
     
