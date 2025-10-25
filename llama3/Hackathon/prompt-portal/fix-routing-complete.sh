@@ -42,6 +42,12 @@ echo -e "${GREEN}✓ Environment files updated${NC}"
 echo -e "${BLUE}[2/4]${NC} Updating Nginx configuration..."
 
 cat > /tmp/nginx_${DOMAIN_NAME}.conf << 'NGINXCONF'
+# WebSocket upgrade headers - defined at http level
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -59,6 +65,7 @@ server {
     }
 
     # Proxy API requests to backend - KEEP /api prefix!
+    # This also handles WebSocket connections under /api/ (like /api/mqtt/ws/hints/...)
     location /api/ {
         if ($request_method = 'OPTIONS') {
             add_header Access-Control-Allow-Origin * always;
@@ -69,6 +76,11 @@ server {
             add_header Content-Type text/plain;
             return 204;
         }
+        
+        # WebSocket support (for /api/mqtt/ws/hints/... etc.)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         
         # No rewrite - pass /api prefix through to backend
         proxy_pass http://127.0.0.1:3000;
@@ -82,12 +94,12 @@ server {
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
-    # WebSocket support
+    # Legacy WebSocket support at /ws/ (if any endpoints use this)
     location /ws/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
