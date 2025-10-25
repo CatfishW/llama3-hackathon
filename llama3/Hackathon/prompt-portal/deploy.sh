@@ -23,6 +23,7 @@ FRONTEND_PORT=3001
 USE_DOMAIN=false
 DOMAIN_NAME=""
 SETUP_NGINX=false
+USE_HTTPS=false
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -66,12 +67,22 @@ if [ -z "$DOMAIN_NAME" ]; then
                 echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $ACTUAL_IP${NC}"
             fi
             
+            # Ask about HTTPS
+            echo ""
+            read -p "Will you be using HTTPS (SSL certificate already configured)? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                USE_HTTPS=true
+                echo -e "${GREEN}✓ Will configure for HTTPS${NC}"
+            fi
+            
             # Ask about Nginx setup
             echo ""
             read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 SETUP_NGINX=true
+                USE_HTTPS=true  # Nginx setup implies HTTPS
             fi
         else
             USE_DOMAIN=false
@@ -81,9 +92,14 @@ else
     # Domain was set via environment
     if [ "$USE_DOMAIN" = true ]; then
         echo -e "${GREEN}✓ Using domain: $DOMAIN_NAME${NC}"
+        # Check if HTTPS should be used
+        if [ "$DEPLOY_HTTPS" = "true" ]; then
+            USE_HTTPS=true
+        fi
         # Check if Nginx should be set up
         if [ "$DEPLOY_NGINX" = "true" ]; then
             SETUP_NGINX=true
+            USE_HTTPS=true
         fi
     fi
 fi
@@ -92,6 +108,9 @@ echo ""
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
 if [ "$USE_DOMAIN" = true ]; then
     echo -e "${GREEN}Domain: $DOMAIN_NAME${NC}"
+    if [ "$USE_HTTPS" = true ]; then
+        echo -e "${GREEN}HTTPS: Enabled${NC}"
+    fi
 fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
 
@@ -177,6 +196,14 @@ fi
 
 # Add server IP to CORS
 CORS_LIST="${CORS_LIST},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT}"
+
+# Add HTTPS variants if using HTTPS
+if [ "$USE_HTTPS" = true ]; then
+    if [ "$USE_DOMAIN" = true ]; then
+        CORS_LIST="${CORS_LIST},https://${DOMAIN_NAME}:${BACKEND_PORT},https://${DOMAIN_NAME}:${FRONTEND_PORT}"
+    fi
+    CORS_LIST="${CORS_LIST},https://${SERVER_IP}:${BACKEND_PORT},https://${SERVER_IP}:${FRONTEND_PORT}"
+fi
 
 # Update CORS_ORIGINS in .env
 if grep -q "CORS_ORIGINS" .env; then
@@ -312,8 +339,21 @@ VITE_API_BASE=https://$DOMAIN_NAME/api
 VITE_WS_BASE=wss://$DOMAIN_NAME/api
 EOF
     echo -e "${GREEN}✓ Frontend configured for domain with Nginx (HTTPS)${NC}"
+elif [ "$USE_DOMAIN" = true ] && [ "$USE_HTTPS" = true ]; then
+    # With HTTPS but no Nginx, use HTTPS with domain and port
+    cat > .env.production << EOF
+VITE_API_BASE=https://$DOMAIN_NAME:$BACKEND_PORT
+VITE_WS_BASE=wss://$DOMAIN_NAME:$BACKEND_PORT
+EOF
+
+    cat > .env.local << EOF
+VITE_API_BASE=https://$DOMAIN_NAME:$BACKEND_PORT
+VITE_WS_BASE=wss://$DOMAIN_NAME:$BACKEND_PORT
+EOF
+    echo -e "${GREEN}✓ Frontend configured for domain with HTTPS (with ports)${NC}"
+    echo -e "${YELLOW}⚠ Make sure your backend has SSL certificates configured!${NC}"
 elif [ "$USE_DOMAIN" = true ]; then
-    # Without Nginx, use HTTP with domain and port
+    # Without HTTPS, use HTTP with domain and port
     cat > .env.production << EOF
 VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
 VITE_WS_BASE=ws://$DOMAIN_NAME:$BACKEND_PORT
@@ -442,15 +482,36 @@ server {
         root $FRONTEND_DIR/dist;
         try_files \$uri \$uri/ /index.html;
         index index.html;
+        
+        # Add CORS headers for frontend
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
     # Proxy API requests to backend
     location /api/ {
+        # Handle OPTIONS preflight requests
+        if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
+            add_header Access-Control-Max-Age 3600;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:$BACKEND_PORT/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # Add CORS headers
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
     # WebSocket support for MQTT
@@ -461,6 +522,8 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
