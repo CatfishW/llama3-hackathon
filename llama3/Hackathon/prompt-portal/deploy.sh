@@ -262,16 +262,18 @@ fi
 # Create production environment file
 print_step "Configuring frontend environment..."
 if [ "$USE_DOMAIN" = true ]; then
+    # Without Nginx, use HTTP with domain and port
     cat > .env.production << EOF
-VITE_API_BASE=https://$DOMAIN_NAME/api
-VITE_WS_BASE=wss://$DOMAIN_NAME/api
+VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
+VITE_WS_BASE=ws://$DOMAIN_NAME:$BACKEND_PORT
 EOF
 
     cat > .env.local << EOF
-VITE_API_BASE=https://$DOMAIN_NAME/api
-VITE_WS_BASE=wss://$DOMAIN_NAME/api
+VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
+VITE_WS_BASE=ws://$DOMAIN_NAME:$BACKEND_PORT
 EOF
-    echo -e "${GREEN}✓ Frontend configured for domain: $DOMAIN_NAME${NC}"
+    echo -e "${GREEN}✓ Frontend configured for domain: $DOMAIN_NAME (HTTP)${NC}"
+    echo -e "${YELLOW}  Note: Using HTTP. For HTTPS, set up Nginx with ./setup-domain.sh${NC}"
 else
     cat > .env.production << EOF
 VITE_API_BASE=http://$SERVER_IP:$BACKEND_PORT
@@ -379,27 +381,21 @@ if [ "$USE_DOMAIN" = true ]; then
     echo -e "🌐 Domain: ${GREEN}$DOMAIN_NAME${NC}"
     echo -e "🖥️  Server IP: ${GREEN}$SERVER_IP${NC}"
     echo ""
+    echo -e "🌐 Frontend: ${GREEN}http://$DOMAIN_NAME:$FRONTEND_PORT${NC}"
+    echo -e "🔗 Backend API: ${GREEN}http://$DOMAIN_NAME:$BACKEND_PORT${NC}"
+    echo -e "📚 API Docs: ${GREEN}http://$DOMAIN_NAME:$BACKEND_PORT/docs${NC}"
+    echo ""
     
     # Check if Nginx is needed
     if command -v nginx &> /dev/null; then
-        echo -e "${GREEN}Nginx detected - you can configure reverse proxy:${NC}"
-        echo -e "  See: ${BLUE}DOMAIN_SETUP.md${NC} for Nginx + SSL setup"
-        echo ""
-        echo -e "After Nginx setup:"
-        echo -e "  🌐 Website: ${GREEN}https://$DOMAIN_NAME${NC}"
-        echo -e "  🔗 API: ${GREEN}https://$DOMAIN_NAME/api${NC}"
-        echo -e "  📚 API Docs: ${GREEN}https://$DOMAIN_NAME/api/docs${NC}"
-        echo ""
+        echo -e "${YELLOW}For production with HTTPS:${NC}"
+        echo -e "  1. Run: ${BLUE}./setup-domain.sh${NC}"
+        echo -e "  2. Or see: ${BLUE}DOMAIN_SETUP.md${NC}"
     else
-        echo -e "${YELLOW}Note: Domain configured but Nginx not installed${NC}"
-        echo -e "For production with custom domain, install Nginx and run:"
-        echo -e "  ${BLUE}./setup-domain.sh${NC}"
-        echo ""
+        echo -e "${YELLOW}For production with HTTPS:${NC}"
+        echo -e "  1. Install Nginx: ${BLUE}sudo apt install nginx${NC}"
+        echo -e "  2. Run: ${BLUE}./setup-domain.sh${NC}"
     fi
-    
-    echo -e "Current access (before Nginx):"
-    echo -e "  🌐 Frontend: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
-    echo -e "  🔗 Backend: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
 else
     echo -e "🌐 Frontend URL: ${GREEN}http://$SERVER_IP:$FRONTEND_PORT${NC}"
     echo -e "🔗 Backend API: ${GREEN}http://$SERVER_IP:$BACKEND_PORT${NC}"
@@ -430,7 +426,11 @@ fi
 
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
-echo "1. Open http://$SERVER_IP:$FRONTEND_PORT in your browser"
+if [ "$USE_DOMAIN" = true ]; then
+    echo "1. Open http://$DOMAIN_NAME:$FRONTEND_PORT in your browser"
+else
+    echo "1. Open http://$SERVER_IP:$FRONTEND_PORT in your browser"
+fi
 echo "2. Register a new account"
 echo "3. Create your first prompt template"
 echo "4. Test the MQTT functionality"
