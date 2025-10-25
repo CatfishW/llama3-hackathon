@@ -13,7 +13,7 @@ Features:
 - Comprehensive logging and error handling
 
 Usage:
-    python llamacpp_mqtt_deploy.py --projects maze driving bloodcell --server_url http://localhost:8080
+    python llamacpp_mqtt_deploy.py --projects maze,driving,prompt_portal --server_url http://localhost:8080 --mqtt_username TangClinic --mqtt_password Tang123
 
 Author: Llama.cpp MQTT Deployment Team
 Date: 2025
@@ -86,9 +86,9 @@ class DeploymentConfig:
     # MQTT Configuration
     mqtt_broker: str = "47.89.252.2"
     mqtt_port: int = 1883
-    mqtt_username: Optional[str] = None
-    mqtt_password: Optional[str] = None
-    
+    mqtt_username: Optional[str] = "TangClinic"
+    mqtt_password: Optional[str] = "Tang123"
+
     # Llama.cpp Server Configuration
     server_url: str = "http://localhost:8080"
     server_timeout: int = 300  # seconds, increase for longer context
@@ -96,11 +96,11 @@ class DeploymentConfig:
     # Generation Configuration
     default_temperature: float = 0.6
     default_top_p: float = 0.9
-    default_max_tokens: int = 512
+    default_max_tokens: int = 128
     skip_thinking: bool = True  # Disable deep thinking mode (adds /no_think directive)
     
     # Session Management
-    max_history_tokens: int = 10000
+    max_history_tokens: int = 6000
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds
     
@@ -359,6 +359,7 @@ class LlamaCppClient:
         self.config = config
         self.server_url = config.server_url.rstrip('/')
         self.timeout = config.server_timeout
+        self.server_context_size = None  # Will be detected during connection test
         
         logger.info(f"Initializing Llama.cpp client: {self.server_url}")
         
@@ -370,18 +371,18 @@ class LlamaCppClient:
             timeout=self.timeout
         )
         
-        # Test connection to server
+        # Test connection to server and detect context size
         if not self._test_connection():
             raise RuntimeError(
                 f"Failed to connect to llama.cpp server at {self.server_url}. "
                 f"Make sure the server is running with: "
-                f"llama-server -m ./your-model.gguf --port 8080"
+                f"llama-server -m ./your-model.gguf --port 8080 -c 28192"
             )
         
         logger.info("OpenAI client initialized successfully")
     
     def _test_connection(self) -> bool:
-        """Test connection to llama.cpp server."""
+        """Test connection to llama.cpp server and detect context size."""
         try:
             logger.info("Testing connection to llama.cpp server...")
             # Try a simple chat completion call to test connectivity
@@ -390,10 +391,29 @@ class LlamaCppClient:
                 messages=[{"role": "system", "content": "test"}],
                 max_tokens=1
             )
-            logger.info("Connection test successful")
+            logger.info("✓ Connection test successful")
+            
+            # Try to detect context size by checking error messages
+            # The server will tell us the actual context size if we exceed it
+            self.server_context_size = None
+            
             return True
         except Exception as e:
+            error_str = str(e)
             logger.error(f"Connection test failed: {e}")
+            
+            # Try to extract context size from error message
+            import re
+            match = re.search(r"n_ctx['\"]?\s*:\s*(\d+)", error_str)
+            if match:
+                self.server_context_size = int(match.group(1))
+                logger.warning(f"⚠️  Detected server context size: {self.server_context_size} tokens")
+                if self.server_context_size < 4096:
+                    logger.error(
+                        f"❌ Server context size ({self.server_context_size}) is too small!\n"
+                        f"   Please restart llama-server with: -c 28192 or higher"
+                    )
+                    return False
             return False
     
     def generate(
@@ -794,11 +814,13 @@ class SessionManager:
             
             debug_logger.debug(f"Conversation history length: {len(session['dialog'])} messages")
             
-            # Simple trimming: keep only last N messages
-            max_messages = 20
+            # Aggressive trimming: keep only last 5-8 messages to prevent context overflow
+            # This is critical when server has small context (like 1536 tokens)
+            max_messages = 6  # System prompt + 5 messages
             if len(session["dialog"]) > max_messages:
+                # Keep system prompt (first message) and last N-1 messages
                 session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
-                debug_logger.debug(f"Trimmed to last {max_messages} messages")
+                debug_logger.debug(f"Trimmed to last {max_messages} messages to prevent context overflow")
             
             # Prepare messages for API call
             messages = self.client.format_chat(session["dialog"])
@@ -1774,8 +1796,8 @@ def main(
                 delete_topic=f"{project_name}/delete_session",
                 system_prompt=system_prompt,
                 enabled=True,
-                tools=MAZE_ACTION_TOOLS,
-                tool_choice="auto"
+                #tools=MAZE_ACTION_TOOLS,
+                #tool_choice="auto"
             )
         else:
             project_configs[project_name] = ProjectConfig(
@@ -1820,6 +1842,22 @@ def main(
         logger.info("-" * 80)
         logger.info("Step 1: Initializing Llama.cpp client...")
         client = LlamaCppClient(config)
+        
+        # Check and warn about context size
+        if client.server_context_size:
+            logger.info(f"Server context size: {client.server_context_size} tokens")
+            if client.server_context_size < 4096:
+                logger.error("=" * 80)
+                logger.error("⚠️  CRITICAL: Server context size is TOO SMALL!")
+                logger.error(f"   Current: {client.server_context_size} tokens")
+                logger.error(f"   Recommended: 28192+ tokens")
+                logger.error("")
+                logger.error("   To fix, restart llama-server with:")
+                logger.error("   llama-server -m your-model.gguf --port 8080 -c 28192 -ngl 35")
+                logger.error("=" * 80)
+                raise RuntimeError("Server context size too small. Please restart with -c 28192")
+        else:
+            logger.info("Server context size: Unknown (will auto-detect on first request)")
         
         # 2. Initialize session manager
         logger.info("-" * 80)
