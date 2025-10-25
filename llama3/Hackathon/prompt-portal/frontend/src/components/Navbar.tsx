@@ -1,26 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useEffect, useState } from 'react'
-import { api } from '../api'
-import { useTemplates } from '../contexts/TemplateContext'
 
 export default function Navbar() {
   const { user, logout } = useAuth()
   const location = useLocation()
   
-  // Try to get templates from context, fallback to empty array if not available
-  let templates: Array<{id:number; title:string}> = []
-  try {
-    const templateContext = useTemplates()
-    templates = templateContext.templates || []
-  } catch {
-    // Context not available, use empty array
-  }
-  
-  const [selectedId, setSelectedId] = useState<number | ''>('')
-  const [sessionId, setSessionId] = useState<string>('')
-  const [publishing, setPublishing] = useState(false)
-  const [status, setStatus] = useState<string>('')
   const [mobile, setMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth < 880 : false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -29,21 +14,6 @@ export default function Navbar() {
     window.addEventListener('resize', onResize)
     return ()=> window.removeEventListener('resize', onResize)
   }, [])
-
-  const publishTemplate = async () => {
-    if (!selectedId) return
-    setPublishing(true); setStatus('')
-    try {
-      const params = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-      await api.post(`/api/mqtt/publish_template${params}`, { template_id: selectedId, reset: true })
-      setStatus('Published!')
-    } catch (e: any) {
-      setStatus('Failed')
-    } finally {
-      setPublishing(false)
-      setTimeout(()=>setStatus(''), 2000)
-    }
-  }
 
   const isActive = (path: string) => location.pathname === path
 
@@ -217,6 +187,23 @@ export default function Navbar() {
                 Templates
               </Link>
               <Link
+                to="/chat"
+                style={linkStyle(isActive('/chat'))}
+                onMouseOver={(e) => {
+                  if (!isActive('/chat')) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!isActive('/chat')) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
+              >
+                <i className="fas fa-robot" style={{ marginRight: '8px' }}></i>
+                Chat
+              </Link>
+              <Link
                 to="/leaderboard"
                 style={linkStyle(isActive('/leaderboard'))}
                 onMouseOver={(e) => {
@@ -267,76 +254,6 @@ export default function Navbar() {
                 <i className="fas fa-comments" style={{ marginRight: '8px' }}></i>
                 Messages
               </Link>
-
-              {/* Quick template publish controls (responsive) - moved to be less prominent */}
-              {!mobile && (
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft:'auto' }}>
-                  <select
-                    value={selectedId}
-                    onChange={(e)=> setSelectedId(e.target.value ? parseInt(e.target.value) : '')}
-                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '6px 8px', fontSize:'.8rem', minWidth:'120px' }}
-                    title="Select template"
-                  >
-                    <option value="">Template…</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id} style={{ background:'#222' }}>{t.title}</option>
-                    ))}
-                  </select>
-                  <input
-                    value={sessionId}
-                    onChange={(e)=>setSessionId(e.target.value)}
-                    placeholder="session"
-                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '6px 8px', fontSize:'.8rem', width:'80px' }}
-                    title="Target session ID"
-                  />
-                  <button 
-                    onClick={publishTemplate} 
-                    disabled={!selectedId || publishing} 
-                    style={{ 
-                      ...buttonStyle, 
-                      opacity: (!selectedId || publishing) ? 0.5 : 1, 
-                      padding: '6px 12px', 
-                      fontSize: '.8rem',
-                      display:'flex', 
-                      alignItems:'center', 
-                      gap:'4px'
-                    }} 
-                    title="Publish template to LAM"
-                  >
-                    <i className="fas fa-upload"></i>
-                    {publishing ? 'Publishing…' : 'Publish'}
-                  </button>
-                  {status && <span style={{ color:'#fff', opacity:.75, fontSize:'.7rem' }}>{status}</span>}
-                </div>
-              )}
-
-              {mobile && (
-                <div style={{ display:'flex', flexDirection:'column', gap:8, background: 'rgba(255,255,255,0.05)', padding: '12px 14px', borderRadius: 16, width: '100%' }}>
-                  <div style={{ fontSize:'.75rem', textTransform:'uppercase', opacity:.6, letterSpacing:'.8px', fontWeight:600 }}>Quick Publish</div>
-                  <select
-                    value={selectedId}
-                    onChange={(e)=> setSelectedId(e.target.value ? parseInt(e.target.value) : '')}
-                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '10px 12px', fontSize: '.9rem' }}
-                    title="Select template"
-                  >
-                    <option value="">Select template…</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id} style={{ background:'#222' }}>{t.title}</option>
-                    ))}
-                  </select>
-                  <input
-                    value={sessionId}
-                    onChange={(e)=>setSessionId(e.target.value)}
-                    placeholder="session id (opt)"
-                    style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius: 12, padding: '10px 12px', fontSize: '.9rem' }}
-                    title="Target a running Play session"
-                  />
-                  <button onClick={publishTemplate} disabled={!selectedId || publishing} style={{ ...buttonStyle, opacity: (!selectedId || publishing) ? 0.5 : 1, padding: '12px 18px', width: '100%', fontSize: '.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }} title="Publish template to LAM">
-                    <i className="fas fa-upload" /> {publishing ? 'Publishing…' : 'Publish'}
-                  </button>
-                  {status && <span style={{ color:'#fff', opacity:.75, fontSize:'.75rem', textAlign:'center' }}>{status}</span>}
-                </div>
-              )}
               
               {/* User Menu */}
               <div style={{ position: 'relative', marginLeft: mobile? 0 : '10px', width: mobile? '100%':'auto' }}>

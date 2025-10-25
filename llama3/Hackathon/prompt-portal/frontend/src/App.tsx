@@ -19,6 +19,7 @@ import PrivateRoute from './components/PrivateRoute'
 import { useAuth } from './auth/AuthContext'
 import { TemplateProvider } from './contexts/TemplateContext'
 import WebGame from './pages/WebGame'
+import ChatStudio from './pages/ChatStudio'
 
 export default function App() {
   const { user } = useAuth()
@@ -102,6 +103,15 @@ export default function App() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <Navbar />
                 <div style={{ ...contentStyle, flex: 1 }}><Leaderboard /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/chat" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><ChatStudio /></div>
                 <Footer />
               </div>
             </PrivateRoute>

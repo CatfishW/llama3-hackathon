@@ -120,6 +120,17 @@ export const templatesAPI = {
   deleteTemplate: (id: number) => api.delete(`/api/templates/${id}`)
 }
 
+export const chatbotAPI = {
+  getPresets: () => api.get('/api/chatbot/presets'),
+  listSessions: () => api.get('/api/chatbot/sessions'),
+  createSession: (data: any) => api.post('/api/chatbot/sessions', data),
+  updateSession: (id: number, data: any) => api.patch(`/api/chatbot/sessions/${id}`, data),
+  resetSession: (id: number) => api.post(`/api/chatbot/sessions/${id}/reset`),
+  deleteSession: (id: number) => api.delete(`/api/chatbot/sessions/${id}`),
+  getMessages: (id: number, limit = 200) => api.get(`/api/chatbot/sessions/${id}/messages?limit=${limit}`),
+  sendMessage: (data: any) => api.post('/api/chatbot/messages', data)
+}
+
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
   const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`

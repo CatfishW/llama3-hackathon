@@ -60,6 +60,7 @@ class User(Base):
     # Message relationships
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="Message.recipient_id", back_populates="recipient")
+    chat_sessions = relationship("ChatSession", back_populates="user")
 
 class PromptTemplate(Base):
     __tablename__ = "prompt_templates"
@@ -75,6 +76,7 @@ class PromptTemplate(Base):
 
     owner = relationship("User", back_populates="templates")
     scores = relationship("Score", back_populates="template")
+    chat_sessions = relationship("ChatSession", back_populates="template")
 
 class Score(Base):
     __tablename__ = "scores"
@@ -130,3 +132,37 @@ class UserSettings(Base):
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("prompt_templates.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), default="New Chat")
+    system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    top_p: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="chat_sessions")
+    template = relationship("PromptTemplate", back_populates="chat_sessions")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.created_at")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("chat_sessions.id"), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+    content: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    session = relationship("ChatSession", back_populates="messages")

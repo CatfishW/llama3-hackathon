@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
 
@@ -219,3 +219,81 @@ class UserSettingsUpdate(BaseModel):
     theme: Optional[str] = None
     language: Optional[str] = None
     timezone: Optional[str] = None
+
+
+# Chat assistant schemas
+class ChatSessionCreate(BaseModel):
+    title: Optional[str] = None
+    template_id: Optional[int] = None
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+
+class ChatSessionUpdate(BaseModel):
+    title: Optional[str] = None
+    template_id: Optional[int] = None
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+
+class ChatSessionOut(BaseModel):
+    id: int
+    session_key: str
+    title: str
+    template_id: Optional[int] = None
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatSessionSummary(ChatSessionOut):
+    last_message_preview: Optional[str] = None
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    session_id: int
+    role: str
+    content: str
+    metadata: Optional[Dict[str, Any]] = None
+    request_id: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatMessageSendRequest(BaseModel):
+    session_id: int
+    content: str = Field(..., min_length=1)
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+    system_prompt: Optional[str] = None
+    template_id: Optional[int] = None
+
+
+class ChatMessageSendResponse(BaseModel):
+    session: ChatSessionOut
+    user_message: ChatMessageOut
+    assistant_message: ChatMessageOut
+    raw_response: Optional[Dict[str, Any]] = None
+
+
+class ChatPresetOut(BaseModel):
+    key: str
+    title: str
+    description: Optional[str] = None
+    system_prompt: str

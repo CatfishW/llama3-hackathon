@@ -67,6 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('user', JSON.stringify(me))
       setUser(me)
     }
+
+    // Force page refresh to ensure all context/state is clean
+    setTimeout(() => {
+      window.location.href = '/'
+    }, 100)
   }
 
   function logout() {

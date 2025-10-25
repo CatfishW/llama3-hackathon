@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     MQTT_PASSWORD: str = "Tang123"
     MQTT_TOPIC_HINT: str = "maze/hint/+"
     MQTT_TOPIC_STATE: str = "maze/state"
+    MQTT_TOPIC_USER_INPUT: str = "prompt_portal/user_input"
+    MQTT_TOPIC_ASSISTANT_RESPONSE: str = "prompt_portal/assistant_response"
     MQTT_TOPIC_TEMPLATE: str = "maze/template"
 
     class Config:
