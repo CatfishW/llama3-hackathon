@@ -399,7 +399,9 @@ if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
     
     # Create Nginx configuration
     print_step "Configuring Nginx for $DOMAIN_NAME..."
-    sudo tee /etc/nginx/sites-available/$DOMAIN_NAME > /dev/null << EOF
+    
+    # Create temporary file first
+    cat > /tmp/nginx_$DOMAIN_NAME.conf << EOF
 server {
     listen 80;
     listen [::]:80;
@@ -432,6 +434,9 @@ server {
     }
 }
 EOF
+    
+    # Move to nginx directory with sudo
+    sudo mv /tmp/nginx_$DOMAIN_NAME.conf /etc/nginx/sites-available/$DOMAIN_NAME
     
     # Enable the site
     sudo ln -sf /etc/nginx/sites-available/$DOMAIN_NAME /etc/nginx/sites-enabled/
