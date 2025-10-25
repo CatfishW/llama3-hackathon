@@ -20,8 +20,8 @@ BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
 # Domain configuration
-USE_DOMAIN=false
-DOMAIN_NAME=""
+USE_DOMAIN=true
+DOMAIN_NAME="lammp.agaii.org"
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -203,6 +203,61 @@ cat > tsconfig.json << 'EOF'
   "exclude": ["node_modules", "dist"]
 }
 EOF
+
+# Update Vite config to allow domain
+if [ "$USE_DOMAIN" = true ]; then
+    print_step "Configuring Vite for domain..."
+    cat > vite.config.ts << EOF
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: { 
+    port: 5173,
+    host: true
+  },
+  preview: {
+    port: ${FRONTEND_PORT},
+    host: true,
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '${DOMAIN_NAME}',
+      '${SERVER_IP}'
+    ]
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: false
+  }
+})
+EOF
+    echo -e "${GREEN}✓ Vite configured to allow domain: $DOMAIN_NAME${NC}"
+else
+    cat > vite.config.ts << EOF
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: { 
+    port: 5173,
+    host: true
+  },
+  preview: {
+    port: ${FRONTEND_PORT},
+    host: true
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: false
+  }
+})
+EOF
+fi
 
 # Create production environment file
 print_step "Configuring frontend environment..."
