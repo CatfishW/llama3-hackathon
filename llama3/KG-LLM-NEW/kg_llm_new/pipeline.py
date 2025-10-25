@@ -12,6 +12,7 @@ from .classification.question_classifier import QuestionClassifier, QuestionType
 from .config import PipelineConfig
 from .kg.firebase import FirebaseDownloadConfig, FirebaseDownloader, FirebaseProcessor
 from .kg.freebase import FreebaseEasyShardBuilder
+from .kg.freebase_parquet import ParquetFreebaseEasyShardBuilder
 from .kg.loader import KnowledgeGraphLoader
 from .llm.client import LLMClient, LLMClientConfig
 from .prompt import PromptBuilder
@@ -176,10 +177,41 @@ class KGPipeline:
             self.config.storage.kg_path = output_dir
             return True
 
-        if not cfg.facts_path:
-            LOGGER.warning("Freebase Easy enabled but facts_path not provided; skipping")
+        # Try Parquet files first
+        if cfg.use_parquet and cfg.facts_parquet_path:
+            LOGGER.info("Using Parquet-based Freebase Easy processing")
+            builder = ParquetFreebaseEasyShardBuilder(
+                facts_parquet_path=cfg.facts_parquet_path,
+                output_dir=output_dir,
+                scores_parquet_path=cfg.scores_parquet_path,
+                languages=cfg.languages,
+                include_all_languages=cfg.include_all_languages,
+                description_predicates=cfg.description_predicates,
+                name_predicates=cfg.name_predicates,
+                alias_predicates=cfg.alias_predicates,
+                literal_predicates=cfg.literal_predicates,
+                include_scores=cfg.include_scores,
+                score_relation=cfg.score_relation,
+                max_facts=cfg.max_facts,
+                chunk_size=cfg.chunk_size,
+            )
+            try:
+                result = builder.build()
+            except FileNotFoundError as exc:
+                LOGGER.error("Parquet Freebase Easy ingestion failed: %s", exc)
+                return False
+
+            if result.paths:
+                self.config.storage.kg_path = output_dir
+                return True
             return False
 
+        # Fallback to text files
+        if not cfg.facts_path:
+            LOGGER.warning("Freebase Easy enabled but no facts_path or facts_parquet_path provided; skipping")
+            return False
+
+        LOGGER.info("Using text-based Freebase Easy processing")
         builder = FreebaseEasyShardBuilder(
             facts_path=cfg.facts_path,
             output_dir=output_dir,

@@ -127,6 +127,11 @@ class FreebaseEasyConfig:
     root_path: Optional[Path] = None
     facts_path: Optional[Path] = None
     scores_path: Optional[Path] = None
+    # Parquet file paths (higher priority than .txt files)
+    facts_parquet_path: Optional[Path] = None
+    scores_parquet_path: Optional[Path] = None
+    use_parquet: bool = True  # Prefer Parquet if available
+    chunk_size: int = 100000  # Batch size for Parquet processing
     output_dir: Path = Path("./freebase_easy")
     max_facts: Optional[int] = None
     languages: List[str] = field(default_factory=lambda: ["en"])
@@ -143,18 +148,38 @@ class FreebaseEasyConfig:
         if self.root_path:
             root = self.root_path.expanduser().resolve()
             self.root_path = root
+        
+        # Try to find Parquet files first if use_parquet is True
+        if self.use_parquet:
+            if self.facts_parquet_path:
+                self.facts_parquet_path = self.facts_parquet_path.expanduser().resolve()
+            elif root:
+                candidate = root / "facts.parquet"
+                if candidate.exists():
+                    self.facts_parquet_path = candidate
+            
+            if self.scores_parquet_path:
+                self.scores_parquet_path = self.scores_parquet_path.expanduser().resolve()
+            elif root:
+                candidate = root / "scores.parquet"
+                if candidate.exists():
+                    self.scores_parquet_path = candidate
+        
+        # Fallback to .txt files
         if self.facts_path:
             self.facts_path = self.facts_path.expanduser().resolve()
-        elif root:
+        elif root and not self.facts_parquet_path:
             candidate = root / "facts.txt"
             if candidate.exists():
                 self.facts_path = candidate
+        
         if self.scores_path:
             self.scores_path = self.scores_path.expanduser().resolve()
-        elif root:
+        elif root and not self.scores_parquet_path:
             candidate = root / "scores.txt"
             if candidate.exists():
                 self.scores_path = candidate
+        
         self.output_dir = self.output_dir.expanduser().resolve()
         return self
 
