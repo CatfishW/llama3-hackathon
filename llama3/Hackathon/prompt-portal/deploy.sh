@@ -328,15 +328,15 @@ fi
 # Create production environment file
 print_step "Configuring frontend environment..."
 if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
-    # With Nginx, use clean URLs without ports
+    # With Nginx, use clean URLs without ports (no /api in base URL - it's in the routes)
     cat > .env.production << EOF
-VITE_API_BASE=https://$DOMAIN_NAME/api
-VITE_WS_BASE=wss://$DOMAIN_NAME/api
+VITE_API_BASE=https://$DOMAIN_NAME
+VITE_WS_BASE=wss://$DOMAIN_NAME
 EOF
 
     cat > .env.local << EOF
-VITE_API_BASE=https://$DOMAIN_NAME/api
-VITE_WS_BASE=wss://$DOMAIN_NAME/api
+VITE_API_BASE=https://$DOMAIN_NAME
+VITE_WS_BASE=wss://$DOMAIN_NAME
 EOF
     echo -e "${GREEN}✓ Frontend configured for domain with Nginx (HTTPS)${NC}"
 elif [ "$USE_DOMAIN" = true ] && [ "$USE_HTTPS" = true ]; then
@@ -489,8 +489,8 @@ server {
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
-    # Proxy API requests to backend
-    location /api {
+    # Proxy API requests to backend (DO NOT strip /api prefix!)
+    location /api/ {
         # Handle OPTIONS preflight requests
         if (\$request_method = 'OPTIONS') {
             add_header Access-Control-Allow-Origin * always;
@@ -502,7 +502,7 @@ server {
             return 204;
         }
         
-        rewrite ^/api/(.*) /\$1 break;
+        # Pass through to backend with /api prefix intact
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -515,9 +515,8 @@ server {
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
-    # WebSocket support for MQTT
-    location /api/mqtt/ws {
-        rewrite ^/api/(.*) /\$1 break;
+    # WebSocket support
+    location /ws/ {
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
