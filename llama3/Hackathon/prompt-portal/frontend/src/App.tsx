@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import Homepage from './pages/Homepage'
 import Register from './pages/Register'
 import Login from './pages/Login'
@@ -13,16 +14,57 @@ import Friends from './pages/Friends'
 import Messages from './pages/Messages'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
+import AdminAnnouncements from './pages/AdminAnnouncements'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import PrivateRoute from './components/PrivateRoute'
+import AnnouncementPopup from './components/AnnouncementPopup'
 import { useAuth } from './auth/AuthContext'
 import { TemplateProvider } from './contexts/TemplateContext'
 import WebGame from './pages/WebGame'
 import ChatStudio from './pages/ChatStudio'
+import { announcementsAPI } from './api'
 
 export default function App() {
   const { user } = useAuth()
+  const [announcements, setAnnouncements] = useState<any[]>([])
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<number[]>([])
+
+  // Fetch announcements when user is logged in
+  useEffect(() => {
+    if (user) {
+      fetchAnnouncements()
+      // Poll for new announcements every 5 minutes
+      const interval = setInterval(fetchAnnouncements, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
+
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await announcementsAPI.getActive()
+      const newAnnouncements = response.data.filter((a: any) => 
+        !dismissedAnnouncements.includes(a.id)
+      )
+      setAnnouncements(newAnnouncements)
+    } catch (error) {
+      console.error('Failed to fetch announcements:', error)
+    }
+  }
+
+  const handleDismissAnnouncement = (id: number) => {
+    setDismissedAnnouncements(prev => [...prev, id])
+    setAnnouncements(prev => prev.filter(a => a.id !== id))
+    // Store dismissed announcements in localStorage to persist across sessions
+    const dismissed = JSON.parse(localStorage.getItem('dismissedAnnouncements') || '[]')
+    localStorage.setItem('dismissedAnnouncements', JSON.stringify([...dismissed, id]))
+  }
+
+  // Load dismissed announcements from localStorage on mount
+  useEffect(() => {
+    const dismissed = JSON.parse(localStorage.getItem('dismissedAnnouncements') || '[]')
+    setDismissedAnnouncements(dismissed)
+  }, [])
   
   const appStyle = {
     minHeight: '100vh',
@@ -41,6 +83,14 @@ export default function App() {
   return (
     <div style={appStyle}>
       <TemplateProvider>
+        {/* Show announcements for logged-in users */}
+        {user && announcements.length > 0 && (
+          <AnnouncementPopup 
+            announcements={announcements}
+            onDismiss={handleDismissAnnouncement}
+          />
+        )}
+        
         <Routes>
           <Route path="/" element={
             <div style={{ flex: 1 }}>
@@ -175,6 +225,15 @@ export default function App() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <Navbar />
                 <div style={{ ...contentStyle, flex: 1 }}><WebGame /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/admin/announcements" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><AdminAnnouncements /></div>
                 <Footer />
               </div>
             </PrivateRoute>

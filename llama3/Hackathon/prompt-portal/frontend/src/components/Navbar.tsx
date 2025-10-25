@@ -254,6 +254,42 @@ export default function Navbar() {
                 <i className="fas fa-comments" style={{ marginRight: '8px' }}></i>
                 Messages
               </Link>
+
+              {/* Admin Link - Only show for admin user */}
+              {user?.email === '1819409756@qq.com' && (
+                <>
+                  {mobile && (
+                    <div style={{ fontSize:'.75rem', textTransform:'uppercase', opacity:.6, letterSpacing:'.8px', fontWeight:600, marginTop: 12, marginBottom: 4 }}>Admin</div>
+                  )}
+                  <Link
+                    to="/admin/announcements"
+                    style={{
+                      ...linkStyle(isActive('/admin/announcements')),
+                      background: isActive('/admin/announcements') 
+                        ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                        : 'linear-gradient(135deg, rgba(240, 147, 251, 0.3) 0%, rgba(245, 87, 108, 0.3) 100%)',
+                      border: '1px solid rgba(245, 87, 108, 0.5)',
+                      fontWeight: 600,
+                      boxShadow: '0 2px 8px rgba(245, 87, 108, 0.3)'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isActive('/admin/announcements')) {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(240, 147, 251, 0.5) 0%, rgba(245, 87, 108, 0.5) 100%)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isActive('/admin/announcements')) {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(240, 147, 251, 0.3) 0%, rgba(245, 87, 108, 0.3) 100%)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                      }
+                    }}
+                  >
+                    <i className="fas fa-bullhorn" style={{ marginRight: '8px' }}></i>
+                    📢 Announcements
+                  </Link>
+                </>
+              )}
               
               {/* User Menu */}
               <div style={{ position: 'relative', marginLeft: mobile? 0 : '10px', width: mobile? '100%':'auto' }}>

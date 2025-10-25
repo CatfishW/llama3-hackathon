@@ -256,3 +256,14 @@ export const createWebSocketConnection = (token: string) => {
   const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`
   return new WebSocket(wsURL)
 }
+
+// Announcements API
+export const announcementsAPI = {
+  getActive: () => api.get('/api/announcements/'),
+  getAll: () => api.get('/api/announcements/all'),
+  getById: (id: number) => api.get(`/api/announcements/${id}`),
+  create: (data: any) => api.post('/api/announcements/', data),
+  update: (id: number, data: any) => api.put(`/api/announcements/${id}`, data),
+  delete: (id: number) => api.delete(`/api/announcements/${id}`),
+  toggle: (id: number) => api.put(`/api/announcements/${id}/toggle`)
+}

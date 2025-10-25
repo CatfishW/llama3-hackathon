@@ -166,3 +166,17 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     session = relationship("ChatSession", back_populates="messages")
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    announcement_type: Mapped[str] = mapped_column(String(50), default="info")  # info, warning, success, error
+    priority: Mapped[int] = mapped_column(Integer, default=0)  # Higher = more important
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)  # Admin email
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

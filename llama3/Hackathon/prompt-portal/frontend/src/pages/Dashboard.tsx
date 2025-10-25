@@ -151,6 +151,48 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* Admin Section - Only for admin user */}
+      {user?.email === '1819409756@qq.com' && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(240, 147, 251, 0.2) 0%, rgba(245, 87, 108, 0.2) 100%)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: '15px',
+          padding: isMobile ? '28px 20px' : '35px',
+          border: '2px solid rgba(245, 87, 108, 0.5)',
+          marginBottom: isMobile ? '36px' : '50px',
+          boxShadow: '0 8px 32px rgba(245, 87, 108, 0.3)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+            <i className="fas fa-crown" style={{ fontSize: '2rem', color: '#ffd700' }}></i>
+            <h2 style={{ fontSize: isMobile ? '1.6rem':'2rem', margin: 0, fontWeight: '600' }}>
+              Admin Panel
+            </h2>
+          </div>
+          <p style={{ opacity: '0.9', marginBottom: '20px', fontSize: isMobile ? '.95rem':'1rem' }}>
+            Manage announcements and communicate important updates to all users.
+          </p>
+          <Link 
+            to="/admin/announcements"
+            style={{
+              ...buttonStyle,
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              boxShadow: '0 4px 15px rgba(245, 87, 108, 0.4)'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)'
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(245, 87, 108, 0.5)'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(245, 87, 108, 0.4)'
+            }}
+          >
+            <i className="fas fa-bullhorn"></i>
+            Manage Announcements
+          </Link>
+        </div>
+      )}
+
       {/* Quick Stats Section */}
       <div style={{
         background: 'rgba(255, 255, 255, 0.1)',

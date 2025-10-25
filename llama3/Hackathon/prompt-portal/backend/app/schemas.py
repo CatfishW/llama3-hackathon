@@ -297,3 +297,37 @@ class ChatPresetOut(BaseModel):
     title: str
     description: Optional[str] = None
     system_prompt: str
+
+
+# Announcement schemas
+class AnnouncementCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1)
+    announcement_type: str = Field(default="info", pattern="^(info|warning|success|error)$")
+    priority: int = Field(default=0, ge=0, le=10)
+    expires_at: Optional[datetime] = None
+
+
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    content: Optional[str] = Field(None, min_length=1)
+    announcement_type: Optional[str] = Field(None, pattern="^(info|warning|success|error)$")
+    priority: Optional[int] = Field(None, ge=0, le=10)
+    is_active: Optional[bool] = None
+    expires_at: Optional[datetime] = None
+
+
+class AnnouncementOut(BaseModel):
+    id: int
+    title: str
+    content: str
+    announcement_type: str
+    priority: int
+    is_active: bool
+    created_by: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
