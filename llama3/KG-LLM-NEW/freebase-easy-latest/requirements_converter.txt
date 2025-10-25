@@ -1,0 +1,7 @@
+# Requirements for large file conversion scripts
+pandas>=2.0.0
+pyarrow>=14.0.0
+tqdm>=4.65.0
+
+# Optional: For even larger files that don't fit in memory
+# dask[complete]>=2023.0.0
