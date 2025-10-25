@@ -94,13 +94,13 @@ class DeploymentConfig:
     server_timeout: int = 300  # seconds, increase for longer context
     
     # Generation Configuration
-    default_temperature: float = 0.6
+    default_temperature: float = 1.0
     default_top_p: float = 0.9
-    default_max_tokens: int = 128
+    default_max_tokens: int = 256
     skip_thinking: bool = True  # Disable deep thinking mode (adds /no_think directive)
     
     # Session Management
-    max_history_tokens: int = 6000
+    max_history_tokens: int = 10000
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds
     
@@ -389,7 +389,7 @@ class LlamaCppClient:
             self.client.chat.completions.create(
                 model="default",
                 messages=[{"role": "system", "content": "test"}],
-                max_tokens=1
+                max_tokens=1,
             )
             logger.info("✓ Connection test successful")
             
@@ -416,6 +416,105 @@ class LlamaCppClient:
                     return False
             return False
     
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = None,
+        top_p: float = None,
+        max_tokens: int = None,
+        debug_info: dict = None,
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = None
+    ) -> Iterator[str]:
+        """
+        Generate response using streaming for real-time output.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            temperature: Sampling temperature (default from config)
+            top_p: Top-p sampling (default from config)
+            max_tokens: Maximum tokens to generate (default from config)
+            debug_info: Optional debug info dict to log details
+            tools: Optional tool definitions for structured function calling
+            tool_choice: Tool usage mode ("auto", "none", or specific tool name)
+            
+        Yields:
+            Generated text chunks as they arrive
+        """
+        # Use defaults from config if not specified
+        temperature = temperature or self.config.default_temperature
+        top_p = top_p or self.config.default_top_p
+        max_tokens = max_tokens or self.config.default_max_tokens
+        
+        # Debug log: generation parameters
+        if debug_info:
+            debug_logger.debug("=" * 80)
+            debug_logger.debug(f"STREAMING GENERATION REQUEST | Session: {debug_info.get('session_id', 'unknown')}")
+            debug_logger.debug(f"Temperature: {temperature}, Top-P: {top_p}, Max Tokens: {max_tokens}")
+            debug_logger.debug(f"Thinking Mode: {'DISABLED' if self.config.skip_thinking else 'ENABLED'}")
+            debug_logger.debug("-" * 80)
+            debug_logger.debug(f"MESSAGES TO LLM:\n{json.dumps(messages, indent=2, ensure_ascii=False)}")
+            debug_logger.debug("-" * 80)
+            if tools:
+                debug_logger.debug(f"Tools supplied: {[tool['function']['name'] for tool in tools if 'function' in tool]}")
+        
+        try:
+            start_time = time.time()
+            
+            # Prepare extra body parameters for llama.cpp
+            extra_body = {
+                "enable_thinking": not self.config.skip_thinking
+            }
+            
+            request_kwargs = {
+                "model": "default",
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "extra_body": extra_body,
+                "stream": True  # Enable streaming
+            }
+
+            if tools:
+                request_kwargs["tools"] = tools
+                if tool_choice:
+                    request_kwargs["tool_choice"] = tool_choice
+            
+            # Call chat completions with streaming
+            stream = self.client.chat.completions.create(**request_kwargs)
+            
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        full_response += delta.content
+                        yield delta.content
+            
+            generation_time = time.time() - start_time
+            
+            # Debug log: generation output
+            if debug_info:
+                debug_logger.debug(f"LLM STREAMING OUTPUT (complete):\n{full_response}")
+                debug_logger.debug("-" * 80)
+                debug_logger.debug(f"Generation Time: {generation_time:.3f}s")
+                debug_logger.debug(f"Output Length: {len(full_response)} chars")
+                debug_logger.debug("=" * 80 + "\n")
+            
+        except OpenAIError as e:
+            error_msg = f"OpenAI API error: {str(e)}"
+            logger.error(error_msg)
+            if debug_info:
+                debug_logger.error(error_msg)
+            yield f"Error: {error_msg}"
+        except Exception as e:
+            error_msg = f"Generation failed: {str(e)}"
+            logger.error(error_msg)
+            if debug_info:
+                debug_logger.error(error_msg)
+            yield f"Error: {error_msg}"
+
     def generate(
         self,
         messages: List[Dict[str, str]],

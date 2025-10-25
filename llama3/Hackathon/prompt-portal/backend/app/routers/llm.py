@@ -3,12 +3,15 @@ LLM API Router
 
 Provides HTTP endpoints for direct LLM inference.
 Supports both single-shot and session-based conversation.
+Includes streaming support for real-time responses.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 import logging
+import json
 
 from ..deps import get_current_user
 from ..services.llm_client import get_llm_client, get_session_manager
@@ -119,6 +122,115 @@ def session_chat(
         )
         
         return ChatResponse(response=response, session_id=request.session_id)
+        
+    except RuntimeError as e:
+        logger.error(f"LLM error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/chat/stream")
+async def chat_completion_stream(
+    request: ChatRequest,
+    user = Depends(get_current_user)
+):
+    """
+    Generate a streaming chat completion (stateless, single-shot).
+    
+    Returns Server-Sent Events (SSE) stream.
+    This endpoint does not maintain conversation history.
+    """
+    try:
+        llm_client = get_llm_client()
+        
+        # Convert messages to dict format
+        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        
+        # Create a generator that formats output as SSE
+        def generate():
+            try:
+                for chunk in llm_client.generate_stream(
+                    messages=messages,
+                    temperature=request.temperature,
+                    top_p=request.top_p,
+                    max_tokens=request.max_tokens,
+                    model=request.model
+                ):
+                    # Format as Server-Sent Events
+                    yield f"data: {json.dumps({'content': chunk})}\n\n"
+                
+                # Send done signal
+                yield f"data: {json.dumps({'done': True})}\n\n"
+            except Exception as e:
+                logger.error(f"Streaming error: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except RuntimeError as e:
+        logger.error(f"LLM error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/chat/session/stream")
+async def session_chat_stream(
+    request: SessionChatRequest,
+    user = Depends(get_current_user)
+):
+    """
+    Send a message in a session-based conversation with streaming response.
+    
+    Returns Server-Sent Events (SSE) stream.
+    The session maintains conversation history automatically.
+    """
+    try:
+        session_manager = get_session_manager()
+        
+        # Default system prompt if not provided
+        system_prompt = request.system_prompt or "You are a helpful AI assistant."
+        
+        # Create a generator that formats output as SSE
+        def generate():
+            try:
+                for chunk in session_manager.process_message_stream(
+                    session_id=request.session_id,
+                    system_prompt=system_prompt,
+                    user_message=request.message,
+                    temperature=request.temperature,
+                    top_p=request.top_p,
+                    max_tokens=request.max_tokens
+                ):
+                    # Format as Server-Sent Events
+                    yield f"data: {json.dumps({'content': chunk, 'session_id': request.session_id})}\n\n"
+                
+                # Send done signal
+                yield f"data: {json.dumps({'done': True, 'session_id': request.session_id})}\n\n"
+            except Exception as e:
+                logger.error(f"Streaming error: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
         
     except RuntimeError as e:
         logger.error(f"LLM error: {e}")

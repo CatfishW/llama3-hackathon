@@ -351,6 +351,83 @@ class LLMClient:
             logger.error(error_msg)
             raise RuntimeError(error_msg)
     
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        model: str = "default",
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = "auto"
+    ):
+        """
+        Generate response using streaming for real-time output.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            temperature: Sampling temperature (default from config)
+            top_p: Top-p sampling (default from config)
+            max_tokens: Maximum tokens to generate (default from config)
+            model: Model name (default: "default")
+            tools: List of tool/function definitions for function calling
+            tool_choice: How to use tools - "auto", "none", or specific tool
+            
+        Yields:
+            Generated text chunks as they arrive (as strings or Server-Sent Events format)
+        """
+        # Use defaults if not specified
+        temperature = temperature if temperature is not None else self.default_temperature
+        top_p = top_p if top_p is not None else self.default_top_p
+        max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
+        
+        try:
+            start_time = time.time()
+            
+            # Prepare extra body parameters for llama.cpp
+            extra_body = {
+                "enable_thinking": not self.skip_thinking
+            }
+            
+            # Build API call parameters
+            api_params = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "extra_body": extra_body,
+                "stream": True  # Enable streaming
+            }
+            
+            # Add tools if provided (for function calling)
+            if tools:
+                api_params["tools"] = tools
+                api_params["tool_choice"] = tool_choice
+            
+            # Call chat completions with streaming
+            stream = self.client.chat.completions.create(**api_params)
+            
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        full_response += delta.content
+                        yield delta.content
+            
+            generation_time = time.time() - start_time
+            logger.info(f"Streamed response in {generation_time:.2f}s, {len(full_response)} chars")
+            
+        except OpenAIError as e:
+            error_msg = f"OpenAI API error: {str(e)}"
+            logger.error(error_msg)
+            yield f"Error: {error_msg}"
+        except Exception as e:
+            error_msg = f"Generation failed: {str(e)}"
+            logger.error(error_msg)
+            yield f"Error: {error_msg}"
+    
     def count_tokens(self, text: str) -> int:
         """
         Estimate token count for a text string.
@@ -497,6 +574,77 @@ class SessionManager:
             error_msg = f"Error processing message: {str(e)}"
             logger.error(f"Session {session_id}: {error_msg}")
             raise
+    
+    def process_message_stream(
+        self,
+        session_id: str,
+        system_prompt: str,
+        user_message: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_tools: bool = False  # Note: streaming with tools is complex, disabled by default
+    ):
+        """
+        Process a user message and generate a streaming response.
+        
+        Args:
+            session_id: Session identifier
+            system_prompt: System prompt
+            user_message: User's message
+            temperature: Sampling temperature
+            top_p: Top-p sampling
+            max_tokens: Maximum tokens
+            use_tools: Whether to enable function calling tools (not recommended for streaming)
+            
+        Yields:
+            Generated text chunks as they arrive
+        """
+        # Get or create session
+        session = self.get_or_create_session(session_id, system_prompt)
+        session_lock = self.session_locks.get(session_id, threading.RLock())
+        
+        # Build the prompt first (with minimal locking)
+        with session_lock:
+            # Add user message to dialog
+            session["dialog"].append({"role": "user", "content": user_message})
+            session["message_count"] += 1
+            
+            # Simple trimming: keep only last N messages
+            max_messages = 20
+            if len(session["dialog"]) > max_messages:
+                # Keep system message and last N-1 messages
+                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+            
+            # Prepare messages for API call
+            messages = session["dialog"].copy()
+        
+        # Now do inference WITHOUT holding session lock!
+        full_response = ""
+        try:
+            # Use tools if requested (for maze game with function calling)
+            # Note: Streaming with tools/function calling is complex
+            tools = MAZE_GAME_TOOLS if use_tools else None
+            
+            for chunk in self.llm_client.generate_stream(
+                messages=messages,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                tools=tools,
+                tool_choice="auto" if tools else None
+            ):
+                full_response += chunk
+                yield chunk
+            
+            # Add assistant response to history (lock again briefly)
+            with session_lock:
+                session["dialog"].append({"role": "assistant", "content": full_response})
+                
+        except Exception as e:
+            error_msg = f"Error processing message: {str(e)}"
+            logger.error(f"Session {session_id}: {error_msg}")
+            yield f"\n\nError: {error_msg}"
     
     def clear_session(self, session_id: str):
         """Clear a session's conversation history."""

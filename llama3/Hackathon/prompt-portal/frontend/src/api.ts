@@ -131,6 +131,126 @@ export const chatbotAPI = {
   sendMessage: (data: any) => api.post('/api/chatbot/messages', data)
 }
 
+// LLM API (Direct inference endpoints)
+export const llmAPI = {
+  // Standard (non-streaming) chat
+  chat: (data: any) => api.post('/api/llm/chat', data),
+  chatSession: (data: any) => api.post('/api/llm/chat/session', data),
+  
+  // Streaming chat - returns EventSource for Server-Sent Events
+  chatStream: async (
+    data: any,
+    onChunk: (chunk: string) => void,
+    onComplete: () => void,
+    onError: (error: any) => void
+  ) => {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`${API_BASE}/api/llm/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('Response body is not readable')
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+            if (data.error) {
+              onError(new Error(data.error))
+            } else if (data.done) {
+              onComplete()
+            } else if (data.content) {
+              onChunk(data.content)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError(error)
+    }
+  },
+
+  // Streaming session chat
+  chatSessionStream: async (
+    data: any,
+    onChunk: (chunk: string) => void,
+    onComplete: () => void,
+    onError: (error: any) => void
+  ) => {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`${API_BASE}/api/llm/chat/session/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('Response body is not readable')
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+            if (data.error) {
+              onError(new Error(data.error))
+            } else if (data.done) {
+              onComplete()
+            } else if (data.content) {
+              onChunk(data.content)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError(error)
+    }
+  },
+  
+  // Session management
+  getSessionHistory: (sessionId: string) => api.get(`/api/llm/chat/session/${sessionId}/history`),
+  clearSession: (sessionId: string) => api.delete(`/api/llm/chat/session/${sessionId}`),
+  healthCheck: () => api.get('/api/llm/health')
+}
+
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
   const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`
