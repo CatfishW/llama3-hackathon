@@ -497,7 +497,8 @@ server {
 
     # CRITICAL: WebSocket blocks MUST come BEFORE /api/ block!
     # WebSocket support for MQTT hints (maze game, test pages)
-    location ~ ^/api/mqtt/ws/ {
+    # Match the exact path pattern and preserve it when proxying
+    location /api/mqtt/ws/ {
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -518,8 +519,8 @@ server {
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Upgrade, Connection" always;
     }
 
-    # Legacy WebSocket support for user messages
-    location ~ ^/ws/ {
+    # Legacy WebSocket support for user messages (token-based)
+    location /ws/ {
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
