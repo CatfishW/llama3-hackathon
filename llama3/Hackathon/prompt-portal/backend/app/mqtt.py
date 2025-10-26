@@ -114,6 +114,9 @@ def _handle_hint_message(topic: str, payload_text: str) -> None:
         print(f"[MQTT] Hint JSON parse error: {exc}")
         data = {"raw": payload_text}
 
+    # Add timestamp to track new hints
+    data["timestamp"] = time.time()
+    
     parts = topic.split("/")
     session_id = parts[-1] if len(parts) >= 3 else "unknown"
     LAST_HINTS[session_id] = data
@@ -122,7 +125,7 @@ def _handle_hint_message(topic: str, payload_text: str) -> None:
 
     websockets = SUBSCRIBERS.get(session_id, set()).copy()
     if not websockets:
-        print(f"[MQTT] No WebSocket subscribers for hint session '{session_id}'")
+        print(f"[MQTT] No WebSocket subscribers for hint session '{session_id}' (hint stored for polling)")
         return
 
     message_data = json.dumps({"topic": topic, "hint": data})

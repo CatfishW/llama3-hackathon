@@ -17,37 +17,67 @@ export default function TestMQTT() {
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [sessionId, setSessionId] = useState('session-' + Math.random().toString(36).slice(2, 8))
   const [messages, setMessages] = useState<MQTTMessage[]>([])
-  const wsRef = useRef<WebSocket | null>(null)
+  const pollingIntervalRef = useRef<number | null>(null)
+  const lastHintTimestampRef = useRef<number>(0)
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [connectionAttempts, setConnectionAttempts] = useState(0)
   const [lastMessageTime, setLastMessageTime] = useState<Date | null>(null)
-  const [autoReconnect, setAutoReconnect] = useState(true)
-  const reconnectTimeoutRef = useRef<number | null>(null)
 
-  // Auto-reconnect effect
+  // Poll for MQTT hints (replaces WebSocket)
+  const pollForHints = async () => {
+    if (!connected) return
+    
+    try {
+      const response = await api.get(`/api/mqtt/last_hint?session_id=${sessionId}`)
+      const data = response.data
+      
+      if (!data.has_hint || !data.last_hint) return
+      
+      // Check if this is a new hint
+      const hintTimestamp = data.last_hint.timestamp || 0
+      if (hintTimestamp <= lastHintTimestampRef.current) return
+      
+      lastHintTimestampRef.current = hintTimestamp
+      
+      // Add new hint to messages
+      const newMessage: MQTTMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        topic: 'mqtt/hints/' + sessionId,
+        hint: data.last_hint,
+        raw: JSON.stringify(data),
+        parsed: true
+      }
+      setMessages(prev => [newMessage, ...prev].slice(0, 100))
+      setLastMessageTime(new Date())
+    } catch (error) {
+      console.error('Error polling for hints:', error)
+    }
+  }
+
+  // Start/stop polling when connected changes
   useEffect(() => {
-    if (!connected && autoReconnect && connectionAttempts < 5) {
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        // Auto-reconnect attempt ${connectionAttempts + 1}/5 (logging disabled)
-        connectWS()
-      }, Math.min(1000 * Math.pow(2, connectionAttempts), 10000)) // Exponential backoff, max 10s
+    if (connected) {
+      pollingIntervalRef.current = setInterval(pollForHints, 500)
+    } else {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
     }
     
     return () => {
-      if (reconnectTimeoutRef.current) {
-        window.clearTimeout(reconnectTimeoutRef.current)
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-  }, [connected, autoReconnect, connectionAttempts])
+  }, [connected, sessionId])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnectWS()
-      if (reconnectTimeoutRef.current) {
-        window.clearTimeout(reconnectTimeoutRef.current)
-      }
     }
   }, [])
 
@@ -64,64 +94,12 @@ export default function TestMQTT() {
   }, [])
 
   function connectWS() {
-    // Clear any pending reconnection
-    if (reconnectTimeoutRef.current) {
-      window.clearTimeout(reconnectTimeoutRef.current)
-      reconnectTimeoutRef.current = null
-    }
-
-    const base = (import.meta as any).env?.VITE_WS_BASE || 'ws://localhost:8000'
-    const ws = new WebSocket(base + '/api/mqtt/ws/hints/' + sessionId)
-    
-    ws.onopen = () => {
-      setConnected(true)
-      setConnectionAttempts(0)
-      // WebSocket connected to session (logging disabled)
-    }
-    
-    ws.onclose = () => {
-      setConnected(false)
-      // WebSocket disconnected (logging disabled)
-    }
-    
-    ws.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data)
-        const newMessage: MQTTMessage = {
-          id: Math.random().toString(36).substr(2, 9),
-          timestamp: Date.now(),
-          topic: data.topic || 'unknown',
-          hint: data.hint,
-          raw: evt.data,
-          parsed: true
-        }
-        setMessages(prev => [newMessage, ...prev].slice(0, 100))
-        setLastMessageTime(new Date())
-      } catch (error) {
-        // Fallback for non-JSON messages
-        const newMessage: MQTTMessage = {
-          id: Math.random().toString(36).substr(2, 9),
-          timestamp: Date.now(),
-          topic: 'raw',
-          raw: evt.data,
-          parsed: false
-        }
-        setMessages(prev => [newMessage, ...prev].slice(0, 100))
-        setLastMessageTime(new Date())
-      }
-    }
-    
-    ws.onerror = (err) => {
-      // WebSocket error (logging disabled)
-      setConnectionAttempts(prev => prev + 1)
-    }
-    
-    wsRef.current = ws
+    setConnected(true)
+    lastHintTimestampRef.current = 0 // Reset to receive all new hints
   }
 
   function disconnectWS() {
-    wsRef.current?.close()
-    wsRef.current = null
+    setConnected(false)
   }
 
   function clearMessages() {
@@ -407,19 +385,6 @@ export default function TestMQTT() {
                 Last message: {lastMessageTime.toLocaleTimeString()}
               </div>
             )}
-            {connectionAttempts > 0 && !connected && (
-              <div style={{ 
-                fontSize: '0.8rem', 
-                marginTop: '4px', 
-                color: '#ff9800',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <i className="fas fa-exclamation-triangle"></i>
-                Reconnect attempts: {connectionAttempts}/5
-              </div>
-            )}
           </div>
 
           <div>
@@ -442,16 +407,9 @@ export default function TestMQTT() {
               borderRadius: '8px',
               border: '1px solid rgba(255, 255, 255, 0.2)'
             }}>
-              <input
-                type="checkbox"
-                id="autoReconnect"
-                checked={autoReconnect}
-                onChange={(e) => setAutoReconnect(e.target.checked)}
-                style={{ marginRight: '4px' }}
-              />
-              <label htmlFor="autoReconnect" style={{ fontSize: '0.9rem', cursor: 'pointer' }}>
-                Auto-reconnect
-              </label>
+              <span style={{ fontSize: '0.9rem' }}>
+                Using HTTP polling (500ms interval)
+              </span>
             </div>
           </div>
         </div>

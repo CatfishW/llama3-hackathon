@@ -29,7 +29,56 @@ def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depend
 
 @router.get("/last_hint")
 def get_last_hint(session_id: str = Query(..., min_length=1)):
-    return {"session_id": session_id, "last_hint": LAST_HINTS.get(session_id)}
+    """Get the last hint for a session (polling method - no WebSocket needed)"""
+    hint = LAST_HINTS.get(session_id)
+    return {
+        "session_id": session_id, 
+        "last_hint": hint,
+        "has_hint": hint is not None,
+        "timestamp": hint.get("timestamp") if hint and isinstance(hint, dict) else None
+    }
+
+@router.post("/request_hint")
+async def request_hint_endpoint(
+    payload: dict,
+    db: Session = Depends(get_db), 
+    user=Depends(get_current_user)
+):
+    """Request a hint for the maze game - returns immediately, hint arrives via polling /last_hint"""
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(400, "session_id is required")
+    
+    # Optional: verify template ownership if template_id provided
+    template_id = payload.get("template_id")
+    if template_id:
+        t = db.query(models.PromptTemplate).filter(
+            models.PromptTemplate.id == template_id, 
+            models.PromptTemplate.user_id == user.id
+        ).first()
+        if not t:
+            raise HTTPException(404, "Template not found or not owned by you")
+    
+    # Publish state to MQTT (LAM will process and send hint back)
+    state = payload.get("state", {})
+    state["sessionId"] = session_id
+    
+    # Add template info if provided
+    if template_id:
+        t = db.query(models.PromptTemplate).filter(
+            models.PromptTemplate.id == template_id, 
+            models.PromptTemplate.user_id == user.id
+        ).first()
+        if t:
+            state["prompt_template"] = {
+                "title": t.title,
+                "content": t.content,
+                "version": t.version,
+                "user_id": user.id,
+            }
+    
+    publish_state(state)
+    return {"ok": True, "session_id": session_id, "message": "Hint request published"}
 
 # WebSocket to stream hints in real time
 async def _subscribe_ws(session_id: str, websocket: WebSocket):

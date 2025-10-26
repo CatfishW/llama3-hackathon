@@ -647,129 +647,191 @@ export default function WebGame() {
     }
   }, [templates, templateId])
 
-  // WebSocket connect/disconnect
-  const connectWS = useCallback(() => {
-    const base = (import.meta as any).env?.VITE_WS_BASE || 'ws://localhost:8000'
-    const ws = new WebSocket(base + '/api/mqtt/ws/hints/' + sessionId)
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => setConnected(false)
-    ws.onmessage = (evt) => {
-      try {
-  const data = JSON.parse(evt.data)
-        const hint: HintMsg = data.hint || {}
-        const s = stateRef.current
-        // Handle multiple possible error shapes
-        const anyHint: any = hint as any
-        const errText = anyHint.error || anyHint.Error || anyHint.err
-        const promptExcerpt = (anyHint.prompt ? String(anyHint.prompt) : '')
-        if (errText) {
-          s.lam.error = promptExcerpt ? `${String(errText)} | prompt: ${promptExcerpt}` : String(errText)
-        } else if (anyHint.raw) {
-          s.lam.error = `Invalid LAM JSON: ${String(anyHint.raw).slice(0, 160)}`
-        } else {
-          s.lam.error = ''
+  // MQTT Hint Polling (replaces WebSocket)
+  const pollingIntervalRef = useRef<number | null>(null)
+  const lastHintTimestampRef = useRef<number>(0)
+
+  const pollForHints = useCallback(async () => {
+    if (!connected) return
+    
+    try {
+      const response = await api.get(`/api/mqtt/last_hint?session_id=${sessionId}`)
+      const data = response.data
+      
+      if (!data.has_hint || !data.last_hint) return
+      
+      // Check if this is a new hint (avoid processing same hint multiple times)
+      const hintTimestamp = data.last_hint.timestamp || 0
+      if (hintTimestamp <= lastHintTimestampRef.current) return
+      
+      lastHintTimestampRef.current = hintTimestamp
+      
+      // Process the hint (same logic as WebSocket onmessage)
+      const hint: HintMsg = data.last_hint || {}
+      const s = stateRef.current
+      
+      // Handle multiple possible error shapes
+      const anyHint: any = hint as any
+      const errText = anyHint.error || anyHint.Error || anyHint.err
+      const promptExcerpt = (anyHint.prompt ? String(anyHint.prompt) : '')
+      if (errText) {
+        s.lam.error = promptExcerpt ? `${String(errText)} | prompt: ${promptExcerpt}` : String(errText)
+      } else if (anyHint.raw) {
+        s.lam.error = `Invalid LAM JSON: ${String(anyHint.raw).slice(0, 160)}`
+      } else {
+        s.lam.error = ''
+      }
+      s.lam.hint = hint.hint || ''
+      
+      // Path handling: allow movement if a path is provided, regardless of show_path
+      const hasPath = Array.isArray((hint as any).path) && (hint as any).path.length > 0
+      if (hasPath) {
+        const rawPath = (hint as any).path.map((p:any) => Array.isArray(p)? { x:p[0], y:p[1] } : { x: p.x, y: p.y })
+        s.lam.path = sanitizePath(s.grid as any, rawPath, s.player)
+      } else {
+        s.lam.path = []
+      }
+      
+      // In Manual mode, auto-visualize provided paths to assist the player
+      s.lam.showPath = (hint.show_path === true) || (gameModeRef.current === 'manual' && hasPath)
+      s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
+      
+      // Maintain React state copy for external panel
+      setLamData({ 
+        hint: s.lam.hint, 
+        path: s.lam.path.slice(), 
+        breaks: s.lam.breaks, 
+        error: s.lam.error, 
+        raw: hint, 
+        rawMessage: data, 
+        updatedAt: Date.now(), 
+        showPath: s.lam.showPath 
+      })
+      
+      // Flow monitor: record first receipt event & declared actions
+      if (pendingFlowRef.current && !pendingFlowRef.current.receivedAt) {
+        const evtF = pendingFlowRef.current
+        evtF.receivedAt = performance.now()
+        evtF.latencyMs = evtF.receivedAt - evtF.publishAt
+        const decl:string[] = []
+        const r:any = hint
+        if (r.break_wall) decl.push('break_wall')
+        if (Array.isArray(r.break_walls) && r.break_walls.length) decl.push('break_walls')
+        if (r.show_path) decl.push('show_path')
+        if (r.speed_boost_ms) decl.push('speed_boost')
+        if (r.slow_germs_ms) decl.push('slow_germs')
+        if (r.freeze_germs_ms) decl.push('freeze_germs')
+        if (r.teleport_player) decl.push('teleport_player')
+        if (r.spawn_oxygen) decl.push('spawn_oxygen')
+        if (r.move_exit) decl.push('move_exit')
+        if (r.highlight_zone) decl.push('highlight_zone')
+        if (r.reveal_map!==undefined) decl.push('reveal_map')
+        evtF.actionsDeclared = decl
+        evtF.hintExcerpt = (hint.hint||'').slice(0,140)
+        evtF.error = s.lam.error || undefined
+        setLamFlow(f=>[...f])
+      }
+      
+      // Process hint actions
+      if (hint.break_wall) {
+        const bw: any = (hint as any).break_wall
+        const bx = Array.isArray(bw) ? bw[0] : (typeof bw === 'object' ? bw.x : undefined)
+        const by = Array.isArray(bw) ? bw[1] : (typeof bw === 'object' ? bw.y : undefined)
+        if (bx!=null && by!=null) breakWall(bx, by)
+      }
+      if ((anyHint.breakWall) && Array.isArray(anyHint.breakWall) && anyHint.breakWall.length===2) {
+        const [bx, by] = anyHint.breakWall; breakWall(bx, by)
+      }
+      
+      // New actions
+      const now = performance.now()
+      const msFrom = (obj:any, keys:string[], def:number)=>{
+        for (const k of keys){
+          const v = obj[k]
+          if (typeof v === 'number' && isFinite(v)){
+            if (k.endsWith('seconds') || k.endsWith('second') || k.endsWith('_sec')) return Math.round(v*1000)
+            return Math.round(v)
+          }
+          if (v === true) return def
         }
-        s.lam.hint = hint.hint || ''
-        // Path handling: allow movement if a path is provided, regardless of show_path; show_path only controls overlay visibility
-  const hasPath = Array.isArray((hint as any).path) && (hint as any).path.length > 0
-        if (hasPath) {
-          const rawPath = (hint as any).path.map((p:any) => Array.isArray(p)? { x:p[0], y:p[1] } : { x: p.x, y: p.y })
-          s.lam.path = sanitizePath(s.grid as any, rawPath, s.player)
-        } else {
-          s.lam.path = []
-        }
-  // In Manual mode, auto-visualize provided paths to assist the player
-  s.lam.showPath = (hint.show_path === true) || (gameModeRef.current === 'manual' && hasPath)
-  s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
-  // Maintain React state copy for external panel (include raw envelope and timestamp)
-  setLamData({ hint: s.lam.hint, path: s.lam.path.slice(), breaks: s.lam.breaks, error: s.lam.error, raw: hint, rawMessage: data, updatedAt: Date.now(), showPath: s.lam.showPath })
-        // Flow monitor: record first receipt event & declared actions
-        if (pendingFlowRef.current && !pendingFlowRef.current.receivedAt) {
-          const evtF = pendingFlowRef.current
-          evtF.receivedAt = performance.now()
-          evtF.latencyMs = evtF.receivedAt - evtF.publishAt
-          const decl:string[] = []
-          const r:any = hint
-          if (r.break_wall) decl.push('break_wall')
-          if (Array.isArray(r.break_walls) && r.break_walls.length) decl.push('break_walls')
-          if (r.show_path) decl.push('show_path')
-          if (r.speed_boost_ms) decl.push('speed_boost')
-          if (r.slow_germs_ms) decl.push('slow_germs')
-          if (r.freeze_germs_ms) decl.push('freeze_germs')
-          if (r.teleport_player) decl.push('teleport_player')
-          if (r.spawn_oxygen) decl.push('spawn_oxygen')
-          if (r.move_exit) decl.push('move_exit')
-          if (r.highlight_zone) decl.push('highlight_zone')
-          // toggle_autopilot deprecated
-          if (r.reveal_map!==undefined) decl.push('reveal_map')
-          evtF.actionsDeclared = decl
-          evtF.hintExcerpt = (hint.hint||'').slice(0,140)
-          evtF.error = s.lam.error || undefined
-          setLamFlow(f=>[...f])
-        }
-        if (hint.break_wall) {
-          const bw: any = (hint as any).break_wall
-          const bx = Array.isArray(bw) ? bw[0] : (typeof bw === 'object' ? bw.x : undefined)
-          const by = Array.isArray(bw) ? bw[1] : (typeof bw === 'object' ? bw.y : undefined)
+        return 0
+      }
+      
+      const spdMs = msFrom(hint, ['speed_boost_ms','speed_ms','speedBoostMs','speed_boost','speed'], 1500)
+      if (spdMs>0) applySpeedBoost(spdMs)
+      const slowMs = msFrom(hint, ['slow_germs_ms','slow_ms','slowGermsMs','slow_germs'], 3000)
+      if (slowMs>0) applySlowGerms(slowMs)
+      const frzMs = msFrom(hint, ['freeze_germs_ms','freeze_ms','freezeGermsMs','freeze_germs','freeze'], 3500)
+      if (frzMs>0) applyFreezeGerms(frzMs)
+      
+      if (hint.reveal_map!==undefined) { 
+        s.revealMap = Boolean(hint.reveal_map); 
+        if (s.revealMap) addPopup(s.player.x, s.player.y, 'Reveal', 800); 
+        noteApplied('reveal_map', { value: s.revealMap }) 
+      }
+      
+      const tp = (hint as any).teleport_player || (hint as any).teleport || (hint as any).tp || (hint as any).teleport_to
+      if (Array.isArray(tp) && tp.length===2) teleportPlayer(tp[0], tp[1])
+      else if (tp && typeof tp==='object' && Number.isFinite(tp.x) && Number.isFinite(tp.y)) teleportPlayer(tp.x, tp.y)
+      
+      const mx = (hint as any).move_exit || (hint as any).moveExit || (hint as any).exit
+      if (Array.isArray(mx) && mx.length===2) moveExitTo(mx[0], mx[1])
+      else if (mx && typeof mx==='object' && Number.isFinite(mx.x) && Number.isFinite(mx.y)) moveExitTo(mx.x, mx.y)
+      
+      let oxyItems:any = (hint as any).spawn_oxygen || (hint as any).spawnOxygen || (hint as any).oxygen
+      if (oxyItems && !Array.isArray(oxyItems)) oxyItems = [oxyItems]
+      if (Array.isArray(oxyItems) && oxyItems.length>0) spawnOxygen(oxyItems as any)
+      
+      const bfsReq = (hint as any).bfs || (hint as any).use_bfs || (hint as any).useBfs
+      const bfsSteps = (hint as any).bfs_steps || (hint as any).bfsSteps
+      if (bfsReq || (typeof bfsSteps === 'number' && bfsSteps>0)) {
+        s.lam.bfsSteps = Math.min(4, Math.max(1, Number(bfsSteps) || 2))
+      }
+      
+      if (Array.isArray(hint.break_walls)) {
+        for (const item of hint.break_walls as any[]) {
+          const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
+          const by = Array.isArray(item) ? item[1] : (typeof item === 'object' ? item.y : undefined)
           if (bx!=null && by!=null) breakWall(bx, by)
         }
-        if ((anyHint.breakWall) && Array.isArray(anyHint.breakWall) && anyHint.breakWall.length===2) {
-          const [bx, by] = anyHint.breakWall; breakWall(bx, by)
-        }
-        // New actions
-        const now = performance.now()
-  // Back-compat durations: accept *_ms, *_seconds, or boolean true -> default
-        const msFrom = (obj:any, keys:string[], def:number)=>{
-          for (const k of keys){
-            const v = obj[k]
-            if (typeof v === 'number' && isFinite(v)){
-              // if seconds variant
-              if (k.endsWith('seconds') || k.endsWith('second') || k.endsWith('_sec')) return Math.round(v*1000)
-              return Math.round(v)
-            }
-            if (v === true) return def
-          }
-          return 0
-        }
-        const spdMs = msFrom(hint, ['speed_boost_ms','speed_ms','speedBoostMs','speed_boost','speed'], 1500)
-        if (spdMs>0) applySpeedBoost(spdMs)
-        const slowMs = msFrom(hint, ['slow_germs_ms','slow_ms','slowGermsMs','slow_germs'], 3000)
-        if (slowMs>0) applySlowGerms(slowMs)
-        const frzMs = msFrom(hint, ['freeze_germs_ms','freeze_ms','freezeGermsMs','freeze_germs','freeze'], 3500)
-        if (frzMs>0) applyFreezeGerms(frzMs)
-  // toggle_autopilot deprecated: ignored
-        if (hint.reveal_map!==undefined) { s.revealMap = Boolean(hint.reveal_map); if (s.revealMap) addPopup(s.player.x, s.player.y, 'Reveal', 800); noteApplied('reveal_map', { value: s.revealMap }) }
-  const tp = (hint as any).teleport_player || (hint as any).teleport || (hint as any).tp || (hint as any).teleport_to
-  if (Array.isArray(tp) && tp.length===2) teleportPlayer(tp[0], tp[1])
-  else if (tp && typeof tp==='object' && Number.isFinite(tp.x) && Number.isFinite(tp.y)) teleportPlayer(tp.x, tp.y)
-  const mx = (hint as any).move_exit || (hint as any).moveExit || (hint as any).exit
-  if (Array.isArray(mx) && mx.length===2) moveExitTo(mx[0], mx[1])
-  else if (mx && typeof mx==='object' && Number.isFinite(mx.x) && Number.isFinite(mx.y)) moveExitTo(mx.x, mx.y)
-  let oxyItems:any = (hint as any).spawn_oxygen || (hint as any).spawnOxygen || (hint as any).oxygen
-  if (oxyItems && !Array.isArray(oxyItems)) oxyItems = [oxyItems]
-  if (Array.isArray(oxyItems) && oxyItems.length>0) spawnOxygen(oxyItems as any)
-        // New: BFS-on-request (move exactly 2 tiles when invoked)
-        const bfsReq = (hint as any).bfs || (hint as any).use_bfs || (hint as any).useBfs
-        const bfsSteps = (hint as any).bfs_steps || (hint as any).bfsSteps
-        if (bfsReq || (typeof bfsSteps === 'number' && bfsSteps>0)) {
-          s.lam.bfsSteps = Math.min(4, Math.max(1, Number(bfsSteps) || 2))
-        }
-        if (Array.isArray(hint.break_walls)) {
-          for (const item of hint.break_walls as any[]) {
-            const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
-            const by = Array.isArray(item) ? item[1] : (typeof item === 'object' ? item.y : undefined)
-            if (bx!=null && by!=null) breakWall(bx, by)
-          }
-        }
-  const hz = (hint as any).highlight_zone || (hint as any).highlightZone || (hint as any).highlight
-  if (Array.isArray(hz)) highlightZone(hz, (hint as any).highlight_ms ?? (hint as any).highlightMs ?? 5000)
-      } catch {}
+      }
+      
+      const hz = (hint as any).highlight_zone || (hint as any).highlightZone || (hint as any).highlight
+      if (Array.isArray(hz)) highlightZone(hz, (hint as any).highlight_ms ?? (hint as any).highlightMs ?? 5000)
+      
+    } catch (err) {
+      console.error('Error polling for hints:', err)
     }
-    wsRef.current = ws
-  }, [sessionId])
+  }, [sessionId, connected])
+
+  // Start/stop polling when connected state changes
+  useEffect(() => {
+    if (connected) {
+      // Poll every 500ms for new hints
+      pollingIntervalRef.current = setInterval(pollForHints, 500)
+    } else {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+    }
+    
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+    }
+  }, [connected, pollForHints])
+
+  // Legacy WebSocket functions (now just manage connected state)
+  const connectWS = useCallback(() => {
+    setConnected(true)
+    lastHintTimestampRef.current = 0 // Reset to receive all new hints
+  }, [])
 
   const disconnectWS = useCallback(() => {
-    wsRef.current?.close(); wsRef.current = null
+    setConnected(false)
   }, [])
 
   // Submit score to leaderboard
