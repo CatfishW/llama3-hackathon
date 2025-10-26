@@ -1083,13 +1083,13 @@ export default function WebGame() {
     }
 
     setStatus('')
-  // Apply chosen game mode
-  setGameMode(selectedMode)
+    // Game mode should already be set before calling this function
+    // setGameMode(selectedMode) - removed to avoid double-setting
 
     // Connect WS ~ no immediate publish
     disconnectWS(); connectWS();
     // Removed immediate publish; periodic publisher will handle it
-  }, [boardCols, boardRows, germCount, connectWS, disconnectWS, selectedMode, tile])
+  }, [boardCols, boardRows, germCount, connectWS, disconnectWS, tile])
 
   
 
@@ -1109,16 +1109,17 @@ export default function WebGame() {
   const launchStartFlow = useCallback(() => {
     setPendingStart(false)
     if (!templates || templates.length === 0) {
-      const targetCols = (gameModeRef.current === 'lam') ? 10 : 33
-      const targetRows = (gameModeRef.current === 'lam') ? 10 : 21
+      // No templates - start with current gameMode
+      const targetCols = (gameMode === 'lam') ? 10 : 33
+      const targetRows = (gameMode === 'lam') ? 10 : 21
       doStartGame(targetCols, targetRows)
       return
     }
     setSelectedTemplateId(templateId || templates[0].id)
-    setSelectedMode('manual')
+    setSelectedMode(gameMode) // Initialize with current game mode
     setStartStep('mode')
     setTimeout(() => setShowTemplatePicker(true), 0)
-  }, [templates, templateId, doStartGame])
+  }, [templates, templateId, doStartGame, gameMode])
 
   const startGame = useCallback(() => {
     if (templatesLoading) {
@@ -1962,12 +1963,16 @@ export default function WebGame() {
                           onClick={()=>{
                             if (!selectedTemplateId) return
                             setTemplateId(selectedTemplateId)
-              // Reflect chosen mode immediately in UI and gating
-              setGameMode(selectedMode)
                             setShowTemplatePicker(false)
+                            
+                            // Apply mode first, then publish and start
+                            const chosenMode = selectedMode
+                            setGameMode(chosenMode)
+                            
                             publishSelectedTemplate(selectedTemplateId).finally(() => {
-                              const targetCols = (selectedMode === 'lam') ? 10 : 33
-                              const targetRows = (selectedMode === 'lam') ? 10 : 21
+                              const targetCols = (chosenMode === 'lam') ? 10 : 33
+                              const targetRows = (chosenMode === 'lam') ? 10 : 21
+                              // Pass mode explicitly to ensure it's used
                               doStartGame(targetCols, targetRows)
                             })
                           }}

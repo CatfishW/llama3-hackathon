@@ -108,6 +108,7 @@ export default function Leaderboard() {
 
   const tableStyle = {
     width: '100%',
+    minWidth: isMobile ? '900px' : '100%', // Ensure table has enough width for all columns
     borderCollapse: 'collapse' as const,
     color: 'white'
   }
@@ -119,14 +120,14 @@ export default function Leaderboard() {
     fontSize: isMobile ? '.85rem' : '1.1rem',
     fontWeight: '600',
     color: 'rgba(255, 255, 255, 0.9)',
-    whiteSpace: isMobile ? 'nowrap' : 'normal'
+    whiteSpace: 'nowrap' as const
   }
 
   const tdStyle = {
     padding: isMobile ? '10px 12px' : '15px 20px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
     fontSize: isMobile ? '.85rem' : '1rem',
-    whiteSpace: isMobile ? 'nowrap' : 'normal'
+    whiteSpace: 'nowrap' as const
   }
 
   const getRankIcon = (rank: number) => {
@@ -250,8 +251,10 @@ export default function Leaderboard() {
         </div>
       ) : (
         <div style={tableContainerStyle}>
-          {isMobile && items.length>0 && (
-            <div style={{ fontSize: '.7rem', opacity:.65, marginBottom:8, textAlign:'right' }}>Swipe horizontally ↔ to see all columns</div>
+          {(isMobile || window.innerWidth < 1200) && items.length > 0 && (
+            <div style={{ fontSize: '.75rem', opacity: .7, marginBottom: 10, textAlign: 'center', padding: '6px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+              💡 Scroll horizontally ↔ to see all columns
+            </div>
           )}
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, color:'rgba(255,255,255,0.85)'}}>
             <div>Total entries: <b>{total}</b></div>
@@ -267,35 +270,35 @@ export default function Leaderboard() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '80px', minWidth: '80px'}}>
                     <i className="fas fa-medal" style={{ marginRight: '8px' }}></i>
                     Rank
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '200px', minWidth: '180px'}}>
                     <i className="fas fa-user" style={{ marginRight: '8px' }}></i>
                     User
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '180px', minWidth: '150px'}}>
                     <i className="fas fa-file-code" style={{ marginRight: '8px' }}></i>
                     Template
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '120px', minWidth: '110px'}}>
                     <i className="fas fa-star" style={{ marginRight: '8px' }}></i>
                     New Score
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '120px', minWidth: '110px'}}>
                     <i className="fas fa-archive" style={{ marginRight: '8px', opacity: 0.5 }}></i>
                     <span style={{ opacity: 0.6 }}>Old Score</span>
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '140px', minWidth: '120px'}}>
                     <i className="fas fa-chart-line" style={{ marginRight: '8px' }}></i>
                     Metrics
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '140px', minWidth: '120px'}}>
                     <i className="fas fa-gamepad" style={{ marginRight: '8px' }}></i>
                     Session
                   </th>
-                  <th style={thStyle}>
+                  <th style={{...thStyle, width: '150px', minWidth: '140px'}}>
                     <i className="fas fa-clock" style={{ marginRight: '8px' }}></i>
                     Date
                   </th>
@@ -412,12 +415,22 @@ export default function Leaderboard() {
                       </code>
                     </td>
                     <td style={tdStyle}>
-                      <span style={{ opacity: '0.8' }}>
-                        {new Date(entry.created_at).toLocaleDateString()} {' '}
-                        <span style={{ fontSize: '0.9rem', opacity: '0.6' }}>
-                          {new Date(entry.created_at).toLocaleTimeString()}
-                        </span>
-                      </span>
+                      <div style={{ fontSize: isMobile ? '0.8rem' : '0.95rem', lineHeight: 1.3 }}>
+                        <div style={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
+                          {new Date(entry.created_at).toLocaleDateString('en-US', { 
+                            month: '2-digit', 
+                            day: '2-digit',
+                            year: 'numeric'
+                          }).replace(/\//g, '/')}
+                        </div>
+                        <div style={{ fontSize: '0.85em', opacity: 0.6, whiteSpace: 'nowrap' }}>
+                          {new Date(entry.created_at).toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            hour12: false
+                          })}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
