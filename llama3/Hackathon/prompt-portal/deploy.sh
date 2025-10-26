@@ -495,8 +495,48 @@ server {
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
+    # CRITICAL: WebSocket blocks MUST come BEFORE /api/ block!
+    # WebSocket support for MQTT hints (maze game, test pages)
+    location ~ ^/api/mqtt/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # WebSocket specific timeouts - very long for persistent connections
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+        
+        # Add CORS headers
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Upgrade, Connection" always;
+    }
+
+    # Legacy WebSocket support for user messages
+    location ~ ^/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # WebSocket timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
+
     # Proxy API requests to backend (DO NOT strip /api prefix!)
-    # This also handles WebSocket connections under /api/
+    # This handles all other /api/* requests (non-WebSocket)
     location /api/ {
         # Handle OPTIONS preflight requests
         if (\$request_method = 'OPTIONS') {
@@ -509,34 +549,22 @@ server {
             return 204;
         }
         
-        # WebSocket support (for /api/mqtt/ws/hints/... etc.)
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        
-        # Pass through to backend with /api prefix intact
+        # Pass through to backend with /api prefix intact (no rewrite!)
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # Timeouts for slow API operations
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
         
         # Add CORS headers
         add_header Access-Control-Allow-Origin * always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
-    }
-
-    # Legacy WebSocket support
-    location /ws/ {
-        proxy_pass http://127.0.0.1:$BACKEND_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
