@@ -7,9 +7,12 @@ type Entry = {
   rank: number
   user_email: string
   template_title: string
-  score: number
+  score: number  // Deprecated score (old system)
+  new_score?: number | null  // New comprehensive scoring system
   session_id: string
   created_at: string
+  total_steps?: number | null
+  collision_count?: number | null
 }
 
 export default function Leaderboard() {
@@ -278,7 +281,15 @@ export default function Leaderboard() {
                   </th>
                   <th style={thStyle}>
                     <i className="fas fa-star" style={{ marginRight: '8px' }}></i>
-                    Score
+                    New Score
+                  </th>
+                  <th style={thStyle}>
+                    <i className="fas fa-archive" style={{ marginRight: '8px', opacity: 0.5 }}></i>
+                    <span style={{ opacity: 0.6 }}>Old Score</span>
+                  </th>
+                  <th style={thStyle}>
+                    <i className="fas fa-chart-line" style={{ marginRight: '8px' }}></i>
+                    Metrics
                   </th>
                   <th style={thStyle}>
                     <i className="fas fa-gamepad" style={{ marginRight: '8px' }}></i>
@@ -344,13 +355,50 @@ export default function Leaderboard() {
                       </Link>
                     </td>
                     <td style={tdStyle}>
+                      {entry.new_score != null ? (
+                        <span style={{
+                          fontSize: '1.3rem',
+                          fontWeight: '700',
+                          color: '#4ade80',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          {entry.new_score}
+                          <span style={{ fontSize: '0.7rem', opacity: 0.7, fontWeight: 400 }}>NEW</span>
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.9rem', opacity: 0.5 }}>—</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
                       <span style={{
-                        fontSize: '1.2rem',
-                        fontWeight: '700',
-                        color: '#ffd93d'
+                        fontSize: '1rem',
+                        fontWeight: '500',
+                        color: '#fbbf24',
+                        opacity: 0.6
                       }}>
                         {entry.score}
                       </span>
+                      <div style={{ fontSize: '0.65rem', opacity: 0.4, marginTop: '2px' }}>
+                        (deprecated)
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      {entry.total_steps != null || entry.collision_count != null ? (
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                          {entry.total_steps != null && (
+                            <div>Steps: {entry.total_steps}</div>
+                          )}
+                          {entry.collision_count != null && (
+                            <div style={{ color: entry.collision_count > 0 ? '#f87171' : '#4ade80' }}>
+                              Collisions: {entry.collision_count}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.9rem', opacity: 0.3 }}>—</span>
+                      )}
                     </td>
                     <td style={tdStyle}>
                       <code style={{

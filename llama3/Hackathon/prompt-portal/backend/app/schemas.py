@@ -92,22 +92,41 @@ class TemplateOut(TemplateBase):
 class ScoreCreate(BaseModel):
     template_id: int
     session_id: str
-    score: float
+    score: float  # Deprecated score (old system)
+    new_score: float | None = None  # New comprehensive scoring system
     survival_time: float = 0
     oxygen_collected: int = 0
     germs: int = 0
     mode: str = "manual"
+    
+    # Comprehensive metrics for new scoring system
+    total_steps: int | None = None
+    optimal_steps: int | None = None
+    backtrack_count: int | None = None
+    collision_count: int | None = None
+    dead_end_entries: int | None = None
+    avg_latency_ms: float | None = None
 
 class ScoreOut(BaseModel):
     id: int
     user_id: int
     template_id: int
     session_id: str
-    score: float
+    score: float  # Deprecated score (old system)
+    new_score: float | None = None  # New comprehensive scoring system
     survival_time: float
     oxygen_collected: int
     germs: int
     mode: str
+    
+    # Comprehensive metrics
+    total_steps: int | None = None
+    optimal_steps: int | None = None
+    backtrack_count: int | None = None
+    collision_count: int | None = None
+    dead_end_entries: int | None = None
+    avg_latency_ms: float | None = None
+    
     created_at: datetime
     class Config:
         from_attributes = True
@@ -117,9 +136,14 @@ class LeaderboardEntry(BaseModel):
     user_email: str
     template_id: int
     template_title: str
-    score: float
+    score: float  # Deprecated score (old system)
+    new_score: float | None = None  # New comprehensive scoring system
     session_id: str
     created_at: datetime
+    
+    # Optionally include metrics for detailed view
+    total_steps: int | None = None
+    collision_count: int | None = None
 
 # MQTT Test
 class PublishStateIn(BaseModel):

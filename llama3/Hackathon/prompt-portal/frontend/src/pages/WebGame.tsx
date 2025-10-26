@@ -131,7 +131,19 @@ export default function WebGame() {
   emotion: 'neutral' as 'neutral'|'happy'|'scared'|'tired'|'excited',
   // New wall break FX
   wallBreakParts: [] as Array<{x:number;y:number;vx:number;vy:number;life:number;ttl:number}>,
-  cameraShake: 0
+  cameraShake: 0,
+  // Comprehensive metrics for new scoring system
+  metrics: {
+    totalSteps: 0,
+    optimalSteps: 0,
+    backtrackCount: 0,
+    collisionCount: 0,
+    deadEndEntries: 0,
+    actionLatencies: [] as number[],
+    visitedTiles: new Set<string>(),
+    lastPosition: { x: 1, y: 1 } as Vec2,
+    lastActionTime: 0
+  }
   })
 
   const width = boardCols * tile
@@ -841,32 +853,115 @@ export default function WebGame() {
     const s = stateRef.current
     if (!s.gameOver) return
     
-    // Scoring: reward faster finishes strongly. Time bonus decays with elapsed seconds.
+    // OLD SCORING SYSTEM (Deprecated)
     const computeFinalScore = (st: any, elapsedSec: number) => {
       const oxygenScore = (st.oxygenCollected || 0) * 100
       const winBonus = st.win ? 1000 : 0
-      const timeBonus = st.win ? Math.round(1500 / (1 + elapsedSec / 20)) : 0 // ~1500 at 0s, ~750 at 20s, ~500 at 40s
+      const timeBonus = st.win ? Math.round(1500 / (1 + elapsedSec / 20)) : 0
       const timePenalty = st.win ? 0 : Math.round(elapsedSec * 5)
       return Math.max(0, Math.round(oxygenScore + winBonus + timeBonus - timePenalty))
+    }
+    
+    // NEW COMPREHENSIVE SCORING SYSTEM based on metrics
+    const computeNewScore = (st: any, elapsedSec: number) => {
+      const m = st.metrics
+      
+      // Base score from completion
+      let score = st.win ? 5000 : 0
+      
+      // Success rate bonus (100% for win)
+      const successRate = st.win ? 1.0 : 0
+      score += successRate * 2000
+      
+      // Path Efficiency (PE = optimal_steps / total_steps)
+      // Good: ≥ 0.85
+      const pathEfficiency = m.optimalSteps > 0 && m.totalSteps > 0
+        ? Math.min(1.0, m.optimalSteps / m.totalSteps)
+        : 0
+      score += pathEfficiency * 1500
+      
+      // Backtrack Ratio (BR = backtrack_count / total_steps)
+      // Good: ≤ 10%
+      const backtrackRatio = m.totalSteps > 0 ? m.backtrackCount / m.totalSteps : 0
+      const backtrackPenalty = Math.min(1000, backtrackRatio * 5000)
+      score -= backtrackPenalty
+      
+      // Collision Rate (CR = collision_count / total_steps)
+      // Good: = 0
+      const collisionRate = m.totalSteps > 0 ? m.collisionCount / m.totalSteps : 0
+      const collisionPenalty = Math.min(1500, collisionRate * 6000)
+      score -= collisionPenalty
+      
+      // Latency per Step (L = average latency)
+      // Good: ≤ 400 ms
+      const avgLatency = m.actionLatencies.length > 0
+        ? m.actionLatencies.reduce((a: number, b: number) => a + b, 0) / m.actionLatencies.length
+        : 0
+      if (avgLatency <= 400) {
+        score += 1000 // Bonus for good latency
+      } else {
+        score -= Math.min(800, (avgLatency - 400) * 2)
+      }
+      
+      // Oxygen collection bonus
+      score += st.oxygenCollected * 150
+      
+      // Time-based deduction: -1 point per 10 seconds
+      const timeDeduction = Math.floor(elapsedSec / 10)
+      score -= timeDeduction
+      
+      // Fast completion bonus (reward finishing quickly)
+      if (st.win && elapsedSec < 60) {
+        const speedBonus = Math.round(1000 * (1 - elapsedSec / 60))
+        score += speedBonus
+      }
+      
+      // Mode multiplier
+      if (gameMode === 'lam') {
+        score *= 1.5 // LAM mode bonus
+      }
+      
+      // Germ difficulty multiplier
+      const germFactor = Math.min(1.3, 1.0 + st.germs.length / 30)
+      score *= germFactor
+      
+      return Math.max(0, Math.round(score))
     }
 
     try {
   const elapsed = s.endTime ? (s.endTime - s.startTime) / 1000 : (performance.now() - s.startTime) / 1000
-  // Use frozen finalScore if available, else compute with time-weighted bonus
+  
+  // Use frozen finalScore if available, else compute with time-weighted bonus (old system)
       const finalScore = s.finalScore != null ? s.finalScore : computeFinalScore(s, elapsed)
+      
+      // Compute new score
+      const newScore = computeNewScore(s, elapsed)
+      
+      // Calculate avg latency
+      const avgLatency = s.metrics.actionLatencies.length > 0
+        ? s.metrics.actionLatencies.reduce((a: number, b: number) => a + b, 0) / s.metrics.actionLatencies.length
+        : 0
       
       await leaderboardAPI.submitScore({
         template_id: templateId,
         session_id: sessionId,
-        score: finalScore,
+        score: finalScore, // Old deprecated score
+        new_score: newScore, // New comprehensive score
         survival_time: elapsed,
         oxygen_collected: s.oxygenCollected,
         germs: s.germs.length,
-        mode: gameMode
+        mode: gameMode,
+        // Metrics for new scoring system
+        total_steps: s.metrics.totalSteps,
+        optimal_steps: s.metrics.optimalSteps,
+        backtrack_count: s.metrics.backtrackCount,
+        collision_count: s.metrics.collisionCount,
+        dead_end_entries: s.metrics.deadEndEntries,
+        avg_latency_ms: avgLatency
       })
       
       setScoreSubmitted(true)
-  setStatus(`Score ${finalScore} submitted to leaderboard!`)
+  setStatus(`Score ${newScore} (new) / ${finalScore} (old) submitted!`)
       
       // Clear status after 3 seconds
       setTimeout(() => setStatus(''), 3000)
@@ -875,7 +970,7 @@ export default function WebGame() {
       setStatus('Failed to submit score to leaderboard')
       setTimeout(() => setStatus(''), 3000)
     }
-  }, [user, templateId, sessionId, germCount, scoreSubmitted])
+  }, [user, templateId, sessionId, germCount, scoreSubmitted, gameMode])
 
   // Watch for game over to submit score
   useEffect(() => {
@@ -972,7 +1067,19 @@ export default function WebGame() {
       germStepFlip: false,
   emotion: 'neutral',
   wallBreakParts: [],
-  cameraShake: 0
+  cameraShake: 0,
+  // Initialize metrics for new scoring system
+  metrics: {
+    totalSteps: 0,
+    optimalSteps: bfsPath(grid as any, start, exit)?.length || 0,
+    backtrackCount: 0,
+    collisionCount: 0,
+    deadEndEntries: 0,
+    actionLatencies: [],
+    visitedTiles: new Set<string>([key(start.x, start.y)]),
+    lastPosition: { ...start },
+    lastActionTime: performance.now()
+  }
     }
 
     setStatus('')
@@ -1153,9 +1260,38 @@ export default function WebGame() {
       // Player move (grid step)
       const tryMove = (dx: number, dy: number) => {
         for (let i=0;i<moves;i++){
+          const oldX = s.player.x, oldY = s.player.y
           const nx = clamp(s.player.x + dx, 0, boardCols-1)
           const ny = clamp(s.player.y + dy, 0, boardRows-1)
-          if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; publishState() }
+          
+          // Track collision attempts
+          if (s.grid[ny][nx] !== 0) {
+            s.metrics.collisionCount++
+          }
+          
+          if (s.grid[ny][nx] === 0) { 
+            s.player.x = nx; s.player.y = ny
+            
+            // Track metrics
+            s.metrics.totalSteps++
+            const tileKey = key(nx, ny)
+            
+            // Check for backtracking (revisiting a tile)
+            if (s.metrics.visitedTiles.has(tileKey)) {
+              s.metrics.backtrackCount++
+            } else {
+              s.metrics.visitedTiles.add(tileKey)
+            }
+            
+            // Track action latency
+            const latency = now - s.metrics.lastActionTime
+            s.metrics.actionLatencies.push(latency)
+            s.metrics.lastActionTime = now
+            
+            s.metrics.lastPosition = { x: oldX, y: oldY }
+            
+            publishState()
+          }
         }
       }
 

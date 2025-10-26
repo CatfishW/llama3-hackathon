@@ -84,11 +84,21 @@ class Score(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
     template_id: Mapped[int] = mapped_column(Integer, ForeignKey("prompt_templates.id"), index=True)
     session_id: Mapped[str] = mapped_column(String(128), index=True)
-    score: Mapped[float] = mapped_column(Float, default=0.0)
+    score: Mapped[float] = mapped_column(Float, default=0.0)  # Deprecated score (old system)
+    new_score: Mapped[float] = mapped_column(Float, nullable=True)  # New comprehensive scoring system
     survival_time: Mapped[float] = mapped_column(Float, default=0.0)
     oxygen_collected: Mapped[int] = mapped_column(Integer, default=0)
     germs: Mapped[int] = mapped_column(Integer, default=0)
     mode: Mapped[str] = mapped_column(String(10), default="manual")
+    
+    # Comprehensive metrics for new scoring system
+    total_steps: Mapped[int] = mapped_column(Integer, nullable=True)
+    optimal_steps: Mapped[int] = mapped_column(Integer, nullable=True)
+    backtrack_count: Mapped[int] = mapped_column(Integer, nullable=True)
+    collision_count: Mapped[int] = mapped_column(Integer, nullable=True)
+    dead_end_entries: Mapped[int] = mapped_column(Integer, nullable=True)
+    avg_latency_ms: Mapped[float] = mapped_column(Float, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="scores")

@@ -17,11 +17,19 @@ def submit_score(payload: schemas.ScoreCreate, db: Session = Depends(get_db), us
         user_id=user.id,
         template_id=payload.template_id,
         session_id=payload.session_id,
-        score=payload.score,
+        score=payload.score,  # Deprecated score (old system)
+        new_score=payload.new_score,  # New comprehensive scoring system
         survival_time=payload.survival_time,
         oxygen_collected=payload.oxygen_collected,
-    germs=payload.germs,
-    mode=payload.mode if payload.mode in ("lam","manual") else "manual",
+        germs=payload.germs,
+        mode=payload.mode if payload.mode in ("lam","manual") else "manual",
+        # Comprehensive metrics
+        total_steps=payload.total_steps,
+        optimal_steps=payload.optimal_steps,
+        backtrack_count=payload.backtrack_count,
+        collision_count=payload.collision_count,
+        dead_end_entries=payload.dead_end_entries,
+        avg_latency_ms=payload.avg_latency_ms,
     )
     db.add(s); db.commit(); db.refresh(s)
     return s
@@ -41,9 +49,12 @@ def top_scores(limit: int = 20, skip: int = 0, mode: str | None = Query(default=
     )
     if mode in ("lam","manual"):
         q = q.filter(models.Score.mode == mode)
+    
+    # Sort by new_score if available, otherwise fall back to old score
+    # NULL new_score values will be treated as lowest priority
     q = (
         q
-        .order_by(models.Score.score.desc(), models.Score.created_at.asc())
+        .order_by(models.Score.new_score.desc().nullslast(), models.Score.score.desc(), models.Score.created_at.asc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -56,9 +67,12 @@ def top_scores(limit: int = 20, skip: int = 0, mode: str | None = Query(default=
                 user_email=email,
                 template_id=template_id,
                 template_title=title,
-                score=score.score,
+                score=score.score,  # Deprecated score
+                new_score=score.new_score,  # New comprehensive score
                 session_id=score.session_id,
                 created_at=score.created_at,
+                total_steps=score.total_steps,
+                collision_count=score.collision_count,
             )
         )
 
