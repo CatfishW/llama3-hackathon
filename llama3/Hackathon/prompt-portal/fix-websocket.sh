@@ -172,14 +172,11 @@ server {
     listen [::]:443 ssl http2;
     server_name $DOMAIN_NAME;
 
-    # SSL certificate paths (update these if different)
+    # SSL certificate paths (Certbot managed)
     ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
-    
-    # SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     # Serve frontend static files
     location / {
@@ -194,7 +191,8 @@ server {
         }
     }
 
-    # WebSocket support for MQTT hints (MUST come before /api/ block!)
+    # CRITICAL: WebSocket blocks MUST come BEFORE /api/ block!
+    # WebSocket support for MQTT hints (maze game, test pages)
     location ~ ^/api/mqtt/ws/ {
         proxy_pass http://127.0.0.1:${BACKEND_PORT};
         proxy_http_version 1.1;
@@ -205,10 +203,13 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         
-        # WebSocket specific timeouts
+        # WebSocket specific timeouts - very long for persistent connections
         proxy_connect_timeout 60s;
         proxy_send_timeout 3600s;
         proxy_read_timeout 3600s;
+        
+        # Disable buffering for WebSocket
+        proxy_buffering off;
         
         # Add CORS headers
         add_header Access-Control-Allow-Origin * always;
@@ -231,9 +232,12 @@ server {
         proxy_connect_timeout 60s;
         proxy_send_timeout 3600s;
         proxy_read_timeout 3600s;
+        
+        # Disable buffering for WebSocket
+        proxy_buffering off;
     }
 
-    # Proxy API requests to backend
+    # Proxy API requests to backend (non-WebSocket)
     location /api/ {
         # Handle OPTIONS preflight requests
         if (\$request_method = 'OPTIONS') {
