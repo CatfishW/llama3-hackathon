@@ -1,0 +1,30 @@
+{
+  "name": "owogpt-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 5174"
+  },
+  "dependencies": {
+    "@chakra-ui/icons": "2.1.1",
+    "@chakra-ui/react": "2.8.2",
+    "@emotion/react": "11.13.3",
+    "@emotion/styled": "11.13.0",
+    "axios": "1.7.7",
+    "framer-motion": "11.5.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.1",
+    "@types/react": "18.3.5",
+    "@types/react-dom": "18.3.0",
+    "typescript": "5.6.2",
+    "vite": "5.4.1"
+  }
+}
+
+

@@ -1,0 +1,43 @@
+from pydantic_settings import BaseSettings
+from typing import List
+
+
+class Settings(BaseSettings):
+    # Core
+    SECRET_KEY: str = "change_me"
+    ALGORITHM: str = "HS256"
+    DATABASE_URL: str = "sqlite:///./app.db"
+    CORS_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
+
+    # Provider selection
+    LLM_PROVIDER: str = "mqtt"  # mqtt | openai | ollama
+
+    # MQTT
+    MQTT_BROKER_HOST: str = "47.89.252.2"
+    MQTT_BROKER_PORT: int = 1883
+    MQTT_CLIENT_ID: str = "owogpt_backend"
+    MQTT_USERNAME: str | None = "TangClinic"
+    MQTT_PASSWORD: str | None = "Tang123"
+    MQTT_TOPIC_USER_INPUT: str = "prompt_portal/user_input"
+    MQTT_TOPIC_ASSISTANT_RESPONSE: str = "prompt_portal/assistant_response"
+    MQTT_TOPIC_TEMPLATE: str = "prompt_portal/template"
+
+    # OpenAI
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # Ollama
+    OLLAMA_HOST: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "llama3"
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
+ALLOWED_ORIGINS: List[str] = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+
+
