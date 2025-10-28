@@ -2,11 +2,19 @@
  * MQTT-based TAB Completion Client
  * 
  * This client provides intelligent TAB completion for all input fields
- * using the local LLM via MQTT. It integrates with completion_service.py
+ * using the local LLM via MQTT. It integrates with llamacpp_mqtt_deploy.py
  * to provide real-time completion suggestions.
  */
 
 import mqtt, { MqttClient } from 'mqtt'
+
+// Handle browser compatibility
+if (typeof window !== 'undefined') {
+  // Browser environment - ensure MQTT is available
+  if (!mqtt) {
+    console.error('MQTT client not available. Please ensure mqtt package is installed.')
+  }
+}
 
 export interface CompletionRequest {
   text: string
