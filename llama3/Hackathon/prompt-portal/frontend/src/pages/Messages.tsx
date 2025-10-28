@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api'
+import { TabCompletionInput } from '../completion/TabCompletionInput'
 
 type Message = {
   id: number
@@ -108,7 +109,13 @@ export default function Messages() {
     wsRef.current?.close()
 
     const base = (import.meta as any).env?.VITE_WS_BASE || 'ws://localhost:8000'
-    const ws = new WebSocket(`${base}/api/messages/ws/${withUserId}`)
+    const token = localStorage.getItem('token')
+    if (!token) {
+      console.error('No authentication token found')
+      return
+    }
+    
+    const ws = new WebSocket(`${base}/api/messages/ws/${withUserId}?token=${encodeURIComponent(token)}`)
 
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data)
@@ -515,12 +522,13 @@ export default function Messages() {
               }}
             >
               <div style={{ display: 'flex', gap: '15px' }}>
-                <input
+                <TabCompletionInput
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                   placeholder="Type a message..."
+                  completionType="message"
                   style={{
                     flex: 1,
                     padding: '12px 16px',

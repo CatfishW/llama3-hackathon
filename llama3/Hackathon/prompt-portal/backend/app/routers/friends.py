@@ -29,7 +29,30 @@ def search_users(
         )
     ).limit(20).all()
     
-    return users
+    # Check for pending requests and add the field
+    result = []
+    for user in users:
+        # Check if there's a pending request from current user to this user
+        pending_request = db.query(Friendship).filter(
+            and_(
+                Friendship.requester_id == current_user.id,
+                Friendship.requested_id == user.id,
+                Friendship.status == FriendshipStatus.PENDING
+            )
+        ).first()
+        
+        user_dict = {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "profile_picture": user.profile_picture,
+            "level": user.level,
+            "is_online": user.is_online,
+            "has_pending_request": pending_request is not None
+        }
+        result.append(user_dict)
+    
+    return result
 
 @router.get("/", response_model=List[FriendshipOut])
 @router.get("", response_model=List[FriendshipOut])

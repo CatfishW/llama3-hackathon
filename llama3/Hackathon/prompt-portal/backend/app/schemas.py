@@ -59,6 +59,7 @@ class UserSearch(BaseModel):
     profile_picture: Optional[str] = None
     level: int = 1
     is_online: bool = False
+    has_pending_request: bool = False
     class Config:
         from_attributes = True
 

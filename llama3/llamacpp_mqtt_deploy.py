@@ -145,6 +145,10 @@ Provide thoughtful, helpful responses that demonstrate how the prompt template a
 Be clear, concise, and adapt to the style and tone specified in the user's prompt template.
 If the prompt asks you to respond in a specific format (JSON, etc.), follow that format exactly.""",
     
+    "completion_service": """You are a helpful completion assistant. Complete the following text in a natural, helpful way. 
+Provide only the completion text, not the original text. Keep it concise and relevant.
+Be contextually appropriate for the type of content being completed.""",
+    
     "general": """You are a helpful AI assistant. Provide clear, concise, and accurate responses."""
 }
 

@@ -21,6 +21,7 @@ import PrivateRoute from './components/PrivateRoute'
 import AnnouncementPopup from './components/AnnouncementPopup'
 import { useAuth } from './auth/AuthContext'
 import { TemplateProvider } from './contexts/TemplateContext'
+import { CompletionProvider } from './completion/CompletionProvider'
 import WebGame from './pages/WebGame'
 import ChatStudio from './pages/ChatStudio'
 import { announcementsAPI } from './api'
@@ -83,15 +84,16 @@ export default function App() {
   return (
     <div style={appStyle}>
       <TemplateProvider>
-        {/* Show announcements for logged-in users */}
-        {user && announcements.length > 0 && (
-          <AnnouncementPopup 
-            announcements={announcements}
-            onDismiss={handleDismissAnnouncement}
-          />
-        )}
-        
-        <Routes>
+        <CompletionProvider>
+          {/* Show announcements for logged-in users */}
+          {user && announcements.length > 0 && (
+            <AnnouncementPopup 
+              announcements={announcements}
+              onDismiss={handleDismissAnnouncement}
+            />
+          )}
+          
+          <Routes>
           <Route path="/" element={
             <div style={{ flex: 1 }}>
               <Homepage />
@@ -240,6 +242,7 @@ export default function App() {
           } />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        </CompletionProvider>
       </TemplateProvider>
     </div>
   )

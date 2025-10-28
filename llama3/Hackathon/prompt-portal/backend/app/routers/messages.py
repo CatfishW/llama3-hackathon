@@ -8,6 +8,7 @@ from ..database import get_db
 from ..models import User, Message, Friendship, FriendshipStatus
 from ..schemas import MessageCreate, MessageOut, ConversationOut, UserSearch
 from ..deps import get_current_user
+from ..websocket import manager
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -150,6 +151,34 @@ def send_message(
     db.add(message)
     db.commit()
     db.refresh(message)
+    
+    # Send WebSocket notification to recipient if online
+    import json
+    notification = {
+        "type": "new_message",
+        "message": {
+            "id": message.id,
+            "sender_id": message.sender_id,
+            "recipient_id": message.recipient_id,
+            "content": message.content,
+            "message_type": message.message_type,
+            "is_read": message.is_read,
+            "created_at": message.created_at.isoformat()
+        }
+    }
+    
+    # Send notification via WebSocket manager
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If we're in an async context, schedule the coroutine
+            asyncio.create_task(manager.send_personal_message(json.dumps(notification), message.recipient_id))
+        else:
+            # If we're not in an async context, run it
+            loop.run_until_complete(manager.send_personal_message(json.dumps(notification), message.recipient_id))
+    except Exception as e:
+        print(f"Failed to send WebSocket notification: {e}")
     
     return message
 
