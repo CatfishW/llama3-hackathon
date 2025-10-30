@@ -147,6 +147,12 @@ export const drivingStatsAPI = {
     const res = await api.get('/api/driving/stats')
     console.log('[DRIVING API] Stats:', res.data)
     return res.data as { participants: number; registered_users: number; total_scores: number }
+  },
+  getSessionHistory: async (sessionId: string) => {
+    const url = `/api/driving/session-history/${encodeURIComponent(sessionId)}`
+    console.log('[DRIVING API] GET', url)
+    const res = await api.get(url)
+    return res.data as { session_id: string; messages: Array<{ role: string; content: string }> }
   }
 }
 
@@ -290,6 +296,7 @@ export const llmAPI = {
   
   // Session management
   getSessionHistory: (sessionId: string) => api.get(`/api/llm/chat/session/${sessionId}/history`),
+  getSessionHistoryPost: (sessionId: string) => api.post('/api/llm/chat/session/history', { session_id: sessionId }),
   clearSession: (sessionId: string) => api.delete(`/api/llm/chat/session/${sessionId}`),
   healthCheck: () => api.get('/api/llm/health')
 }

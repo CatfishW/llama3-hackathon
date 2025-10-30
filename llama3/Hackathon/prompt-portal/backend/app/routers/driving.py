@@ -2,12 +2,14 @@
 Driving Game Router - Completely separate from leaderboard
 """
 from fastapi import APIRouter, Depends, HTTPException, Response, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
 from ..database import get_db
 from ..deps import get_current_user
 from .. import models, schemas
+from ..services.llm_client import get_session_manager
 
 router = APIRouter(prefix="/api/driving", tags=["driving"])
 
@@ -147,3 +149,39 @@ def get_driving_stats(db: Session = Depends(get_db)):
         "total_scores": int(total_scores)
     }
 
+
+@router.get("/session-history/{session_id}")
+def get_session_history(session_id: str):
+    """Public read of LLM session history used by Driving leaderboard.
+
+    Authentication is not enforced here because the driving leaderboard is public
+    and session ids are random per-play identifiers.
+    """
+    try:
+        mgr = get_session_manager()
+        history = mgr.get_session_history(session_id)
+        if history is None:
+            # Return empty list rather than 404 to simplify clients
+            return {"session_id": session_id, "messages": []}
+        # Normalize shape similar to /api/llm response
+        return {"session_id": session_id, "messages": history}
+    except Exception:
+        # Avoid leaking internal errors
+        return {"session_id": session_id, "messages": []}
+
+
+class DrivingSessionHistoryIn(BaseModel):
+    session_id: str
+
+
+@router.post("/session-history")
+def post_session_history(payload: DrivingSessionHistoryIn):
+    """POST variant to avoid proxies returning 405 on dynamic GET paths."""
+    try:
+        mgr = get_session_manager()
+        history = mgr.get_session_history(payload.session_id)
+        if history is None:
+            return {"session_id": payload.session_id, "messages": []}
+        return {"session_id": payload.session_id, "messages": history}
+    except Exception:
+        return {"session_id": payload.session_id, "messages": []}

@@ -1,12 +1,13 @@
 // Driving Stats - Completely separate from maze leaderboard
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { drivingStatsAPI } from '../api'
+import { drivingStatsAPI, templatesAPI, llmAPI, api } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 type Entry = {
   rank: number
   user_email: string
+  template_id: number
   template_title: string
   score: number
   message_count: number
@@ -26,6 +27,39 @@ export default function DrivingStats() {
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const isMobile = useIsMobile()
+  // Template preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewTpl, setPreviewTpl] = useState<any | null>(null)
+  // Message history modal state
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historySessionId, setHistorySessionId] = useState<string | null>(null)
+  const [historyMessages, setHistoryMessages] = useState<Array<{ role: string; content: string }>>([])
+  
+  // Close modals with Escape key
+  useEffect(() => {
+    if (!showPreview && !showHistory) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showPreview) {
+          setShowPreview(false)
+          setPreviewTpl(null)
+          setPreviewError(null)
+        }
+        if (showHistory) {
+          setShowHistory(false)
+          setHistoryMessages([])
+          setHistoryError(null)
+          setHistorySessionId(null)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showPreview, showHistory])
   
   // Theme state
   const [theme, setTheme] = useState<'default' | 'orange'>(() => {
@@ -158,6 +192,82 @@ export default function DrivingStats() {
     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
     boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
     marginTop: '20px'
+  }
+
+  async function openPreview(templateId: number) {
+    try {
+      setPreviewError(null)
+      setPreviewLoading(true)
+      setShowPreview(true)
+      const res = await templatesAPI.getTemplatePublic(templateId)
+      setPreviewTpl(res.data)
+    } catch (e: any) {
+      setPreviewError(e?.response?.data?.detail || 'Failed to load template')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  function copyTemplate() {
+    if (!previewTpl) return
+    try {
+      navigator.clipboard.writeText(previewTpl.content)
+    } catch {}
+  }
+
+  function downloadTemplate() {
+    if (!previewTpl) return
+    const blob = new Blob([previewTpl.content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const safeTitle = (previewTpl.title || 'template').replace(/[^a-z0-9\-\_\.]+/gi, '_')
+    a.download = `${safeTitle}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  async function openHistory(sessionId: string) {
+    try {
+      setHistoryError(null)
+      setHistoryLoading(true)
+      setShowHistory(true)
+      setHistorySessionId(sessionId)
+      // First try primary LLM endpoint (POST preferred to avoid proxies blocking GET)
+      try {
+        const resPost = await llmAPI.getSessionHistoryPost(sessionId)
+        setHistoryMessages(resPost.data.messages || [])
+        return
+      } catch (e: any) {
+        // Fall through to other attempts
+      }
+      // Try GET variant
+      try {
+        const res = await llmAPI.getSessionHistory(sessionId)
+        setHistoryMessages(res.data.messages || [])
+        return
+      } catch (e: any) {
+        // Fallback to driving API (POST), then GET
+        try {
+          const res2 = await drivingStatsAPI.getSessionHistory(sessionId)
+          setHistoryMessages(res2.messages || [])
+        } catch (e2: any) {
+          // As final fallback, try GET variant if server only supports that
+          try {
+            const res3 = await api.get(`/api/driving/session-history/${encodeURIComponent(sessionId)}`)
+            setHistoryMessages(res3.data.messages || [])
+          } catch (e3: any) {
+            throw e3
+          }
+        }
+      }
+    } catch (e: any) {
+      setHistoryError(e?.response?.data?.detail || 'Failed to load session history')
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   const formatDuration = (seconds: number) => {
@@ -305,6 +415,7 @@ export default function DrivingStats() {
                 <th style={thStyle}><i className="fas fa-comment" style={{ marginRight: '8px' }}></i>Messages</th>
                 <th style={thStyle}><i className="fas fa-clock" style={{ marginRight: '8px' }}></i>Duration</th>
                 <th style={thStyle}><i className="fas fa-calendar" style={{ marginRight: '8px' }}></i>Date</th>
+                <th style={thStyle}><i className="fas fa-comments" style={{ marginRight: '8px' }}></i>History</th>
               </tr>
             </thead>
             <tbody>
@@ -370,15 +481,22 @@ export default function DrivingStats() {
                         </div>
                       </td>
                       <td style={tdStyle}>
-                        <span style={{
-                          background: 'rgba(78, 205, 196, 0.2)',
-                          padding: '4px 12px',
-                          borderRadius: '15px',
-                          fontSize: isMobile ? '.75rem' : '.85rem',
-                          border: '1px solid rgba(78, 205, 196, 0.4)'
-                        }}>
+                        <button
+                          onClick={() => openPreview(item.template_id)}
+                          style={{
+                            background: 'rgba(78, 205, 196, 0.18)',
+                            padding: '6px 12px',
+                            borderRadius: 16,
+                            fontSize: isMobile ? '.78rem' : '.9rem',
+                            border: '1px solid rgba(78,205,196,0.45)',
+                            color: 'white',
+                            cursor: 'pointer'
+                          }}
+                          title="View template"
+                        >
+                          <i className="fas fa-eye" style={{ marginRight: 8 }}></i>
                           {item.template_title}
-                        </span>
+                        </button>
                       </td>
                       <td style={{ ...tdStyle, fontWeight: '700', color: '#4ecdc4', fontSize: isMobile ? '1rem' : '1.1rem' }}>
                         {Math.round(item.score)}
@@ -407,6 +525,16 @@ export default function DrivingStats() {
                       </td>
                       <td style={{ ...tdStyle, fontSize: isMobile ? '.75rem' : '.85rem', opacity: 0.8 }}>
                         {new Date(item.created_at).toLocaleDateString()}
+                      </td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => openHistory(item.session_id)}
+                          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 10px', borderRadius: 10, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer' }}
+                          title="View message history"
+                        >
+                          <i className="fas fa-comments" style={{ marginRight: 6 }}></i>
+                          View
+                        </button>
                       </td>
                     </tr>
                   )
@@ -446,6 +574,118 @@ export default function DrivingStats() {
           </div>
         )}
       </div>
+      {/* Template Preview Modal */}
+      {showPreview && (
+        <div 
+          role="dialog" 
+          aria-modal="true"
+          onClick={() => { setShowPreview(false); setPreviewTpl(null); setPreviewError(null); }}
+          style={{ position: 'fixed', inset: 0 as any, background: 'rgba(0,0,0,0.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px, 94vw)', maxHeight: '85vh', overflow: 'auto', background: 'linear-gradient(165deg, rgba(20,26,38,0.96), rgba(33,18,48,0.93))', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 16, boxShadow: '0 20px 70px rgba(0,0,0,0.6)', padding: 16 }}>
+            <div style={{ position: 'sticky', top: -16, margin: -16, marginBottom: 12, padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, background: 'linear-gradient(165deg, rgba(20,26,38,0.98), rgba(33,18,48,0.96))', borderBottom: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(6px)', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <i className="fas fa-file-code" />
+                  <strong>{previewTpl?.title || 'Template Preview'}</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={copyTemplate} disabled={!previewTpl} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '6px 12px', borderRadius: 8, cursor: previewTpl ? 'pointer' : 'not-allowed', fontSize: 12 }}>
+                    <i className="fas fa-copy" style={{ marginRight: 6 }} /> Copy
+                  </button>
+                  <button onClick={downloadTemplate} disabled={!previewTpl} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '6px 12px', borderRadius: 8, cursor: previewTpl ? 'pointer' : 'not-allowed', fontSize: 12 }}>
+                    <i className="fas fa-download" style={{ marginRight: 6 }} /> Download
+                  </button>
+                  <button onClick={() => { setShowPreview(false); setPreviewTpl(null); setPreviewError(null); }} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+            {previewLoading && (
+              <div style={{ textAlign: 'center', padding: 30 }}>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: 8 }} /> Loading template...
+              </div>
+            )}
+            {previewError && (
+              <div style={{ background: 'rgba(255, 107, 107, 0.18)', border: '1px solid rgba(255, 107, 107, 0.45)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                {previewError}
+              </div>
+            )}
+            {previewTpl && (
+              <div>
+                {previewTpl.description && (
+                  <p style={{ opacity: .9 }}>{previewTpl.description}</p>
+                )}
+                <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: 14, fontFamily: 'Monaco, Consolas, monospace', fontSize: '.95rem', lineHeight: 1.5 }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'rgba(255,255,255,0.95)' }}>{previewTpl.content}</pre>
+                </div>
+                <div style={{ opacity: .7, marginTop: 8, fontSize: 12 }}>
+                  Version {previewTpl.version} • Updated {new Date(previewTpl.updated_at).toLocaleString()}
+                </div>
+                <div style={{ position: 'sticky', bottom: -16, background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(20,26,38,0.9))', marginLeft: -16, marginRight: -16, marginBottom: -16, padding: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setShowPreview(false); setPreviewTpl(null); setPreviewError(null); }} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 12 }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showHistory && (
+        <div 
+          role="dialog" 
+          aria-modal="true"
+          onClick={() => { setShowHistory(false); setHistoryMessages([]); setHistoryError(null); setHistorySessionId(null); }}
+          style={{ position: 'fixed', inset: 0 as any, background: 'rgba(0,0,0,0.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px, 94vw)', maxHeight: '85vh', overflow: 'auto', background: 'linear-gradient(165deg, rgba(20,26,38,0.96), rgba(33,18,48,0.93))', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 16, boxShadow: '0 20px 70px rgba(0,0,0,0.6)', padding: 16 }}>
+            <div style={{ position: 'sticky', top: -16, margin: -16, marginBottom: 12, padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, background: 'linear-gradient(165deg, rgba(20,26,38,0.98), rgba(33,18,48,0.96))', borderBottom: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(6px)', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <i className="fas fa-comments" />
+                  <strong>Session Messages</strong>
+                  {historySessionId && (
+                    <span style={{ opacity: .7, fontSize: 12 }}>#{historySessionId}</span>
+                  )}
+                </div>
+                <div>
+                  <button onClick={() => { setShowHistory(false); setHistoryMessages([]); setHistoryError(null); setHistorySessionId(null); }} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+            {historyLoading && (
+              <div style={{ textAlign: 'center', padding: 30 }}>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: 8 }} /> Loading messages...
+              </div>
+            )}
+            {historyError && (
+              <div style={{ background: 'rgba(255, 107, 107, 0.18)', border: '1px solid rgba(255, 107, 107, 0.45)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                {historyError}
+              </div>
+            )}
+            {historyMessages.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {historyMessages.map((m, i) => (
+                  <div key={i} style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 12, opacity: .75, marginBottom: 6 }}>
+                      {m.role === 'user' ? 'Player' : m.role === 'assistant' ? 'Agent' : m.role}
+                    </div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.content}</div>
+                  </div>
+                ))}
+                <div style={{ position: 'sticky', bottom: -16, background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(20,26,38,0.9))', marginLeft: -16, marginRight: -16, marginBottom: -16, padding: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setShowHistory(false); setHistoryMessages([]); setHistoryError(null); setHistorySessionId(null); }} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 12 }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

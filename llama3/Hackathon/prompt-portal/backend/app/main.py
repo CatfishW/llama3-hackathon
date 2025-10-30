@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ALLOWED_ORIGINS
 from .database import Base, engine
 from . import models
-from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings, users, chatbot, announcements, driving
+from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings, users, chatbot, announcements, driving, llm
 from .mqtt import start_mqtt, stop_mqtt
 from .websocket import websocket_endpoint
 import os
@@ -42,6 +42,7 @@ app.include_router(messages.router)
 app.include_router(settings.router)
 app.include_router(chatbot.router)
 app.include_router(announcements.router)
+app.include_router(llm.router)
 
 # WebSocket endpoint
 @app.websocket("/ws/{token}")
