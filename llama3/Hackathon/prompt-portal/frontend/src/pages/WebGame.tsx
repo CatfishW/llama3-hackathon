@@ -820,7 +820,7 @@ export default function WebGame() {
   useEffect(() => {
     if (connected) {
       // Poll every 500ms for new hints
-      pollingIntervalRef.current = setInterval(pollForHints, 500)
+      pollingIntervalRef.current = setInterval(pollForHints, 500) as any
     } else {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)

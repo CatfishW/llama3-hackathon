@@ -58,7 +58,7 @@ export default function TestMQTT() {
   // Start/stop polling when connected changes
   useEffect(() => {
     if (connected) {
-      pollingIntervalRef.current = setInterval(pollForHints, 500)
+      pollingIntervalRef.current = setInterval(pollForHints, 500) as any
     } else {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)

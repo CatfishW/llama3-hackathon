@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000'
+// Use relative URLs - no absolute domain
+const API_BASE = (import.meta as any).env.VITE_API_BASE || ''
 
 export const api = axios.create({
   baseURL: API_BASE
@@ -93,19 +94,59 @@ export const settingsAPI = {
   exportData: () => api.get('/api/settings/export')
 }
 
-// Leaderboard API
+// Leaderboard API (Maze Game only - LAM/Manual modes)
 export const leaderboardAPI = {
   submitScore: (data: any) => api.post('/api/leaderboard/submit', data),
   getLeaderboard: async (limit: number = 20, skip: number = 0, mode?: 'lam'|'manual') => {
     const q = new URLSearchParams({ limit: String(limit), skip: String(skip) })
     if (mode) q.set('mode', mode)
-    const res = await api.get(`/api/leaderboard/?${q.toString()}`)
+    const url = `/api/leaderboard/?${q.toString()}`
+    console.log('[MAZE LEADERBOARD API] Calling:', url)
+    const res = await api.get(url)
     const total = Number(res.headers['x-total-count'] ?? '0')
+    console.log('[MAZE LEADERBOARD API] Response total:', total, 'entries:', res.data.length)
     return { data: res.data, total }
   },
   getStats: async () => {
     const res = await api.get('/api/leaderboard/stats')
     return res.data as { participants: number; registered_users: number }
+  }
+}
+
+// Driving Stats API (Completely separate system with own endpoints)
+export const drivingStatsAPI = {
+  submitScore: (data: {
+    template_id: number
+    session_id: string
+    score: number
+    message_count: number
+    duration_seconds: number
+    player_option: string
+    agent_option: string
+  }) => {
+    console.log('[DRIVING API] Submitting score to /api/driving/submit:', data)
+    return api.post('/api/driving/submit', data)
+  },
+  getLeaderboard: async (limit: number = 50, skip: number = 0) => {
+    const q = new URLSearchParams({ 
+      limit: String(limit), 
+      skip: String(skip)
+    })
+    const url = `/api/driving/leaderboard?${q.toString()}`
+    console.log('[DRIVING API] GET', url)
+    const res = await api.get(url)
+    const total = Number(res.headers['x-total-count'] ?? '0')
+    console.log('[DRIVING API] Response: total=', total, 'entries=', res.data.length)
+    if (res.data.length > 0) {
+      console.log('[DRIVING API] First entry:', res.data[0])
+    }
+    return { data: res.data, total }
+  },
+  getStats: async () => {
+    console.log('[DRIVING API] GET /api/driving/stats')
+    const res = await api.get('/api/driving/stats')
+    console.log('[DRIVING API] Stats:', res.data)
+    return res.data as { participants: number; registered_users: number; total_scores: number }
   }
 }
 
@@ -145,7 +186,8 @@ export const llmAPI = {
     onError: (error: any) => void
   ) => {
     const token = localStorage.getItem('token')
-    const response = await fetch(`${API_BASE}/api/llm/chat/stream`, {
+    const url = API_BASE ? `${API_BASE}/api/llm/chat/stream` : '/api/llm/chat/stream'
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -199,7 +241,8 @@ export const llmAPI = {
     onError: (error: any) => void
   ) => {
     const token = localStorage.getItem('token')
-    const response = await fetch(`${API_BASE}/api/llm/chat/session/stream`, {
+    const url = API_BASE ? `${API_BASE}/api/llm/chat/session/stream` : '/api/llm/chat/session/stream'
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -253,7 +296,10 @@ export const llmAPI = {
 
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
-  const wsURL = API_BASE.replace('http', 'ws') + `/ws/${token}`
+  // Use relative WebSocket URL if no API_BASE, otherwise convert http to ws
+  const wsURL = API_BASE 
+    ? API_BASE.replace('http', 'ws') + `/ws/${token}`
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${token}`
   return new WebSocket(wsURL)
 }
 
