@@ -107,20 +107,73 @@ def get_leaderboard(limit: int = 20, skip: int = 0, mode: str | None = Query(def
     print(f"  limit: {limit}, skip: {skip}")
     print("=" * 70)
     
-    # DRIVING GAME: Query separate table
-    if mode == "driving_game":
-        print(f"[DRIVING GAME MODE] Querying driving_game_scores table")
+    try:
+        # DRIVING GAME: Query separate table
+        if mode == "driving_game":
+            print(f"[DRIVING GAME MODE] Querying driving_game_scores table")
+            
+            # Count total driving game scores
+            total = db.query(models.DrivingGameScore).count()
+            print(f"[DRIVING GAME] Total scores: {total}")
+            
+            # Query driving game scores
+            q = (
+                db.query(models.DrivingGameScore, models.User.email, models.PromptTemplate.id, models.PromptTemplate.title)
+                .join(models.User, models.DrivingGameScore.user_id == models.User.id)
+                .join(models.PromptTemplate, models.DrivingGameScore.template_id == models.PromptTemplate.id)
+                .order_by(models.DrivingGameScore.score.desc(), models.DrivingGameScore.created_at.asc())
+                .offset(skip)
+                .limit(limit)
+                .all()
+            )
+            
+            results = []
+            for idx, (score, email, template_id, title) in enumerate(q, start=skip+1):
+                results.append(
+                    schemas.DrivingGameLeaderboardEntry(
+                        rank=idx,
+                        user_email=email,
+                        template_id=template_id,
+                        template_title=title,
+                        score=score.score,
+                        message_count=score.message_count,
+                        duration_seconds=score.duration_seconds,
+                        session_id=score.session_id,
+                        created_at=score.created_at
+                    )
+                )
+            
+            print(f"[DRIVING GAME] Returning {len(results)} scores")
+            
+            if response is not None:
+                response.headers["X-Total-Count"] = str(total)
+            
+            return results
         
-        # Count total driving game scores
-        total = db.query(models.DrivingGameScore).count()
-        print(f"[DRIVING GAME] Total scores: {total}")
+        # MAZE GAME: Query original scores table (LAM/Manual modes)
+        print(f"[MAZE GAME MODE] Querying scores table")
         
-        # Query driving game scores
+        base_q = db.query(models.Score)
+        if mode in ("lam", "manual"):
+            base_q = base_q.filter(models.Score.mode == mode)
+            print(f"[FILTER APPLIED] Filtering by mode={mode}")
+        else:
+            print(f"[NO FILTER] Mode '{mode}' not in allowed list, returning ALL maze scores")
+        
+        total = base_q.count()
+        print(f"[MAZE GAME] Total scores: {total}")
+
         q = (
-            db.query(models.DrivingGameScore, models.User.email, models.PromptTemplate.id, models.PromptTemplate.title)
-            .join(models.User, models.DrivingGameScore.user_id == models.User.id)
-            .join(models.PromptTemplate, models.DrivingGameScore.template_id == models.PromptTemplate.id)
-            .order_by(models.DrivingGameScore.score.desc(), models.DrivingGameScore.created_at.asc())
+            db.query(models.Score, models.User.email, models.PromptTemplate.id, models.PromptTemplate.title)
+            .join(models.User, models.Score.user_id == models.User.id)
+            .join(models.PromptTemplate, models.Score.template_id == models.PromptTemplate.id)
+        )
+        if mode in ("lam", "manual"):
+            q = q.filter(models.Score.mode == mode)
+        
+        q = (
+            q
+            .order_by(models.Score.new_score.desc().nullslast(), models.Score.score.desc(), models.Score.created_at.asc())
             .offset(skip)
             .limit(limit)
             .all()
@@ -129,81 +182,39 @@ def get_leaderboard(limit: int = 20, skip: int = 0, mode: str | None = Query(def
         results = []
         for idx, (score, email, template_id, title) in enumerate(q, start=skip+1):
             results.append(
-                schemas.DrivingGameLeaderboardEntry(
+                schemas.LeaderboardEntry(
                     rank=idx,
                     user_email=email,
                     template_id=template_id,
                     template_title=title,
                     score=score.score,
-                    message_count=score.message_count,
-                    duration_seconds=score.duration_seconds,
+                    new_score=score.new_score,
                     session_id=score.session_id,
-                    created_at=score.created_at
+                    created_at=score.created_at,
+                    total_steps=score.total_steps,
+                    collision_count=score.collision_count,
+                    driving_game_consensus_reached=None,
+                    driving_game_message_count=None,
+                    driving_game_duration_seconds=None,
                 )
             )
         
-        print(f"[DRIVING GAME] Returning {len(results)} scores")
+        print(f"[MAZE GAME] Returning {len(results)} scores")
         
         if response is not None:
             response.headers["X-Total-Count"] = str(total)
-        
+
         return results
     
-    # MAZE GAME: Query original scores table (LAM/Manual modes)
-    print(f"[MAZE GAME MODE] Querying scores table")
-    
-    base_q = db.query(models.Score)
-    if mode in ("lam", "manual"):
-        base_q = base_q.filter(models.Score.mode == mode)
-        print(f"[FILTER APPLIED] Filtering by mode={mode}")
-    else:
-        print(f"[NO FILTER] Mode '{mode}' not in allowed list, returning ALL maze scores")
-    
-    total = base_q.count()
-    print(f"[MAZE GAME] Total scores: {total}")
-
-    q = (
-        db.query(models.Score, models.User.email, models.PromptTemplate.id, models.PromptTemplate.title)
-        .join(models.User, models.Score.user_id == models.User.id)
-        .join(models.PromptTemplate, models.Score.template_id == models.PromptTemplate.id)
-    )
-    if mode in ("lam", "manual"):
-        q = q.filter(models.Score.mode == mode)
-    
-    q = (
-        q
-        .order_by(models.Score.new_score.desc().nullslast(), models.Score.score.desc(), models.Score.created_at.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    
-    results = []
-    for idx, (score, email, template_id, title) in enumerate(q, start=skip+1):
-        results.append(
-            schemas.LeaderboardEntry(
-                rank=idx,
-                user_email=email,
-                template_id=template_id,
-                template_title=title,
-                score=score.score,
-                new_score=score.new_score,
-                session_id=score.session_id,
-                created_at=score.created_at,
-                total_steps=score.total_steps,
-                collision_count=score.collision_count,
-                driving_game_consensus_reached=None,
-                driving_game_message_count=None,
-                driving_game_duration_seconds=None,
-            )
-        )
-    
-    print(f"[MAZE GAME] Returning {len(results)} scores")
-    
-    if response is not None:
-        response.headers["X-Total-Count"] = str(total)
-
-    return results
+    except Exception as e:
+        print("=" * 70)
+        print(f"[LEADERBOARD ERROR] Exception occurred!")
+        print(f"  Error type: {type(e).__name__}")
+        print(f"  Error message: {str(e)}")
+        import traceback
+        print(f"  Traceback:\n{traceback.format_exc()}")
+        print("=" * 70)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/stats")
 def leaderboard_stats(db: Session = Depends(get_db)):
