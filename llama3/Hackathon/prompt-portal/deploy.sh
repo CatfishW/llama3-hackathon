@@ -19,11 +19,9 @@ NC='\033[0m' # No Color
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
-# Domain configuration - Set these before running if you want automatic domain setup
-USE_DOMAIN=false
-DOMAIN_NAME=""
-SETUP_NGINX=false
-USE_HTTPS=false
+# Domain configuration
+USE_DOMAIN=true
+DOMAIN_NAME="lammp.agaii.org"
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -31,86 +29,52 @@ BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
 # Get server IP
-SERVER_IP="127.0.0.1"
+SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
 
-# Check for domain configuration via environment or command-line
-if [ -n "$DEPLOY_DOMAIN" ]; then
-    DOMAIN_NAME="$DEPLOY_DOMAIN"
-    USE_DOMAIN=true
-    echo -e "${GREEN}Using domain from environment: $DOMAIN_NAME${NC}"
-fi
-
-# Ask about domain name if not set
-if [ -z "$DOMAIN_NAME" ]; then
-    echo ""
-    echo -e "${BLUE}Domain Configuration${NC}"
-    read -p "Do you want to use a custom domain? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "Enter your domain name (e.g., lammp.agaii.org): " DOMAIN_NAME
-        if [ -n "$DOMAIN_NAME" ]; then
-            USE_DOMAIN=true
-            echo -e "${GREEN}✓ Will configure for domain: $DOMAIN_NAME${NC}"
-            
-            # Get actual server IP for DNS check
-            ACTUAL_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}' 2>/dev/null)
-            
-            # Check DNS
-            DNS_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 2>/dev/null | tail -n1)
-            if [ -n "$DNS_IP" ] && [ "$DNS_IP" == "$ACTUAL_IP" ]; then
-                echo -e "${GREEN}✓ DNS is correctly configured!${NC}"
-            elif [ -n "$DNS_IP" ]; then
-                echo -e "${YELLOW}⚠ DNS points to $DNS_IP but server IP is $ACTUAL_IP${NC}"
-                echo -e "${YELLOW}  Backend will still work if server is accessible${NC}"
-            else
-                echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
-                echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $ACTUAL_IP${NC}"
-            fi
-            
-            # Ask about HTTPS
-            echo ""
-            read -p "Will you be using HTTPS (SSL certificate already configured)? (y/N): " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                USE_HTTPS=true
-                echo -e "${GREEN}✓ Will configure for HTTPS${NC}"
-            fi
-            
-            # Ask about Nginx setup
-            echo ""
-            read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                SETUP_NGINX=true
-                USE_HTTPS=true  # Nginx setup implies HTTPS
-            fi
+# Ask about domain name
+echo ""
+echo -e "${BLUE}Domain Configuration${NC}"
+read -p "Do you want to use a custom domain? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    read -p "Enter your domain name (e.g., lammp.agaii.org): " DOMAIN_NAME
+    if [ -n "$DOMAIN_NAME" ]; then
+        USE_DOMAIN=true
+        echo -e "${GREEN}✓ Will configure for domain: $DOMAIN_NAME${NC}"
+        
+        # Check DNS
+        DNS_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 2>/dev/null | tail -n1)
+        if [ -n "$DNS_IP" ] && [ "$DNS_IP" == "$SERVER_IP" ]; then
+            echo -e "${GREEN}✓ DNS is correctly configured!${NC}"
+        elif [ -n "$DNS_IP" ]; then
+            echo -e "${YELLOW}⚠ DNS points to $DNS_IP but server IP is $SERVER_IP${NC}"
+            echo -e "${YELLOW}  Please update your DNS A record${NC}"
         else
-            USE_DOMAIN=false
+            echo -e "${YELLOW}⚠ DNS not configured yet${NC}"
+            echo -e "${YELLOW}  Add A record: $DOMAIN_NAME → $SERVER_IP${NC}"
         fi
+        
+        # Ask about Nginx setup
+        echo ""
+        read -p "Do you want to set up Nginx (access without port)? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            SETUP_NGINX=true
+        else
+            SETUP_NGINX=false
+        fi
+    else
+        USE_DOMAIN=false
+        SETUP_NGINX=false
     fi
 else
-    # Domain was set via environment
-    if [ "$USE_DOMAIN" = true ]; then
-        echo -e "${GREEN}✓ Using domain: $DOMAIN_NAME${NC}"
-        # Check if HTTPS should be used
-        if [ "$DEPLOY_HTTPS" = "true" ]; then
-            USE_HTTPS=true
-        fi
-        # Check if Nginx should be set up
-        if [ "$DEPLOY_NGINX" = "true" ]; then
-            SETUP_NGINX=true
-            USE_HTTPS=true
-        fi
-    fi
+    SETUP_NGINX=false
 fi
 
 echo ""
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
 if [ "$USE_DOMAIN" = true ]; then
     echo -e "${GREEN}Domain: $DOMAIN_NAME${NC}"
-    if [ "$USE_HTTPS" = true ]; then
-        echo -e "${GREEN}HTTPS: Enabled${NC}"
-    fi
 fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
 
@@ -176,44 +140,27 @@ print_step "Skipping firewall configuration..."
 print_step "Setting up backend..."
 cd "$BACKEND_DIR"
 
-# Configure backend CORS
-print_step "Configuring backend CORS..."
-if [ ! -f .env ]; then
-    print_step "Creating .env file from example..."
-    cp .env.example .env
-fi
-
-# Backup existing .env
-cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-
-# Build CORS origins list
-CORS_LIST="http://localhost:5173,http://127.0.0.1:5173,http://localhost:${BACKEND_PORT},http://127.0.0.1:${BACKEND_PORT},http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}"
-
-if [ "$USE_DOMAIN" = true ] && [ -n "$DOMAIN_NAME" ]; then
-    print_step "Adding domain to CORS: $DOMAIN_NAME"
-    CORS_LIST="https://${DOMAIN_NAME},http://${DOMAIN_NAME},${CORS_LIST}"
-fi
-
-# Add server IP to CORS
-CORS_LIST="${CORS_LIST},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT}"
-
-# Add HTTPS variants if using HTTPS
-if [ "$USE_HTTPS" = true ]; then
-    if [ "$USE_DOMAIN" = true ]; then
-        CORS_LIST="${CORS_LIST},https://${DOMAIN_NAME}:${BACKEND_PORT},https://${DOMAIN_NAME}:${FRONTEND_PORT}"
+# Configure backend CORS for domain
+if [ "$USE_DOMAIN" = true ]; then
+    print_step "Configuring backend for domain..."
+    if [ -f .env ]; then
+        # Backup existing .env
+        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+        
+        # Update CORS_ORIGINS to include domain
+        if grep -q "CORS_ORIGINS" .env; then
+            # Add domain to existing CORS_ORIGINS
+            sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://${SERVER_IP}:${BACKEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT},http://localhost:5173|" .env
+            echo -e "${GREEN}✓ Backend CORS configured for domain${NC}"
+        else
+            echo "CORS_ORIGINS=https://${DOMAIN_NAME},http://${DOMAIN_NAME},http://localhost:5173" >> .env
+        fi
+    else
+        print_warning ".env file not found, will use defaults"
     fi
-    CORS_LIST="${CORS_LIST},https://${SERVER_IP}:${BACKEND_PORT},https://${SERVER_IP}:${FRONTEND_PORT}"
-fi
-
-# Update CORS_ORIGINS in .env
-if grep -q "CORS_ORIGINS" .env; then
-    sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=${CORS_LIST}|" .env
 else
-    echo "CORS_ORIGINS=${CORS_LIST}" >> .env
+    print_step "Using existing backend .env configuration..."
 fi
-
-echo -e "${GREEN}✓ Backend CORS configured${NC}"
-echo -e "${BLUE}   CORS origins: ${CORS_LIST}${NC}"
 
 # Check and preserve existing database
 print_step "Checking database status..."
@@ -328,32 +275,19 @@ fi
 # Create production environment file
 print_step "Configuring frontend environment..."
 if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
-    # With Nginx, use clean URLs without ports (no /api in base URL - it's in the routes)
+    # With Nginx, use clean URLs without ports
     cat > .env.production << EOF
-VITE_API_BASE=https://$DOMAIN_NAME
-VITE_WS_BASE=wss://$DOMAIN_NAME
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
 EOF
 
     cat > .env.local << EOF
-VITE_API_BASE=https://$DOMAIN_NAME
-VITE_WS_BASE=wss://$DOMAIN_NAME
+VITE_API_BASE=https://$DOMAIN_NAME/api
+VITE_WS_BASE=wss://$DOMAIN_NAME/api
 EOF
     echo -e "${GREEN}✓ Frontend configured for domain with Nginx (HTTPS)${NC}"
-elif [ "$USE_DOMAIN" = true ] && [ "$USE_HTTPS" = true ]; then
-    # With HTTPS but no Nginx, use HTTPS with domain and port
-    cat > .env.production << EOF
-VITE_API_BASE=https://$DOMAIN_NAME:$BACKEND_PORT
-VITE_WS_BASE=wss://$DOMAIN_NAME:$BACKEND_PORT
-EOF
-
-    cat > .env.local << EOF
-VITE_API_BASE=https://$DOMAIN_NAME:$BACKEND_PORT
-VITE_WS_BASE=wss://$DOMAIN_NAME:$BACKEND_PORT
-EOF
-    echo -e "${GREEN}✓ Frontend configured for domain with HTTPS (with ports)${NC}"
-    echo -e "${YELLOW}⚠ Make sure your backend has SSL certificates configured!${NC}"
 elif [ "$USE_DOMAIN" = true ]; then
-    # Without HTTPS, use HTTP with domain and port
+    # Without Nginx, use HTTP with domain and port
     cat > .env.production << EOF
 VITE_API_BASE=http://$DOMAIN_NAME:$BACKEND_PORT
 VITE_WS_BASE=ws://$DOMAIN_NAME:$BACKEND_PORT
@@ -472,12 +406,6 @@ if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
     
     # Create temporary file first
     cat > /tmp/nginx_$DOMAIN_NAME.conf << EOF
-# WebSocket upgrade headers
-map \$http_upgrade \$connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
 server {
     listen 80;
     listen [::]:80;
@@ -488,84 +416,25 @@ server {
         root $FRONTEND_DIR/dist;
         try_files \$uri \$uri/ /index.html;
         index index.html;
-        
-        # Add CORS headers for frontend
-        add_header Access-Control-Allow-Origin * always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
     }
 
-    # CRITICAL: WebSocket blocks MUST come BEFORE /api/ block!
-    # WebSocket support for MQTT hints (maze game, test pages)
-    # Match the exact path pattern and preserve it when proxying
-    location /api/mqtt/ws/ {
-        proxy_pass http://127.0.0.1:$BACKEND_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # WebSocket specific timeouts - very long for persistent connections
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 3600s;
-        proxy_read_timeout 3600s;
-        
-        # Add CORS headers
-        add_header Access-Control-Allow-Origin * always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Upgrade, Connection" always;
-    }
-
-    # Legacy WebSocket support for user messages (token-based)
-    location /ws/ {
-        proxy_pass http://127.0.0.1:$BACKEND_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # WebSocket timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 3600s;
-        proxy_read_timeout 3600s;
-    }
-
-    # Proxy API requests to backend (DO NOT strip /api prefix!)
-    # This handles all other /api/* requests (non-WebSocket)
+    # Proxy API requests to backend
     location /api/ {
-        # Handle OPTIONS preflight requests
-        if (\$request_method = 'OPTIONS') {
-            add_header Access-Control-Allow-Origin * always;
-            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-            add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
-            add_header Access-Control-Max-Age 3600;
-            add_header Content-Length 0;
-            add_header Content-Type text/plain;
-            return 204;
-        }
-        
-        # Pass through to backend with /api prefix intact (no rewrite!)
-        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # Timeouts for slow API operations
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-        
-        # Add CORS headers
-        add_header Access-Control-Allow-Origin * always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" always;
+    }
+
+    # WebSocket support for MQTT
+    location /api/mqtt/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/mqtt/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
 }
 EOF
@@ -658,12 +527,6 @@ echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
 echo "- Existing database is preserved (no data loss)"
 echo "- Logging and monitoring have been disabled"
-echo ""
-echo -e "${YELLOW}Troubleshooting 'Method Not Allowed' errors:${NC}"
-echo "- Ensure your browser is accessing the correct protocol (HTTP/HTTPS)"
-echo "- If using HTTPS, make sure SSL certificates are properly configured"
-echo "- Check browser console for CORS errors"
-echo "- Backend CORS is configured for: \$CORS_LIST"
 
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
