@@ -134,13 +134,6 @@ class ScoreOut(BaseModel):
     dead_end_entries: int | None = None
     avg_latency_ms: float | None = None
     
-    # Driving Game metrics
-    driving_game_consensus_reached: bool | None = None
-    driving_game_message_count: int | None = None
-    driving_game_duration_seconds: float | None = None
-    driving_game_player_option: str | None = None
-    driving_game_agent_option: str | None = None
-    
     created_at: datetime
     class Config:
         from_attributes = True
@@ -158,11 +151,6 @@ class LeaderboardEntry(BaseModel):
     # Optionally include metrics for detailed view
     total_steps: int | None = None
     collision_count: int | None = None
-    
-    # Driving Game metrics
-    driving_game_consensus_reached: bool | None = None
-    driving_game_message_count: int | None = None
-    driving_game_duration_seconds: float | None = None
 
 
 # Driving Game Score schemas (separate from maze game)

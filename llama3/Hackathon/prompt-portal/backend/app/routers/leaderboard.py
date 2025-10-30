@@ -50,12 +50,6 @@ def submit_maze_score(payload: schemas.ScoreCreate, db: Session = Depends(get_db
         collision_count=payload.collision_count,
         dead_end_entries=payload.dead_end_entries,
         avg_latency_ms=payload.avg_latency_ms,
-        # Clear driving game fields (not used for maze)
-        driving_game_consensus_reached=None,
-        driving_game_message_count=None,
-        driving_game_duration_seconds=None,
-        driving_game_player_option=None,
-        driving_game_agent_option=None,
     )
     
     db.add(s); db.commit(); db.refresh(s)
@@ -193,9 +187,6 @@ def get_leaderboard(limit: int = 20, skip: int = 0, mode: str | None = Query(def
                     created_at=score.created_at,
                     total_steps=score.total_steps,
                     collision_count=score.collision_count,
-                    driving_game_consensus_reached=None,
-                    driving_game_message_count=None,
-                    driving_game_duration_seconds=None,
                 )
             )
         

@@ -99,13 +99,6 @@ class Score(Base):
     dead_end_entries: Mapped[int] = mapped_column(Integer, nullable=True)
     avg_latency_ms: Mapped[float] = mapped_column(Float, nullable=True)
     
-    # Driving Game metrics
-    driving_game_consensus_reached: Mapped[bool] = mapped_column(Boolean, nullable=True)
-    driving_game_message_count: Mapped[int] = mapped_column(Integer, nullable=True)
-    driving_game_duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
-    driving_game_player_option: Mapped[str] = mapped_column(String(50), nullable=True)
-    driving_game_agent_option: Mapped[str] = mapped_column(String(50), nullable=True)
-    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="scores")
