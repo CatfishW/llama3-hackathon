@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,6 +22,10 @@ class _Pending:
 unique_client_id = f"{settings.MQTT_CLIENT_ID}_{uuid.uuid4().hex[:8]}"
 client = mqtt.Client(client_id=unique_client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 
+# Connection state tracking
+_connected_event = threading.Event()
+_stop_heartbeat = threading.Event()
+
 _pending_by_request: dict[str, _Pending] = {}
 
 
@@ -30,6 +35,7 @@ def _on_connect(c, userdata, flags, reason_code, properties=None):
         # Pattern: owogpt/assistant_response/{sessionId}/{clientId}/{requestId}
         base = settings.MQTT_TOPIC_ASSISTANT_RESPONSE.rstrip("/")
         c.subscribe(f"{base}/#", qos=1)
+        _connected_event.set()
         print(f"[MQTT] Connected. Subscribed to {base}/#")
     else:
         print(f"[MQTT] Connect failed: {reason_code}")
@@ -62,21 +68,66 @@ def _on_message(c, userdata, msg):
             print(f"[MQTT] Resolved request {req_id}")
 
 
+def _on_disconnect(c, userdata, flags, reason_code, properties=None):
+    # Mark as disconnected; loop_start with reconnect_delay will try to recover.
+    _connected_event.clear()
+    print(f"[MQTT] Disconnected (reason={reason_code}). Will attempt to reconnect automatically...")
+
+
 def start() -> None:
+    # Configure callbacks
     client.on_connect = _on_connect
     client.on_message = _on_message
+    client.on_disconnect = _on_disconnect
+
+    # Make reconnection more resilient
+    # Retry and backoff settings
+    client.reconnect_delay_set(min_delay=1, max_delay=120)
+    try:
+        client.max_inflight_messages_set(50)
+        client.max_queued_messages_set(1000)
+        client.enable_logger()
+    except Exception:
+        # Some versions may not have these APIs; ignore
+        pass
+
+    # Auth if present
     if settings.MQTT_USERNAME and settings.MQTT_PASSWORD:
         client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
+
+    # LWT (optional): publish offline status if we drop unexpectedly
     try:
-        client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
+        will_topic = f"{settings.MQTT_TOPIC_USER_INPUT.rsplit('/', 1)[0]}/status"
+        client.will_set(will_topic, payload=json.dumps({"clientId": unique_client_id, "status": "offline"}), qos=1, retain=False)
+    except Exception:
+        pass
+
+    # Start network loop and connect asynchronously so it can auto-reconnect
+    try:
+        client.connect_async(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
         client.loop_start()
         print(f"[MQTT] Connecting to {settings.MQTT_BROKER_HOST}:{settings.MQTT_BROKER_PORT} ...")
     except Exception as e:
         # Don't crash the API if MQTT broker is not available in dev
-        print(f"[MQTT] Failed to connect to broker: {e}. Continuing without MQTT.")
+        print(f"[MQTT] Failed to start MQTT loop: {e}. Continuing without MQTT.")
+
+    # Start a lightweight heartbeat publisher to keep the connection fresh
+    def _heartbeat():
+        topic_base = settings.MQTT_TOPIC_USER_INPUT.rsplit('/', 1)[0]
+        hb_topic = f"{topic_base}/heartbeat/{unique_client_id}"
+        while not _stop_heartbeat.is_set():
+            if _connected_event.is_set():
+                try:
+                    client.publish(hb_topic, json.dumps({"ts": int(time.time())}), qos=0)
+                except Exception:
+                    pass
+            _stop_heartbeat.wait(30)
+
+    threading.Thread(target=_heartbeat, name="mqtt-heartbeat", daemon=True).start()
 
 
 def stop() -> None:
+    _stop_heartbeat.set()
     client.loop_stop()
     client.disconnect()
 
@@ -97,10 +148,21 @@ async def publish_chat(payload: Dict[str, Any], timeout: float = 45.0) -> Dict[s
 
     message = json.dumps(payload, ensure_ascii=False)
     print(f"[MQTT] Publishing to {settings.MQTT_TOPIC_USER_INPUT}, reply expected at {reply_topic}")
-    
-    result = client.publish(settings.MQTT_TOPIC_USER_INPUT, message, qos=0)
-    if result.rc != 0:
-        raise RuntimeError(f"Failed to publish (rc={result.rc})")
+
+    # Ensure we're connected (or wait briefly for reconnection)
+    if not _connected_event.wait(timeout=5):
+        print("[MQTT] Broker not connected yet; will attempt publish with retries...")
+
+    # Try to publish with small retries if initial attempt fails due to transient disconnect
+    last_err: Optional[str] = None
+    for attempt in range(5):
+        result = client.publish(settings.MQTT_TOPIC_USER_INPUT, message, qos=1)
+        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+            break
+        last_err = f"rc={result.rc}"
+        await asyncio.sleep(min(1 + attempt, 5))
+    else:
+        raise RuntimeError(f"Failed to publish after retries ({last_err})")
 
     loop = asyncio.get_running_loop()
     fut: asyncio.Future = loop.create_future()

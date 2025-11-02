@@ -12,7 +12,15 @@ import json
 import logging
 import time
 from typing import Dict, List, Optional
-from openai import OpenAI, OpenAIError
+try:
+    # Optional dependency; server should still boot without it
+    from openai import OpenAI, OpenAIError  # type: ignore
+    _OPENAI_AVAILABLE = True
+except Exception:  # pragma: no cover - graceful degradation in minimal envs
+    class OpenAIError(Exception):
+        pass
+    OpenAI = None  # type: ignore
+    _OPENAI_AVAILABLE = False
 import threading
 
 logger = logging.getLogger(__name__)
@@ -225,13 +233,17 @@ class LLMClient:
         
         logger.info(f"Initializing LLM client: {self.server_url}")
         
-        # Initialize OpenAI client with LLM server as base URL
-        # Note: api_key is required by OpenAI client but not used by llama.cpp
-        self.client = OpenAI(
-            base_url=self.server_url,
-            api_key="not-needed",  # llama.cpp doesn't require API key
-            timeout=self.timeout
-        )
+        # Initialize OpenAI client with LLM server as base URL when available
+        if _OPENAI_AVAILABLE and OpenAI is not None:
+            # Note: api_key is required by OpenAI client but not used by llama.cpp
+            self.client = OpenAI(
+                base_url=self.server_url,
+                api_key="not-needed",
+                timeout=self.timeout
+            )
+        else:
+            # Degraded mode: no OpenAI client; generation calls will raise at runtime
+            self.client = None
         
         # Test connection to server
         if not self._test_connection():
@@ -244,6 +256,9 @@ class LLMClient:
     
     def _test_connection(self) -> bool:
         """Test connection to LLM server."""
+        if self.client is None:
+            logger.warning("LLM client not available (openai package missing); skipping connection test")
+            return False
         try:
             logger.info("Testing connection to LLM server...")
             # Try a simple chat completion call to test connectivity
@@ -288,6 +303,8 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
+        if self.client is None:
+            raise RuntimeError("LLM client is not available on this server (openai not installed)")
         try:
             start_time = time.time()
             
@@ -381,6 +398,9 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
+        if self.client is None:
+            yield "Error: LLM client is not available on this server (openai not installed)"
+            return
         try:
             start_time = time.time()
             
@@ -708,7 +728,24 @@ def get_llm_client() -> LLMClient:
 
 
 def get_session_manager() -> SessionManager:
-    """Get the global session manager instance."""
+    """Get or lazily initialize the global session manager.
+
+    Lazily creates a minimal SessionManager even if OpenAI isn't installed so
+    routes that only read history can function without hard deps.
+    """
+    global _session_manager
     if _session_manager is None:
-        raise RuntimeError("LLM service not initialized. Call init_llm_service first.")
+        try:
+            # Create a degraded LLM client; generation will fail if invoked
+            client = LLMClient(server_url="http://localhost:8000", skip_thinking=True)  # type: ignore[arg-type]
+        except Exception:
+            # As last resort, create a dummy shim with required interface
+            class _Dummy:
+                def generate(self, *a, **k):
+                    raise RuntimeError("LLM unavailable")
+                def generate_stream(self, *a, **k):
+                    yield "Error: LLM unavailable"
+            client = _Dummy()  # type: ignore
+        _session_manager = SessionManager(llm_client=client, max_history_tokens=10000)
+        logger.warning("SessionManager lazily initialized in degraded mode")
     return _session_manager

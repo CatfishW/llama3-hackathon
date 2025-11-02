@@ -481,8 +481,19 @@ class LlamaCppClient:
                 if tool_choice:
                     request_kwargs["tool_choice"] = tool_choice
             
-            # Call chat completions with streaming
-            stream = self.client.chat.completions.create(**request_kwargs)
+            # Call chat completions with streaming (with simple retry on transient errors)
+            attempt = 0
+            while True:
+                try:
+                    stream = self.client.chat.completions.create(**request_kwargs)
+                    break
+                except OpenAIError as oe:
+                    attempt += 1
+                    if attempt >= 3:
+                        raise
+                    backoff = min(2 ** attempt, 8)
+                    logger.warning(f"Streaming call failed (attempt {attempt}), retrying in {backoff}s: {oe}")
+                    time.sleep(backoff)
             
             full_response = ""
             for chunk in stream:
@@ -579,8 +590,19 @@ class LlamaCppClient:
                 if tool_choice:
                     request_kwargs["tool_choice"] = tool_choice
             
-            # Call chat completions using OpenAI client
-            response = self.client.chat.completions.create(**request_kwargs)
+            # Call chat completions using OpenAI client (with simple retries)
+            attempt = 0
+            while True:
+                try:
+                    response = self.client.chat.completions.create(**request_kwargs)
+                    break
+                except OpenAIError as oe:
+                    attempt += 1
+                    if attempt >= 3:
+                        raise
+                    backoff = min(2 ** attempt, 8)
+                    logger.warning(f"Completion call failed (attempt {attempt}), retrying in {backoff}s: {oe}")
+                    time.sleep(backoff)
             
             generation_time = time.time() - start_time
             
@@ -1337,8 +1359,17 @@ class MQTTHandler:
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         
-        # Reconnection settings
+        # Reconnection and reliability settings
         self.client.reconnect_delay_set(min_delay=1, max_delay=120)
+        try:
+            self.client.max_inflight_messages_set(50)
+            self.client.max_queued_messages_set(2000)
+            self.client.enable_logger()
+            # Optional LWT status (non-breaking)
+            status_topic = f"{list(self.config.projects.values())[0].user_topic.rsplit('/', 1)[0]}/status"
+            self.client.will_set(status_topic, json.dumps({"service": client_id, "status": "offline"}), qos=1, retain=False)
+        except Exception:
+            pass
         
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         """Callback for MQTT connection."""
