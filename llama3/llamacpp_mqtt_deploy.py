@@ -467,7 +467,9 @@ class LlamaCppClient:
             
             # Prepare extra body parameters for llama.cpp
             extra_body = {
-                "enable_thinking": not self.config.skip_thinking
+            "enable_thinking": not self.config.skip_thinking,
+            # Reuse KV cache across calls for shared prompt/history to reduce TTFT
+            "cache_prompt": True
             }
             
             request_kwargs = {
@@ -577,7 +579,9 @@ class LlamaCppClient:
             
             # Prepare extra body parameters for llama.cpp
             extra_body = {
-                "enable_thinking": not self.config.skip_thinking
+                "enable_thinking": not self.config.skip_thinking,
+                # Reuse KV cache across calls for shared prompt/history to reduce TTFT
+                "cache_prompt": True
             }
             
             request_kwargs = {
@@ -964,13 +968,24 @@ class SessionManager:
             if project_config and project_config.tools:
                 debug_info['tools_used'] = [tool['function']['name'] for tool in project_config.tools if 'function' in tool]
 
+            # Heuristic: dynamically cap max_tokens for short inputs to reduce latency
+            effective_max_tokens = max_tokens
+            if effective_max_tokens is None:
+                ul = len(user_message)
+                if ul <= 80:
+                    effective_max_tokens = 96
+                elif ul <= 180:
+                    effective_max_tokens = 160
+                else:
+                    effective_max_tokens = self.config.default_max_tokens
+
             # Use semaphore to limit concurrent calls
             with self.inference_semaphore:
                 response = self.client.generate(
                     messages,
                     temperature=temperature,
                     top_p=top_p,
-                    max_tokens=max_tokens,
+                    max_tokens=effective_max_tokens,
                     debug_info=debug_info,
                     tools=project_config.tools if project_config else None,
                     tool_choice=project_config.tool_choice if project_config else None
