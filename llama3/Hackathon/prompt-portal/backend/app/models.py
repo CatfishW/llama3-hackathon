@@ -104,6 +104,26 @@ class Score(Base):
     user = relationship("User", back_populates="scores")
     template = relationship("PromptTemplate", back_populates="scores")
 
+
+class DrivingGameScore(Base):
+    """Separate table for Driving Game scores - completely isolated from Maze Game scores"""
+    __tablename__ = "driving_game_scores"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("prompt_templates.id"), index=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    score: Mapped[float] = mapped_column(Float)  # Calculated driving game score
+    consensus_reached: Mapped[bool] = mapped_column(Boolean, default=True)
+    message_count: Mapped[int] = mapped_column(Integer)  # Number of messages to reach consensus
+    duration_seconds: Mapped[float] = mapped_column(Float)  # Time taken to reach consensus
+    player_option: Mapped[str] = mapped_column(String(50))  # Player's choice (a/b/c)
+    agent_option: Mapped[str] = mapped_column(String(50))  # Agent's choice (a/b/c)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    
+    user = relationship("User")
+    template = relationship("PromptTemplate")
+
+
 class Friendship(Base):
     __tablename__ = "friendships"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)

@@ -221,6 +221,23 @@ export default function Navbar() {
                 Leaderboard
               </Link>
               <Link
+                to="/driving-stats"
+                style={linkStyle(isActive('/driving-stats'))}
+                onMouseOver={(e) => {
+                  if (!isActive('/driving-stats')) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!isActive('/driving-stats')) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
+              >
+                <i className="fas fa-flag-checkered" style={{ marginRight: '8px' }}></i>
+                Driving
+              </Link>
+              <Link
                 to="/friends"
                 style={linkStyle(isActive('/friends'))}
                 onMouseOver={(e) => {

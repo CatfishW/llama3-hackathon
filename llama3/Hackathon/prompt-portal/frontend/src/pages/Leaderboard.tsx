@@ -13,6 +13,9 @@ type Entry = {
   created_at: string
   total_steps?: number | null
   collision_count?: number | null
+  driving_game_consensus_reached?: boolean | null
+  driving_game_message_count?: number | null
+  driving_game_duration_seconds?: number | null
 }
 
 export default function Leaderboard() {
@@ -20,6 +23,7 @@ export default function Leaderboard() {
   const [total, setTotal] = useState(0)
   const [skip, setSkip] = useState(0)
   const [mode, setMode] = useState<'lam'|'manual'>('lam')
+  const [forceRefresh, setForceRefresh] = useState(0)
   const [participants, setParticipants] = useState<number | null>(null)
   const [registeredUsers, setRegisteredUsers] = useState<number | null>(null)
   const PAGE_SIZE = 50
@@ -57,7 +61,19 @@ export default function Leaderboard() {
   async function load(initial = false) {
     try {
       setLoading(true)
+      console.log(`[LEADERBOARD] ===== LOADING DATA =====`)
+      console.log(`[LEADERBOARD] Mode: ${mode}`)
+      console.log(`[LEADERBOARD] Initial: ${initial}`)
+      console.log(`[LEADERBOARD] Force refresh: ${forceRefresh}`)
+      console.log(`[LEADERBOARD] Calling API NOW...`)
+      
       const { data, total } = await leaderboardAPI.getLeaderboard(PAGE_SIZE, initial ? 0 : skip, mode)
+      
+      console.log(`[LEADERBOARD] ===== API RESPONSE =====`)
+      console.log(`[LEADERBOARD] Total: ${total}`)
+      console.log(`[LEADERBOARD] Entries: ${data.length}`)
+      console.log(`[LEADERBOARD] First entry:`, data[0])
+      
       setTotal(total)
       if (initial) {
         setItems(data)
@@ -67,13 +83,17 @@ export default function Leaderboard() {
         setSkip(prev => prev + data.length)
       }
     } catch (e: any) {
+      console.error('[LEADERBOARD] ===== ERROR =====', e)
       setErr(e?.response?.data?.detail || 'Failed to load leaderboard')
     } finally {
       setLoading(false)
     }
   }
   
-  useEffect(() => { load(true) }, [mode])
+  useEffect(() => { 
+    console.log(`[LEADERBOARD] useEffect triggered - mode changed to: ${mode}`)
+    load(true) 
+  }, [mode, forceRefresh])
 
   useEffect(() => {
     ;(async ()=>{
@@ -201,12 +221,16 @@ export default function Leaderboard() {
             </div>
             {/* Mode toggle */}
             <div style={{ marginTop: 16, display:'flex', justifyContent:'center' }}>
-              <div style={{ display:'inline-flex', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius: 999, padding:4 }}>
+              <div style={{ display:'inline-flex', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius: 999, padding:4, flexWrap: 'wrap', gap: isMobile ? 2 : 0 }}>
                 {(['lam','manual'] as const).map(m => (
                   <button key={m}
-                    onClick={()=>setMode(m)}
+                    onClick={()=>{
+                      console.log(`[BUTTON CLICK] Switching to mode: ${m}`)
+                      setMode(m)
+                      setForceRefresh(prev => prev + 1)
+                    }}
                     style={{
-                      padding: isMobile ? '6px 12px':'8px 16px',
+                      padding: isMobile ? '6px 10px':'8px 16px',
                       borderRadius: 999,
                       border: 'none',
                       cursor: 'pointer',
@@ -215,8 +239,8 @@ export default function Leaderboard() {
                       boxShadow: mode===m ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
                       transition: 'all .2s',
                       fontWeight: 700,
-                      fontSize: isMobile ? '.9rem':'1rem',
-                      minWidth: 120
+                      fontSize: isMobile ? '.85rem':'1rem',
+                      minWidth: isMobile ? 90 : 120
                     }}>
                     {m==='lam' ? 'LAM Mode' : 'Manual Mode'}
                   </button>

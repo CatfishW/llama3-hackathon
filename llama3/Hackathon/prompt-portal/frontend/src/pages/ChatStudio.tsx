@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { chatbotAPI } from '../api'
+import { chatbotAPI, drivingStatsAPI } from '../api'
 import { useTemplates } from '../contexts/TemplateContext'
 import { TabCompletionTextarea } from '../completion/TabCompletionInput'
 
@@ -292,6 +292,16 @@ export default function ChatStudio() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(!isMobile)
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
+  // Driving Game Testing Mode
+  const [drivingGameMode, setDrivingGameMode] = useState<boolean>(false)
+  const [drivingGameStartTime, setDrivingGameStartTime] = useState<number | null>(null)
+  const [drivingGameMessageCount, setDrivingGameMessageCount] = useState<number>(0)
+  const [showConsensusModal, setShowConsensusModal] = useState<boolean>(false)
+  const [consensusScore, setConsensusScore] = useState<number>(0)
+  const [consensusMessageCount, setConsensusMessageCount] = useState<number>(0)
+  const [lastPlayerOption, setLastPlayerOption] = useState<string>('')
+  const [lastAgentOption, setLastAgentOption] = useState<string>('')
 
   const selectedSession = useMemo(
     () => sessions.find(s => s.id === selectedSessionId) || null,
@@ -316,6 +326,15 @@ export default function ChatStudio() {
       }
     }
   }, [])
+
+  // Reset Driving Game mode when session changes
+  useEffect(() => {
+    setDrivingGameMode(false)
+    setDrivingGameStartTime(null)
+    setDrivingGameMessageCount(0)
+    setConsensusMessageCount(0)
+    setShowConsensusModal(false)
+  }, [selectedSessionId])
 
   useEffect(() => {
     (async () => {
@@ -656,6 +675,44 @@ export default function ChatStudio() {
         simulateStreamingMessage(assistantMsg.id, assistantMsg.content)
       }, 100)
       
+      // Check for consensus if in Driving Game mode
+      if (drivingGameMode && drivingGameStartTime) {
+        // Increment message count for this exchange (user message + assistant response)
+        const newMessageCount = drivingGameMessageCount + 1
+        setDrivingGameMessageCount(newMessageCount)
+        
+        const { hasConsensus, playerOp, agentOp } = detectConsensus(assistantMsg.content)
+        
+        if (hasConsensus) {
+          // Calculate score using the updated count
+          const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
+          const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
+          
+          // Save options, score, and message count for modal display
+          setLastPlayerOption(playerOp)
+          setLastAgentOption(agentOp)
+          setConsensusScore(score)
+          setConsensusMessageCount(newMessageCount)
+          
+          // Submit score to leaderboard
+          try {
+            await submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
+            console.log('[DRIVING GAME] Score submitted successfully, showing modal')
+          } catch (e) {
+            console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
+            // Continue to show modal even if submission failed (user still completed the game)
+          }
+          
+          // Show modal
+          setShowConsensusModal(true)
+          
+          // Reset driving game mode
+          setDrivingGameMode(false)
+          setDrivingGameStartTime(null)
+          setDrivingGameMessageCount(0)
+        }
+      }
+      
       setSessions(prev => prev.map(s => s.id === selectedSession.id ? data.session as ChatSession : s))
     } catch (e) {
       setMessages(prev => prev.filter(msg => msg.id !== optimisticId))
@@ -698,6 +755,89 @@ export default function ChatStudio() {
     anchor.download = `${selectedSession.title.replace(/\s+/g, '_').toLowerCase()}_chat.json`
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Driving Game Mode functions
+  const toggleDrivingGameMode = () => {
+    const newMode = !drivingGameMode
+    setDrivingGameMode(newMode)
+    if (newMode) {
+      // Starting driving game mode
+      setDrivingGameStartTime(Date.now())
+      setDrivingGameMessageCount(0)
+      setShowConsensusModal(false)
+      setLastPlayerOption('')
+      setLastAgentOption('')
+    } else {
+      // Stopping driving game mode
+      setDrivingGameStartTime(null)
+      setDrivingGameMessageCount(0)
+    }
+  }
+
+  const detectConsensus = (content: string): { hasConsensus: boolean, playerOp: string, agentOp: string } => {
+    // Check for <EOS> tag
+    const hasEOS = content.includes('<EOS>')
+    
+    // Extract PlayerOp and AgentOP
+    const playerOpMatch = content.match(/<PlayerOp:([^>]+)>/)
+    const agentOpMatch = content.match(/<AgentOP:([^>]+)>/)
+    
+    const playerOp = playerOpMatch ? playerOpMatch[1].trim() : ''
+    const agentOp = agentOpMatch ? agentOpMatch[1].trim() : ''
+    
+    return {
+      hasConsensus: hasEOS,
+      playerOp,
+      agentOp
+    }
+  }
+
+  const calculateDrivingGameScore = (messageCount: number, durationSeconds: number): number => {
+    // Scoring formula:
+    // Base score: 1000 points
+    // Penalty for messages: -50 points per message (fewer messages = better)
+    // Penalty for time: -1 point per second (faster = better)
+    // Minimum score: 100
+    
+    const baseScore = 1000
+    const messagePenalty = messageCount * 50
+    const timePenalty = Math.floor(durationSeconds)
+    
+    const finalScore = Math.max(100, baseScore - messagePenalty - timePenalty)
+    return finalScore
+  }
+
+  const submitDrivingGameScore = async (score: number, messageCount: number, durationSeconds: number, playerOp: string, agentOp: string) => {
+    if (!selectedSession || !sessionDraft?.template_id) {
+      console.error('[DRIVING GAME SUBMIT] Cannot submit score: No template selected')
+      setErrorMessage('Cannot submit score: No template selected')
+      return
+    }
+
+    try {
+      const scoreData = {
+        template_id: sessionDraft.template_id,
+        session_id: selectedSession.session_key,
+        score: score,
+        message_count: messageCount,
+        duration_seconds: durationSeconds,
+        player_option: playerOp,
+        agent_option: agentOp
+      }
+      
+      console.log('[DRIVING GAME SUBMIT] Submitting via drivingStatsAPI:', scoreData)
+      
+      // Use the dedicated drivingStatsAPI
+      const response = await drivingStatsAPI.submitScore(scoreData)
+      
+      console.log('[DRIVING GAME SUBMIT] Score submitted successfully:', response.data)
+    } catch (e: any) {
+      console.error('[DRIVING GAME SUBMIT] Failed to submit score:', e)
+      const errorMsg = e?.response?.data?.detail || e?.message || 'Unknown error'
+      setErrorMessage(`Failed to submit score: ${errorMsg}`)
+      throw e  // Re-throw to let caller know submission failed
+    }
   }
 
   const sidebarStyle: CSSProperties = {
@@ -1077,6 +1217,47 @@ export default function ChatStudio() {
                     ))}
                   </select>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
+                  <label style={labelStyle}>Driving Game Testing</label>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    padding: '10px',
+                    background: drivingGameMode ? 'rgba(34,197,94,0.15)' : 'rgba(15,23,42,0.55)',
+                    border: `1px solid ${drivingGameMode ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+                    borderRadius: '10px',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={drivingGameMode}
+                      onChange={toggleDrivingGameMode}
+                      disabled={!sessionDraft?.template_id}
+                      style={{ cursor: sessionDraft?.template_id ? 'pointer' : 'not-allowed' }}
+                    />
+                    <span style={{ 
+                      fontSize: isMobile ? '0.85rem' : '0.9rem', 
+                      color: drivingGameMode ? '#86efac' : 'rgba(226,232,240,0.85)',
+                      fontWeight: drivingGameMode ? 600 : 400
+                    }}>
+                      {drivingGameMode ? '🏁 Active' : 'Enable'}
+                    </span>
+                    {drivingGameMode && (
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        color: 'rgba(148,163,184,0.85)',
+                        marginLeft: 'auto'
+                      }}>
+                        {drivingGameMessageCount} msgs
+                      </span>
+                    )}
+                  </div>
+                  {!sessionDraft?.template_id && (
+                    <span style={{ fontSize: '0.65rem', color: 'rgba(248,113,113,0.8)' }}>
+                      Select a template first
+                    </span>
+                  )}
+                </div>
                 {savingPrompt && (
                   <div style={{
                     display: 'flex',
@@ -1155,6 +1336,174 @@ export default function ChatStudio() {
           </div>
         )}
       </main>
+
+      {/* Consensus Reached Modal */}
+      {showConsensusModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(20,20,35,0.95), rgba(30,30,50,0.95))',
+            border: '2px solid rgba(34,197,94,0.5)',
+            borderRadius: '20px',
+            padding: isMobile ? '24px' : '40px',
+            maxWidth: '500px',
+            width: '100%',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ 
+                fontSize: isMobile ? '3rem' : '4rem',
+                marginBottom: '10px'
+              }}>
+                🎉
+              </div>
+              <h2 style={{ 
+                fontSize: isMobile ? '1.5rem' : '1.8rem',
+                fontWeight: 700,
+                color: '#86efac',
+                margin: 0,
+                marginBottom: '10px'
+              }}>
+                Consensus Reached!
+              </h2>
+              <p style={{ 
+                fontSize: '0.9rem',
+                color: 'rgba(226,232,240,0.8)',
+                margin: 0
+              }}>
+                You and Cap have agreed on a strategy!
+              </p>
+            </div>
+
+            <div style={{
+              background: 'rgba(15,23,42,0.6)',
+              border: '1px solid rgba(148,163,184,0.25)',
+              borderRadius: '12px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.85rem' }}>Your Score:</span>
+                <span style={{ 
+                  fontSize: isMobile ? '1.8rem' : '2.2rem',
+                  fontWeight: 700,
+                  color: '#fbbf24',
+                  textShadow: '0 0 20px rgba(251,191,36,0.5)'
+                }}>
+                  {consensusScore}
+                </span>
+              </div>
+              
+              <div style={{ 
+                height: '1px', 
+                background: 'rgba(148,163,184,0.2)',
+                margin: '4px 0'
+              }} />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'rgba(148,163,184,0.85)' }}>Messages:</span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{consensusMessageCount}</span>
+              </div>
+
+              {lastPlayerOption && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'rgba(148,163,184,0.85)' }}>Your Choice:</span>
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>{lastPlayerOption}</span>
+                </div>
+              )}
+
+              {lastAgentOption && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'rgba(148,163,184,0.85)' }}>Cap's Choice:</span>
+                  <span style={{ color: '#86efac', fontWeight: 600 }}>{lastAgentOption}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              background: 'rgba(59,130,246,0.1)',
+              border: '1px solid rgba(59,130,246,0.3)',
+              borderRadius: '10px',
+              padding: '14px',
+              fontSize: '0.85rem',
+              color: 'rgba(226,232,240,0.9)',
+              lineHeight: '1.5'
+            }}>
+              <strong style={{ color: '#93c5fd' }}>📊 Score submitted to leaderboard!</strong>
+              <br />
+              Your score has been recorded in the Driving Game section.
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button
+                onClick={() => {
+                  setShowConsensusModal(false)
+                  handleResetSession()
+                }}
+                style={{
+                  flex: 1,
+                  padding: '14px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(34,197,94,0.5)',
+                  background: 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.25))',
+                  color: '#86efac',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34,197,94,0.35), rgba(22,163,74,0.35))'
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.25))'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                }}
+              >
+                🔄 Try Again
+              </button>
+              <button
+                onClick={() => setShowConsensusModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '14px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(148,163,184,0.35)',
+                  background: 'rgba(30,41,59,0.55)',
+                  color: 'rgba(226,232,240,0.85)',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(30,41,59,0.75)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(30,41,59,0.55)'
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

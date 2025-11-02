@@ -8,6 +8,7 @@ import Templates from './pages/Templates'
 import NewTemplate from './pages/NewTemplate'
 import TemplateEdit from './pages/TemplateEdit'
 import Leaderboard from './pages/Leaderboard'
+import DrivingStats from './pages/DrivingStats'
 import TemplateView from './pages/TemplateView'
 import TestMQTT from './pages/TestMQTT'
 import Friends from './pages/Friends'
@@ -155,6 +156,15 @@ export default function App() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <Navbar />
                 <div style={{ ...contentStyle, flex: 1 }}><Leaderboard /></div>
+                <Footer />
+              </div>
+            </PrivateRoute>
+          } />
+          <Route path="/driving-stats" element={
+            <PrivateRoute>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Navbar />
+                <div style={{ ...contentStyle, flex: 1 }}><DrivingStats /></div>
                 <Footer />
               </div>
             </PrivateRoute>

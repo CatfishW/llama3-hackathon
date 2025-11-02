@@ -266,6 +266,30 @@ def get_session_history(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+class SessionHistoryIn(BaseModel):
+    session_id: str
+
+
+@router.post("/chat/session/history", response_model=SessionHistoryResponse)
+def post_session_history(
+    payload: SessionHistoryIn,
+    user = Depends(get_current_user)
+):
+    """POST variant for environments that block GET on dynamic paths."""
+    try:
+        session_manager = get_session_manager()
+        history = session_manager.get_session_history(payload.session_id)
+        if history is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        messages = [ChatMessage(role=msg["role"], content=msg["content"]) for msg in history]
+        return SessionHistoryResponse(session_id=payload.session_id, messages=messages)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving session history (POST): {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.delete("/chat/session/{session_id}")
 def clear_session(
     session_id: str,

@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ALLOWED_ORIGINS
 from .database import Base, engine
 from . import models
-from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings, users, chatbot, announcements
+from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings, users, chatbot, announcements, driving, llm
 from .mqtt import start_mqtt, stop_mqtt
 from .websocket import websocket_endpoint
 import os
@@ -34,6 +34,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(templates.router)
 app.include_router(leaderboard.router)
+app.include_router(driving.router)  # Driving game - separate from leaderboard
 app.include_router(mqtt_bridge.router)
 app.include_router(profile.router)
 app.include_router(friends.router)
@@ -41,6 +42,7 @@ app.include_router(messages.router)
 app.include_router(settings.router)
 app.include_router(chatbot.router)
 app.include_router(announcements.router)
+app.include_router(llm.router)
 
 # WebSocket endpoint
 @app.websocket("/ws/{token}")
