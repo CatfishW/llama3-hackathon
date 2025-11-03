@@ -15,6 +15,12 @@ from .database import SessionLocal
 from .models import ChatMessage, ChatSession
 import threading
 
+# Connection health monitoring
+_mqtt_last_activity = time.time()
+_mqtt_reconnect_lock = threading.Lock()
+_mqtt_reconnect_attempts = 0
+_mqtt_max_reconnect_attempts = 10
+
 @dataclass
 class _PendingResponse:
     future: asyncio.Future
@@ -54,10 +60,14 @@ unique_client_id = f"{settings.MQTT_CLIENT_ID}_{uuid.uuid4().hex[:8]}"
 mqtt_client = mqtt.Client(client_id=unique_client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 
 def _on_connect(client, userdata, flags, reason_code, properties=None):
+    global _mqtt_reconnect_attempts, _mqtt_last_activity
     if reason_code == 0:
+        _mqtt_reconnect_attempts = 0  # Reset reconnect counter on successful connection
+        _mqtt_last_activity = time.time()
+        
         # Subscribe to maze hints (if configured)
         if getattr(settings, "MQTT_TOPIC_HINT", None):
-            client.subscribe(settings.MQTT_TOPIC_HINT)
+            client.subscribe(settings.MQTT_TOPIC_HINT, qos=1)
             print(f"MQTT connected and subscribed to {settings.MQTT_TOPIC_HINT}")
         else:
             print("MQTT connected but no hint topic configured")
@@ -73,6 +83,9 @@ def _on_connect(client, userdata, flags, reason_code, properties=None):
         print(f"MQTT connection failed with code {reason_code}")
 
 def _on_disconnect(client, userdata, flags, reason_code, properties=None):
+    global _mqtt_reconnect_attempts, _mqtt_last_activity
+    _mqtt_last_activity = time.time()
+    
     if reason_code != 0:
         # Provide more detailed error information
         error_messages = {
@@ -87,10 +100,34 @@ def _on_disconnect(client, userdata, flags, reason_code, properties=None):
         error_msg = error_messages.get(reason_code, f"Unknown error code {reason_code}")
         print(f"Unexpected MQTT disconnection: {error_msg} (code: {reason_code})")
         print(f"Client ID was: {unique_client_id}")
+        
+        # Attempt automatic reconnection
+        _mqtt_reconnect_attempts += 1
+        if _mqtt_reconnect_attempts <= _mqtt_max_reconnect_attempts:
+            delay = min(300, 5 * (2 ** (_mqtt_reconnect_attempts - 1)))  # Exponential backoff, max 5 minutes
+            print(f"Scheduling reconnection attempt {_mqtt_reconnect_attempts}/{_mqtt_max_reconnect_attempts} in {delay}s")
+            threading.Timer(delay, _attempt_reconnect).start()
+        else:
+            print(f"Max reconnection attempts ({_mqtt_max_reconnect_attempts}) reached. Manual restart required.")
     else:
         print("MQTT client disconnected normally")
 
+def _attempt_reconnect():
+    """Attempt to reconnect to MQTT broker"""
+    global _mqtt_reconnect_lock
+    with _mqtt_reconnect_lock:
+        try:
+            print(f"Attempting MQTT reconnection (attempt {_mqtt_reconnect_attempts}/{_mqtt_max_reconnect_attempts})...")
+            mqtt_client.reconnect()
+            print("MQTT reconnection successful")
+        except Exception as e:
+            print(f"MQTT reconnection failed: {e}")
+            # _on_disconnect will be called again, triggering another attempt if within limits
+
 def _on_message(client, userdata, msg):
+    global _mqtt_last_activity
+    _mqtt_last_activity = time.time()  # Update activity timestamp
+    
     payload_text = msg.payload.decode("utf-8", errors="ignore")
     print(f"[MQTT] Received message on topic '{msg.topic}': {payload_text[:200]}...")
 
@@ -305,6 +342,10 @@ def _handle_chat_response(topic: str, payload_text: str) -> None:
         print(f"[MQTT] No pending caller for session '{session_key}' (request={request_id})")
 
 def start_mqtt():
+    global _mqtt_reconnect_attempts, _mqtt_last_activity
+    _mqtt_reconnect_attempts = 0
+    _mqtt_last_activity = time.time()
+    
     mqtt_client.on_connect = _on_connect
     mqtt_client.on_disconnect = _on_disconnect
     mqtt_client.on_message = _on_message
@@ -314,34 +355,134 @@ def start_mqtt():
         mqtt_client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
         print(f"MQTT authentication configured for user: {settings.MQTT_USERNAME}")
     
+    # Configure connection options for better reliability
+    mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)  # Auto-reconnect with exponential backoff
+    
     print(f"Connecting to MQTT broker at {settings.MQTT_BROKER_HOST}:{settings.MQTT_BROKER_PORT}")
     print(f"Using client ID: {unique_client_id}")
     
     try:
-        mqtt_client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, 60)
+        # Connect with keepalive of 60 seconds (will send PINGREQ if no activity)
+        mqtt_client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
         mqtt_client.loop_start()
         print("MQTT loop started successfully")
+        
+        # Start health monitoring thread
+        health_thread = threading.Thread(target=_mqtt_health_monitor, daemon=True)
+        health_thread.start()
+        print("MQTT health monitor started")
     except Exception as e:
         print(f"Failed to start MQTT connection: {e}")
 
+def _mqtt_health_monitor():
+    """Monitor MQTT connection health and trigger reconnection if stale"""
+    global _mqtt_last_activity
+    while True:
+        try:
+            time.sleep(30)  # Check every 30 seconds
+            time_since_activity = time.time() - _mqtt_last_activity
+            
+            # Clean up stale pending requests (older than 2 minutes)
+            _cleanup_stale_requests()
+            
+            # If no activity for 5 minutes, connection might be stale
+            if time_since_activity > 300:
+                print(f"[MQTT Health] No activity for {time_since_activity:.0f}s, checking connection...")
+                if not mqtt_client.is_connected():
+                    print("[MQTT Health] Connection lost, attempting reconnection...")
+                    _attempt_reconnect()
+                else:
+                    # Connection appears active, send a ping to verify
+                    try:
+                        mqtt_client.publish("$SYS/ping", "health_check", qos=0)
+                        _mqtt_last_activity = time.time()
+                    except Exception as e:
+                        print(f"[MQTT Health] Ping failed: {e}")
+        except Exception as e:
+            print(f"[MQTT Health] Monitor error: {e}")
+
+def _cleanup_stale_requests():
+    """Clean up pending requests that have been waiting too long"""
+    current_time = time.time()
+    stale_timeout = 120  # 2 minutes
+    
+    with _CHAT_PENDING_LOCK:
+        stale_request_ids = []
+        for request_id, pending in _CHAT_PENDING_BY_REQUEST.items():
+            if current_time - pending.created_at > stale_timeout:
+                stale_request_ids.append(request_id)
+                if not pending.future.done():
+                    try:
+                        pending.loop.call_soon_threadsafe(
+                            pending.future.set_exception,
+                            asyncio.TimeoutError("Request exceeded maximum wait time")
+                        )
+                    except Exception as e:
+                        print(f"[MQTT Cleanup] Error cancelling stale request {request_id}: {e}")
+        
+        # Remove stale requests
+        for request_id in stale_request_ids:
+            pending = _CHAT_PENDING_BY_REQUEST.pop(request_id, None)
+            if pending:
+                queue = _CHAT_PENDING_BY_SESSION.get(pending.session_key)
+                if queue:
+                    try:
+                        queue.remove(pending)
+                    except ValueError:
+                        pass
+                    if not queue:
+                        _CHAT_PENDING_BY_SESSION.pop(pending.session_key, None)
+        
+        if stale_request_ids:
+            print(f"[MQTT Cleanup] Cleaned up {len(stale_request_ids)} stale pending requests")
+
 def stop_mqtt():
-    mqtt_client.loop_stop()
-    mqtt_client.disconnect()
+    """Gracefully stop MQTT client"""
+    try:
+        # Clean up pending requests
+        with _CHAT_PENDING_LOCK:
+            for request_id, pending in list(_CHAT_PENDING_BY_REQUEST.items()):
+                if not pending.future.done():
+                    try:
+                        pending.loop.call_soon_threadsafe(
+                            pending.future.set_exception,
+                            RuntimeError("MQTT connection closing")
+                        )
+                    except Exception:
+                        pass
+            _CHAT_PENDING_BY_REQUEST.clear()
+            _CHAT_PENDING_BY_SESSION.clear()
+        
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+        print("MQTT client stopped gracefully")
+    except Exception as e:
+        print(f"Error stopping MQTT client: {e}")
 
 def publish_state(state: dict):
-    # Publish to 'maze/state' by default
-    mqtt_client.publish(settings.MQTT_TOPIC_STATE, json.dumps(state), qos=0, retain=False)
+    """Publish maze game state to MQTT"""
+    try:
+        result = mqtt_client.publish(settings.MQTT_TOPIC_STATE, json.dumps(state), qos=0, retain=False)
+        if result.rc != 0:
+            print(f"[MQTT] Failed to publish state (rc={result.rc})")
+    except Exception as e:
+        print(f"[MQTT] Error publishing state: {e}")
 
 def publish_template(template_payload: dict, session_id: str | None = None):
     """Publish a template update to the LAM over MQTT. If session_id is provided, target that session."""
-    topic = settings.MQTT_TOPIC_TEMPLATE
-    if session_id:
-        # allow per-session override by suffixing session id
-        if not topic.endswith("/"):
-            topic = topic + "/" + session_id
-        else:
-            topic = topic + session_id
-    mqtt_client.publish(topic, json.dumps(template_payload), qos=0, retain=False)
+    try:
+        topic = settings.MQTT_TOPIC_TEMPLATE
+        if session_id:
+            # allow per-session override by suffixing session id
+            if not topic.endswith("/"):
+                topic = topic + "/" + session_id
+            else:
+                topic = topic + session_id
+        result = mqtt_client.publish(topic, json.dumps(template_payload), qos=1, retain=False)  # QoS 1 for templates
+        if result.rc != 0:
+            print(f"[MQTT] Failed to publish template (rc={result.rc})")
+    except Exception as e:
+        print(f"[MQTT] Error publishing template: {e}")
 
 
 async def send_chat_message(payload: Dict[str, Any], timeout: float = 45.0) -> Dict[str, Any]:
@@ -379,7 +520,7 @@ async def send_chat_message(payload: Dict[str, Any], timeout: float = 45.0) -> D
         _CHAT_PENDING_BY_SESSION.setdefault(session_key, deque()).append(pending)
 
     message = json.dumps(payload, ensure_ascii=False)
-    result = mqtt_client.publish(settings.MQTT_TOPIC_USER_INPUT, message, qos=0)
+    result = mqtt_client.publish(settings.MQTT_TOPIC_USER_INPUT, message, qos=1)  # Increased QoS to 1
 
     if result.rc != 0:
         with _CHAT_PENDING_LOCK:
@@ -407,4 +548,9 @@ async def send_chat_message(payload: Dict[str, Any], timeout: float = 45.0) -> D
                     pass
                 if not queue:
                     _CHAT_PENDING_BY_SESSION.pop(session_key, None)
+        
+        # Check if MQTT is still connected
+        if not mqtt_client.is_connected():
+            raise RuntimeError("MQTT connection lost - please check broker connectivity")
+        
         raise
