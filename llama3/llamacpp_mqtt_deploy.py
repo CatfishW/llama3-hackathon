@@ -21,6 +21,7 @@ Date: 2025
 
 import json
 import logging
+import logging.handlers
 import os
 import queue
 import threading
@@ -48,16 +49,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Debug logger for detailed information (file only)
+# Debug logger for detailed information (file only with rotation)
+# This logger can be disabled by setting enable_debug_logging=False in main()
 debug_logger = logging.getLogger('debug')
 debug_logger.setLevel(logging.DEBUG)
-debug_handler = logging.FileHandler('debug_info.log', mode='a', encoding='utf-8')
+# Use RotatingFileHandler to prevent log file from growing indefinitely
+# maxBytes=50MB, keep 3 backup files (total ~150MB max)
+debug_handler = logging.handlers.RotatingFileHandler(
+    'debug_info.log', 
+    mode='a', 
+    encoding='utf-8',
+    maxBytes=50*1024*1024,  # 50 MB
+    backupCount=3
+)
 debug_handler.setFormatter(logging.Formatter(
     '%(asctime)s | %(levelname)-8s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 ))
 debug_logger.addHandler(debug_handler)
 debug_logger.propagate = False  # Don't propagate to root logger
+debug_logger.disabled = False  # Can be set to True to disable all debug logging
 
 
 @dataclass
@@ -111,7 +122,7 @@ class DeploymentConfig:
     max_queue_size: int = 1000  # Maximum messages in queue
     
     # Rate Limiting
-    max_requests_per_session: int = 10000  # Max requests per minute per session
+    max_requests_per_session: int = 100000000  # Max requests per minute per session
     rate_limit_window: int = 60  # Rate limit window in seconds
     
     # Projects
@@ -1902,6 +1913,9 @@ def main(
     
     # Output processing
     skip_thinking: bool = True,
+    
+    # Debug logging control
+    enable_debug_logging: bool = False,
 ):
     """
     Deploy Llama.cpp model with MQTT interface for multiple projects.
@@ -1923,6 +1937,9 @@ def main(
         skip_thinking: Disable thinking mode (adds /no_think to prompt).
                       For Qwen3-30B with deep thinking enabled, set to False to show thinking.
                       Default: True (thinking mode disabled for faster responses)
+        enable_debug_logging: Enable detailed debug logging to file (default: False).
+                            WARNING: Debug logging can create large log files when processing many requests.
+                            Only enable for troubleshooting. Uses log rotation (50MB max, 3 backups).
     
     Thinking Mode Control:
         When skip_thinking=True (default):
@@ -1936,8 +1953,11 @@ def main(
         - Higher token consumption (thinking tokens count as output)
     
     Examples:
-        # Deploy for maze game only (thinking disabled)
+        # Deploy for maze game only (thinking disabled, no debug logging)
         python llamacpp_mqtt_deploy.py --projects maze
+        
+        # Deploy with debug logging enabled (for troubleshooting)
+        python llamacpp_mqtt_deploy.py --projects maze --enable_debug_logging True
         
         # Deploy with thinking enabled for better reasoning
         python llamacpp_mqtt_deploy.py --projects "maze driving" --skip_thinking False
@@ -1960,6 +1980,15 @@ def main(
             --max_tokens 1024 \\
             --skip_thinking False
     """
+    
+    # Configure debug logging based on parameter
+    if not enable_debug_logging:
+        debug_logger.disabled = True
+        logger.info("Debug logging is DISABLED (enable with --enable_debug_logging True)")
+    else:
+        debug_logger.disabled = False
+        logger.info("Debug logging is ENABLED (writes to debug_info.log with rotation)")
+        logger.warning("⚠️  Debug logging creates large files - only use for troubleshooting!")
     
     logger.info("=" * 80)
     logger.info("Llama.cpp MQTT Deployment")
@@ -2105,8 +2134,11 @@ def main(
         logger.info("-" * 80)
         logger.info("Deployment ready! Listening for messages...")
         logger.info("=" * 80)
-        logger.info("📝 Debug logging enabled: debug_info.log")
-        logger.info("   (Contains full user inputs, LLM prompts, and outputs)")
+        if enable_debug_logging:
+            logger.info("📝 Debug logging enabled: debug_info.log (with rotation: 50MB max, 3 backups)")
+            logger.info("   (Contains full user inputs, LLM prompts, and outputs)")
+        else:
+            logger.info("ℹ️  Debug logging disabled (enable with --enable_debug_logging True)")
         logger.info("-" * 80)
         logger.info("Press Ctrl+C to stop")
         logger.info("=" * 80)
