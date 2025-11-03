@@ -33,6 +33,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 import fire
 import paho.mqtt.client as mqtt
+import httpx
 from openai import OpenAI, OpenAIError
 
 # ============================================================================
@@ -110,7 +111,7 @@ class DeploymentConfig:
     max_queue_size: int = 1000  # Maximum messages in queue
     
     # Rate Limiting
-    max_requests_per_session: int = 20  # Max requests per minute per session
+    max_requests_per_session: int = 10000  # Max requests per minute per session
     rate_limit_window: int = 60  # Rate limit window in seconds
     
     # Projects
@@ -369,10 +370,19 @@ class LlamaCppClient:
         
         # Initialize OpenAI client with llama.cpp server as base URL
         # Note: api_key is required by OpenAI client but not used by llama.cpp
+        # Configure HTTP timeouts: allow long reads to avoid upstream 502s during long generations
+        # If server_timeout <= 0, disable read timeout entirely (no limit)
+        if isinstance(self.timeout, (int, float)) and self.timeout > 0:
+            http_timeout = self.timeout
+        else:
+            # No read timeout, but keep reasonable connect/write/pool timeouts
+            http_timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=60.0)
+
         self.client = OpenAI(
             base_url=self.server_url,
             api_key="not-needed",  # llama.cpp doesn't require API key
-            timeout=self.timeout
+            timeout=http_timeout,
+            max_retries=3,
         )
         
         # Test connection to server and detect context size
@@ -1231,7 +1241,8 @@ class MessageProcessor:
         except queue.Full:
             logger.error(f"Message queue full! Rejecting message from session {message.session_id[:8]}...")
             error_msg = "Server is overloaded. Please try again in a moment."
-            self.mqtt_client.publish(message.response_topic, error_msg, qos=0)
+            # Use QoS 1 to improve delivery reliability
+            self.mqtt_client.publish(message.response_topic, error_msg, qos=1)
             with self.stats_lock:
                 self.stats["rejected"] += 1
     
@@ -1323,8 +1334,8 @@ class MessageProcessor:
                 
                 response_topic = response_topic.rstrip("/")
                 
-                # Publish with QoS 0
-                result = self.mqtt_client.publish(response_topic, response, qos=0)
+                # Publish with QoS 1 to reduce message loss under network blips
+                result = self.mqtt_client.publish(response_topic, response, qos=1)
                 
                 # Log publish status
                 if result.rc == 0:
@@ -1366,8 +1377,8 @@ class MQTTHandler:
         self.message_processor = message_processor
         
         # Create MQTT client
-        client_id = f"llamacpp-deploy-{uuid.uuid4().hex[:8]}"
-        self.client = mqtt.Client(client_id=client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+        self.client_id = f"llamacpp-deploy-{uuid.uuid4().hex[:8]}"
+        self.client = mqtt.Client(client_id=self.client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         
         # Set authentication if provided
         if config.mqtt_username and config.mqtt_password:
@@ -1377,6 +1388,7 @@ class MQTTHandler:
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
+        self.client.on_subscribe = self._on_subscribe
         
         # Reconnection and reliability settings
         self.client.reconnect_delay_set(min_delay=1, max_delay=120)
@@ -1385,9 +1397,10 @@ class MQTTHandler:
             self.client.max_queued_messages_set(2000)
             self.client.enable_logger()
             # Optional LWT status (non-breaking)
-            status_topic = f"{list(self.config.projects.values())[0].user_topic.rsplit('/', 1)[0]}/status"
-            self.client.will_set(status_topic, json.dumps({"service": client_id, "status": "offline"}), qos=1, retain=False)
+            self.status_topic = f"{list(self.config.projects.values())[0].user_topic.rsplit('/', 1)[0]}/status"
+            self.client.will_set(self.status_topic, json.dumps({"service": self.client_id, "status": "offline"}), qos=1, retain=False)
         except Exception:
+            self.status_topic = None
             pass
         
     def _on_connect(self, client, userdata, flags, rc, properties=None):
@@ -1429,6 +1442,15 @@ class MQTTHandler:
                         client.subscribe(del_base, qos=1)
                         client.subscribe(f"{del_base}/+", qos=1)
                         logger.info(f"✓ Subscribed to DELETE topic: {del_base} (project: {project_name})")
+
+            # Publish online status immediately upon (re)connect
+            if getattr(self, "status_topic", None):
+                try:
+                    heartbeat = {"service": self.client_id, "status": "online", "ts": time.time()}
+                    client.publish(self.status_topic, json.dumps(heartbeat), qos=1, retain=False)
+                    logger.info(f"✓ Published online status to {self.status_topic}")
+                except Exception as exc:
+                    logger.debug(f"Unable to publish online status: {exc}")
         else:
             logger.error(f"✗ Failed to connect to MQTT broker, code: {rc}")
     
@@ -1436,6 +1458,13 @@ class MQTTHandler:
         """Callback for MQTT disconnection."""
         if rc != 0:
             logger.warning(f"Unexpected disconnect from MQTT broker, code: {rc}")
+            # Let loop_forever handle reconnect; just log
+
+    def _on_subscribe(self, client, userdata, mid, granted_qos, properties=None):
+        try:
+            logger.debug(f"Subscription acknowledged (mid={mid}) with QoS {granted_qos}")
+        except Exception:
+            pass
     
     def _normalize_session_id(self, raw_session_id) -> str:
         """Convert arbitrary session identifiers into a safe string."""
@@ -1805,7 +1834,8 @@ class MQTTHandler:
     def connect(self):
         """Connect to MQTT broker."""
         try:
-            self.client.connect(self.config.mqtt_broker, self.config.mqtt_port, keepalive=60)
+            # Shorter keepalive helps keep NAT bindings fresh and detect drops sooner
+            self.client.connect(self.config.mqtt_broker, self.config.mqtt_port, keepalive=30)
             return True
         except Exception as e:
             logger.error(f"Failed to connect to MQTT broker: {e}")
@@ -1818,6 +1848,26 @@ class MQTTHandler:
     def disconnect(self):
         """Disconnect from MQTT broker."""
         self.client.disconnect()
+
+    # ----------------------------------------------
+    # Heartbeat / liveness publishing
+    # ----------------------------------------------
+    def start_heartbeat(self, interval: int = 30):
+        """Start a background heartbeat publisher to the status topic."""
+        if not getattr(self, "status_topic", None):
+            return
+
+        def _hb_loop():
+            while True:
+                try:
+                    payload = {"service": self.client_id, "status": "online", "ts": time.time()}
+                    self.client.publish(self.status_topic, json.dumps(payload), qos=0, retain=False)
+                except Exception:
+                    pass
+                time.sleep(max(5, interval))
+
+        t = threading.Thread(target=_hb_loop, daemon=True, name="mqtt-heartbeat")
+        t.start()
 
 
 # ============================================================================
@@ -2077,6 +2127,9 @@ def main(
         
         stats_thread = threading.Thread(target=report_stats, daemon=True)
         stats_thread.start()
+
+        # Start heartbeat publishing so external services can monitor liveness
+        mqtt_handler.start_heartbeat(interval=30)
         
         # Start MQTT loop (blocking)
         mqtt_handler.start_loop()
