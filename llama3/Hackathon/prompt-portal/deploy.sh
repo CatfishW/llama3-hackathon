@@ -557,10 +557,19 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         
-        # Timeouts for slow API operations
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        # Extended timeouts for LLM operations (up to 10 minutes)
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        
+        # Disable buffering for streaming responses
+        proxy_buffering off;
+        proxy_request_buffering off;
+        
+        # Increase buffer sizes for large responses
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
         
         # Add CORS headers
         add_header Access-Control-Allow-Origin * always;
