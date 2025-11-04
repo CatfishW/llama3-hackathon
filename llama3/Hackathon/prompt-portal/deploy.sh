@@ -579,6 +579,10 @@ server {
 }
 EOF
     
+    # Save nginx config to project directory for reference
+    cp /tmp/nginx_$DOMAIN_NAME.conf "$ROOT_DIR/nginx-$DOMAIN_NAME.conf"
+    echo -e "${GREEN}✓ Nginx config saved to nginx-$DOMAIN_NAME.conf${NC}"
+    
     # Move to nginx directory with sudo
     sudo mv /tmp/nginx_$DOMAIN_NAME.conf /etc/nginx/sites-available/$DOMAIN_NAME
     
