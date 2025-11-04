@@ -296,6 +296,14 @@ async def send_message(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> schemas.ChatMessageSendResponse:
+    # Check MQTT connection health before processing
+    from ..mqtt import mqtt_client
+    if not mqtt_client or not mqtt_client.is_connected():
+        raise HTTPException(
+            status_code=503,
+            detail="LLM backend connection unavailable. Please try again in a moment."
+        )
+    
     session = (
         db.query(ChatSession)
         .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
@@ -353,11 +361,25 @@ async def send_message(
         mqtt_payload["maxTokens"] = effective_max_tokens
 
     try:
-        response_payload = await send_chat_message(mqtt_payload)
+        # Increased timeout to 90 seconds for LLM responses
+        response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for model response")
+        raise HTTPException(
+            status_code=504,
+            detail="The AI model is taking longer than usual to respond. Please try again."
+        )
+    except RuntimeError as exc:
+        if "MQTT connection" in str(exc):
+            raise HTTPException(
+                status_code=503,
+                detail="LLM backend connection lost. Reconnecting... Please try again in a moment."
+            )
+        raise HTTPException(status_code=502, detail=f"Backend error: {str(exc)}") from exc
     except Exception as exc:  # pragma: no cover - surface error to client
-        raise HTTPException(status_code=502, detail=f"Failed to contact LLM backend: {exc}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to contact LLM backend. Please try again. Error: {str(exc)}"
+        ) from exc
 
     # Reload session to pick up assistant message count update
     db.refresh(session)

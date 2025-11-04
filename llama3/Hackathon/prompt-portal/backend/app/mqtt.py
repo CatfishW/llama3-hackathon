@@ -6,6 +6,8 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Deque, Dict, Optional, Set
+import signal
+import sys
 
 from fastapi import WebSocket
 import paho.mqtt.client as mqtt
@@ -356,7 +358,10 @@ def start_mqtt():
         print(f"MQTT authentication configured for user: {settings.MQTT_USERNAME}")
     
     # Configure connection options for better reliability
-    mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)  # Auto-reconnect with exponential backoff
+    mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)
+    
+    # Enable clean session to prevent message buildup
+    mqtt_client._clean_session = True
     
     print(f"Connecting to MQTT broker at {settings.MQTT_BROKER_HOST}:{settings.MQTT_BROKER_PORT}")
     print(f"Using client ID: {unique_client_id}")
@@ -371,8 +376,37 @@ def start_mqtt():
         health_thread = threading.Thread(target=_mqtt_health_monitor, daemon=True)
         health_thread.start()
         print("MQTT health monitor started")
+        
+        # Start periodic connection verification
+        verify_thread = threading.Thread(target=_periodic_connection_check, daemon=True)
+        verify_thread.start()
+        print("MQTT connection verifier started")
+        
     except Exception as e:
         print(f"Failed to start MQTT connection: {e}")
+        raise
+
+
+def _periodic_connection_check():
+    """Periodically verify MQTT connection is truly alive"""
+    while True:
+        try:
+            time.sleep(60)  # Check every minute
+            if mqtt_client.is_connected():
+                # Try to publish a test message to verify connection
+                try:
+                    result = mqtt_client.publish("$SYS/heartbeat", "ping", qos=0)
+                    if result.rc != 0:
+                        print(f"[MQTT Verify] Publish failed (rc={result.rc}), may need reconnection")
+                        _attempt_reconnect()
+                except Exception as e:
+                    print(f"[MQTT Verify] Connection test failed: {e}")
+                    _attempt_reconnect()
+            else:
+                print("[MQTT Verify] Connection lost, attempting reconnect")
+                _attempt_reconnect()
+        except Exception as e:
+            print(f"[MQTT Verify] Error in connection check: {e}")
 
 def _mqtt_health_monitor():
     """Monitor MQTT connection health and trigger reconnection if stale"""
@@ -458,6 +492,22 @@ def stop_mqtt():
         print("MQTT client stopped gracefully")
     except Exception as e:
         print(f"Error stopping MQTT client: {e}")
+
+
+# Graceful shutdown handler
+def _signal_handler(sig, frame):
+    print(f"\n[MQTT] Received signal {sig}, shutting down gracefully...")
+    stop_mqtt()
+    sys.exit(0)
+
+
+# Register signal handlers for graceful shutdown
+try:
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+except Exception as e:
+    print(f"[MQTT] Warning: Could not register signal handlers: {e}")
+
 
 def publish_state(state: dict):
     """Publish maze game state to MQTT"""
