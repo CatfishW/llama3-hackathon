@@ -9,7 +9,7 @@ from ..config import settings
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
 
 @router.post("/publish_state")
-def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Fetch the template content to embed into state, so LAM can use it.
     t = db.query(models.PromptTemplate).filter(models.PromptTemplate.id == payload.template_id, models.PromptTemplate.user_id == user.id).first()
     if not t:
@@ -26,9 +26,75 @@ def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depend
     })
     
     if settings.LLM_COMM_MODE.lower() == "sse":
-        # In SSE mode, we just acknowledge receipt
-        # The actual hint generation happens in /request_hint
-        return {"ok": True, "mode": "sse", "message": "State received, use /request_hint to get hints"}
+        # In SSE mode, automatically generate and store hint (like MQTT mode does)
+        try:
+            from ..services.llm_service import get_llm_service
+            import json
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            session_id = payload.session_id
+            logger.info(f"[SSE MODE] Auto-generating hint for publish_state, session: {session_id}")
+            
+            llm_service = get_llm_service()
+            
+            # Build system prompt from template
+            system_prompt = t.content
+            
+            # Build user message from game state
+            user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint for navigating the maze."
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=True")
+            
+            # Generate hint with function calling enabled for maze actions
+            hint_response = llm_service.process_message(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                use_tools=True  # Enable maze game function calling
+            )
+            logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100] if hint_response else 'None'}...")
+            
+            # Parse response if it's JSON (happens when function calling is used)
+            hint_data = hint_response
+            try:
+                parsed = json.loads(hint_response)
+                if isinstance(parsed, dict):
+                    hint_data = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Response is plain text, use as-is
+                hint_data = {"hint": hint_response}
+            
+            # Ensure hint_data is a dict
+            if not isinstance(hint_data, dict):
+                hint_data = {"hint": str(hint_data)}
+            
+            # Store the hint so it can be retrieved via /last_hint
+            import time
+            hint_data["timestamp"] = time.time()
+            LAST_HINTS[session_id] = hint_data
+            
+            # Also broadcast to WebSocket subscribers if any
+            if session_id in SUBSCRIBERS:
+                import asyncio
+                disconnected = set()
+                for ws in SUBSCRIBERS[session_id]:
+                    try:
+                        await ws.send_json({"hint": hint_data, "session_id": session_id})
+                    except Exception:
+                        disconnected.add(ws)
+                SUBSCRIBERS[session_id] -= disconnected
+            
+            logger.info(f"[SSE MODE] Successfully generated and stored hint for session {session_id}")
+            return {"ok": True, "mode": "sse", "hint_generated": True}
+            
+        except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[SSE MODE] Failed to generate hint in publish_state: {str(e)}")
+            logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
+            # Still return OK so the game doesn't break, but log the error
+            return {"ok": True, "mode": "sse", "hint_generated": False, "error": str(e)}
     else:
         # MQTT mode: Publish to MQTT broker
         publish_state(state)
