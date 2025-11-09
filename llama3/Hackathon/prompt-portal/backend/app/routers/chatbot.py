@@ -576,15 +576,21 @@ async def send_message_stream(
     db.refresh(user_message)
     db.refresh(session)
 
+    # Extract data needed for streaming (avoid accessing session objects in async generator)
+    session_id_value = session.id
+    user_message_id_value = user_message.id
+    session_key_value = session.session_key
+    system_prompt_value = session.system_prompt or _default_prompt()
+
     # Create a generator that streams the response
     async def stream_generator():
         try:
             # Send metadata first (session and user message info)
             metadata = {
                 "type": "metadata",
-                "session_id": session.id,
-                "user_message_id": user_message.id,
-                "session_key": session.session_key
+                "session_id": session_id_value,
+                "user_message_id": user_message_id_value,
+                "session_key": session_key_value
             }
             yield f"data: {json.dumps(metadata)}\n\n"
             
@@ -596,8 +602,8 @@ async def send_message_stream(
                 llm_service = get_llm_service()
                 
                 for chunk in llm_service.process_message_stream(
-                    session_id=session.session_key,
-                    system_prompt=session.system_prompt or _default_prompt(),
+                    session_id=session_key_value,
+                    system_prompt=system_prompt_value,
                     user_message=payload.content,
                     temperature=effective_temperature,
                     top_p=effective_top_p,
@@ -612,11 +618,11 @@ async def send_message_stream(
             else:
                 # MQTT mode: Get full response, then simulate streaming
                 mqtt_payload = {
-                    "sessionId": session.session_key,
+                    "sessionId": session_key_value,
                     "message": payload.content,
                 }
-                if session.system_prompt:
-                    mqtt_payload["systemPrompt"] = session.system_prompt
+                if system_prompt_value:
+                    mqtt_payload["systemPrompt"] = system_prompt_value
                 if effective_temperature is not None:
                     mqtt_payload["temperature"] = effective_temperature
                 if effective_top_p is not None:
@@ -645,32 +651,41 @@ async def send_message_stream(
                     yield f"data: {json.dumps(error_data)}\n\n"
                     return
             
-            # Save assistant message to database
-            request_id = f"stream-{uuid.uuid4().hex[:8]}"
-            now_assistant = datetime.utcnow()
-            assistant_message = ChatMessage(
-                session_id=session.id,
-                role="assistant",
-                content=full_content,
-                metadata_json=None,
-                request_id=request_id,
-                created_at=now_assistant,
-            )
-            session.message_count = (session.message_count or 0) + 1
-            session.updated_at = now_assistant
-            session.last_used_at = now_assistant
-            db.add(assistant_message)
-            db.commit()
-            db.refresh(assistant_message)
-            db.refresh(session)
-            
-            # Send completion with assistant message ID
-            completion_data = {
-                "type": "done",
-                "assistant_message_id": assistant_message.id,
-                "full_content": full_content
-            }
-            yield f"data: {json.dumps(completion_data)}\n\n"
+            # Save assistant message to database (create new session to avoid detached instance errors)
+            from ..database import SessionLocal
+            db_stream = SessionLocal()
+            try:
+                request_id = f"stream-{uuid.uuid4().hex[:8]}"
+                now_assistant = datetime.utcnow()
+                assistant_message = ChatMessage(
+                    session_id=session_id_value,
+                    role="assistant",
+                    content=full_content,
+                    metadata_json=None,
+                    request_id=request_id,
+                    created_at=now_assistant,
+                )
+                
+                # Update session message count and timestamps
+                session_update = db_stream.query(ChatSession).filter(ChatSession.id == session_id_value).first()
+                if session_update:
+                    session_update.message_count = (session_update.message_count or 0) + 1
+                    session_update.updated_at = now_assistant
+                    session_update.last_used_at = now_assistant
+                
+                db_stream.add(assistant_message)
+                db_stream.commit()
+                db_stream.refresh(assistant_message)
+                
+                # Send completion with assistant message ID
+                completion_data = {
+                    "type": "done",
+                    "assistant_message_id": assistant_message.id,
+                    "full_content": full_content
+                }
+                yield f"data: {json.dumps(completion_data)}\n\n"
+            finally:
+                db_stream.close()
             
         except Exception as e:
             error_data = {"type": "error", "message": f"Streaming error: {str(e)}"}

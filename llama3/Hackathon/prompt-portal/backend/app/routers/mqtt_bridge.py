@@ -85,8 +85,13 @@ async def request_hint_endpoint(
         try:
             from ..services.llm_service import get_llm_service
             import json
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            logger.info(f"[SSE MODE] Processing hint request for session: {session_id}")
             
             llm_service = get_llm_service()
+            logger.info("[SSE MODE] LLM service obtained")
             
             # Build system prompt from template or default
             system_prompt = template.content if template else (
@@ -97,6 +102,7 @@ async def request_hint_endpoint(
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=True")
             
             # Generate hint with function calling enabled for maze actions
             hint_response = llm_service.process_message(
@@ -105,6 +111,7 @@ async def request_hint_endpoint(
                 user_message=user_message,
                 use_tools=True  # Enable maze game function calling
             )
+            logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
             
             # Parse response if it's JSON (happens when function calling is used)
             hint_data = hint_response
@@ -136,9 +143,13 @@ async def request_hint_endpoint(
                         disconnected.add(ws)
                 SUBSCRIBERS[session_id] -= disconnected
             
+            logger.info(f"[SSE MODE] Successfully processed hint, returning response")
             return {"ok": True, "session_id": session_id, "hint": hint_data, "mode": "sse"}
             
         except Exception as e:
+            import traceback
+            logger.error(f"[SSE MODE] Failed to generate hint: {str(e)}")
+            logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
             raise HTTPException(500, f"Failed to generate hint: {str(e)}")
     else:
         # MQTT mode: Publish state and hint will arrive via MQTT
