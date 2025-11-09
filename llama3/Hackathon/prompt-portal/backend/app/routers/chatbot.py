@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -699,3 +699,72 @@ async def send_message_stream(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         }
     )
+
+
+@router.post("/upload-document")
+async def upload_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Upload and extract text from PDF or Word documents"""
+    import os
+    import tempfile
+    
+    # Check file type
+    file_extension = file.filename.split('.')[-1].lower() if file.filename else ''
+    if file_extension not in ['pdf', 'doc', 'docx']:
+        raise HTTPException(status_code=400, detail="Only PDF and Word documents are supported")
+    
+    # Save to temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
+        content = await file.read()
+        temp_file.write(content)
+        temp_file_path = temp_file.name
+    
+    try:
+        extracted_text = ""
+        
+        if file_extension == 'pdf':
+            # Extract text from PDF
+            try:
+                import PyPDF2
+                with open(temp_file_path, 'rb') as pdf_file:
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    for page in pdf_reader.pages:
+                        extracted_text += page.extract_text() + "\n"
+            except ImportError:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="PDF support not available. Please install PyPDF2."
+                )
+        
+        elif file_extension in ['doc', 'docx']:
+            # Extract text from Word document
+            try:
+                import docx
+                doc = docx.Document(temp_file_path)
+                for paragraph in doc.paragraphs:
+                    extracted_text += paragraph.text + "\n"
+            except ImportError:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Word document support not available. Please install python-docx."
+                )
+        
+        # Clean up extracted text
+        extracted_text = extracted_text.strip()
+        
+        if not extracted_text:
+            raise HTTPException(status_code=400, detail="No text could be extracted from the document")
+        
+        return {
+            "filename": file.filename,
+            "text": extracted_text,
+            "length": len(extracted_text)
+        }
+    
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

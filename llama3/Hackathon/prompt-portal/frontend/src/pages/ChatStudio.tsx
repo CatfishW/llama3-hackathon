@@ -260,12 +260,113 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     return parts.length > 0 ? parts : text
   }
 
+  const [showContextMenu, setShowContextMenu] = useState(false)
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
+  const [messageCopied, setMessageCopied] = useState(false)
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setContextMenuPos({ x: e.clientX, y: e.clientY })
+    setShowContextMenu(true)
+  }
+
+  const handleCopyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setMessageCopied(true)
+      setTimeout(() => setMessageCopied(false), 2000)
+      setShowContextMenu(false)
+    } catch (err) {
+      console.error('Failed to copy message:', err)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+      handleCopyMessage()
+    }
+  }
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = () => setShowContextMenu(false)
+    if (showContextMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showContextMenu])
+
   return (
-    <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
-      <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
-        {renderContent()}
+    <div style={{ position: 'relative', maxWidth: isMobile ? '90%' : '70%', ...style.alignSelf ? { alignSelf: style.alignSelf as any } : {} }}>
+      <div 
+        style={{ padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style, position: 'relative' }}
+        onContextMenu={handleContextMenu}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
+          {renderContent()}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.7rem', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
+          <button
+            onClick={handleCopyMessage}
+            style={{
+              background: messageCopied ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
+              border: `1px solid ${messageCopied ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+              borderRadius: '6px',
+              padding: '4px 8px',
+              fontSize: '0.65rem',
+              color: messageCopied ? '#86efac' : 'rgba(226,232,240,0.8)',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {messageCopied ? '✓ Copied' : 'Copy'}
+          </button>
+        </div>
       </div>
-      <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
+      
+      {/* Context Menu */}
+      {showContextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenuPos.x,
+            top: contextMenuPos.y,
+            background: 'rgba(15,23,42,0.95)',
+            border: '1px solid rgba(148,163,184,0.3)',
+            borderRadius: '8px',
+            padding: '4px',
+            zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            minWidth: '120px'
+          }}
+        >
+          <button
+            onClick={handleCopyMessage}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              border: 'none',
+              color: '#e2e8f0',
+              textAlign: 'left',
+              cursor: 'pointer',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(129,140,248,0.2)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <i className="fas fa-copy"></i>
+            Copy Message
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -289,8 +390,11 @@ export default function ChatStudio() {
   const [savingPrompt, setSavingPrompt] = useState<boolean>(false)
   const [streamingMessageId, setStreamingMessageId] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(!isMobile)
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string }>>([])
+  const [uploading, setUploading] = useState<boolean>(false)
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   
   // Driving Game Testing Mode
   const [drivingGameMode, setDrivingGameMode] = useState<boolean>(false)
@@ -378,7 +482,7 @@ export default function ChatStudio() {
       system_prompt: normalizedSystemPrompt || (presets[0]?.system_prompt || ''),
       temperature: selectedSession.temperature ?? 0.6,
       top_p: selectedSession.top_p ?? 0.9,
-  max_tokens: selectedSession.max_tokens ?? 2048,
+  max_tokens: selectedSession.max_tokens ?? 20000,
       template_id: selectedSession.template_id ?? null,
       preset_key: matchedPreset?.key ?? null,
       prompt_source: promptSource,
@@ -804,6 +908,64 @@ export default function ChatStudio() {
     URL.revokeObjectURL(url)
   }
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    setErrorMessage(null)
+
+    try {
+      for (const file of Array.from(files)) {
+        // Check file type
+        const fileExtension = file.name.split('.').pop()?.toLowerCase()
+        if (!['pdf', 'doc', 'docx'].includes(fileExtension || '')) {
+          setErrorMessage(`Unsupported file type: ${file.name}. Only PDF and Word documents are supported.`)
+          continue
+        }
+
+        const formData = new FormData()
+        formData.append('file', file)
+
+        // Upload to backend
+        const response = await fetch('/api/chatbot/upload-document', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: formData
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to upload ${file.name}`)
+        }
+
+        const data = await response.json()
+        
+        // Add extracted text to uploaded files
+        setUploadedFiles(prev => [...prev, { name: file.name, content: data.text }])
+        
+        // Optionally, append to input
+        setInputValue(prev => {
+          const fileInfo = `\n\n[File: ${file.name}]\n${data.text}\n`
+          return prev + fileInfo
+        })
+      }
+    } catch (e: any) {
+      setErrorMessage(`File upload failed: ${e.message}`)
+    } finally {
+      setUploading(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleRemoveUploadedFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
   // Driving Game Mode functions
   const toggleDrivingGameMode = () => {
     const newMode = !drivingGameMode
@@ -1135,51 +1297,130 @@ export default function ChatStudio() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
-              <div style={{ flex: 1 }}>
-                <textarea
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={sending ? 'Waiting for model response…' : 'Type your message…'}
-                  disabled={sending}
-                  rows={isMobile ? 2 : 3}
-                  style={{
-                    width: '100%',
-                    resize: 'vertical',
-                    background: 'rgba(15,23,42,0.55)',
-                    border: '1px solid rgba(129,140,248,0.35)',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    color: '#e2e8f0',
-                    fontSize: isMobile ? '0.9rem' : '1rem'
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
-                <button
-                  onClick={() => handleSendMessage()}
-                  disabled={sending || !inputValue.trim()}
-                  style={{
-                    padding: isMobile ? '10px 14px' : '12px 18px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(129,140,248,0.65)',
-                    background: 'linear-gradient(135deg, rgba(129,140,248,0.35), rgba(79,70,229,0.35))',
-                    color: '#ede9fe',
-                    fontWeight: 600,
-                    cursor: sending || !inputValue.trim() ? 'default' : 'pointer',
-                    opacity: sending || !inputValue.trim() ? 0.6 : 1,
-                    fontSize: isMobile ? '0.8rem' : '1rem',
-                    flex: isMobile ? 1 : 'unset'
-                  }}
-                >
-                  {sending ? 'Sending…' : 'Send'}
-                </button>
-                <button
-                  onClick={() => setShowPromptEditor(prev => !prev)}
-                  style={{ ...actionButtonStyle, flex: isMobile ? 1 : 'unset' }}
-                >
-                  {showPromptEditor ? 'Hide' : 'Edit'}
-                </button>
+            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px' }}>
+              {/* File attachments display */}
+              {uploadedFiles.length > 0 && (
+                <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {uploadedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        background: 'rgba(129,140,248,0.15)',
+                        border: '1px solid rgba(129,140,248,0.35)',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '0.8rem',
+                        color: '#e2e8f0'
+                      }}
+                    >
+                      <i className="fas fa-file-alt" style={{ color: '#818cf8' }}></i>
+                      <span>{file.name}</span>
+                      <button
+                        onClick={() => handleRemoveUploadedFile(index)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#f87171',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          fontSize: '1rem'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <div style={{ display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
+                <div style={{ flex: 1 }}>
+                  <textarea
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        if (!sending && inputValue.trim()) {
+                          handleSendMessage()
+                        }
+                      }
+                    }}
+                    placeholder={sending ? 'Waiting for model response…' : 'Type your message… (Press Enter to send, Shift+Enter for new line)'}
+                    disabled={sending}
+                    rows={isMobile ? 2 : 3}
+                    style={{
+                      width: '100%',
+                      resize: 'vertical',
+                      background: 'rgba(15,23,42,0.55)',
+                      border: '1px solid rgba(129,140,248,0.35)',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      color: '#e2e8f0',
+                      fontSize: isMobile ? '0.9rem' : '1rem'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    multiple
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      padding: isMobile ? '10px 14px' : '12px 18px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(94,234,212,0.65)',
+                      background: 'linear-gradient(135deg, rgba(94,234,212,0.25), rgba(45,212,191,0.25))',
+                      color: '#5eead4',
+                      fontWeight: 600,
+                      cursor: uploading ? 'default' : 'pointer',
+                      opacity: uploading ? 0.6 : 1,
+                      fontSize: isMobile ? '0.8rem' : '1rem',
+                      flex: isMobile ? 1 : 'unset',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <i className="fas fa-paperclip"></i>
+                    {uploading ? 'Uploading…' : (isMobile ? 'File' : 'Attach')}
+                  </button>
+                  <button
+                    onClick={() => handleSendMessage()}
+                    disabled={sending || !inputValue.trim()}
+                    style={{
+                      padding: isMobile ? '10px 14px' : '12px 18px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(129,140,248,0.65)',
+                      background: 'linear-gradient(135deg, rgba(129,140,248,0.35), rgba(79,70,229,0.35))',
+                      color: '#ede9fe',
+                      fontWeight: 600,
+                      cursor: sending || !inputValue.trim() ? 'default' : 'pointer',
+                      opacity: sending || !inputValue.trim() ? 0.6 : 1,
+                      fontSize: isMobile ? '0.8rem' : '1rem',
+                      flex: isMobile ? 1 : 'unset'
+                    }}
+                  >
+                    {sending ? 'Sending…' : 'Send'}
+                  </button>
+                  <button
+                    onClick={() => setShowPromptEditor(prev => !prev)}
+                    style={{ ...actionButtonStyle, flex: isMobile ? 1 : 'unset' }}
+                  >
+                    {showPromptEditor ? 'Hide' : 'Edit'}
+                  </button>
+                </div>
               </div>
             </div>
 

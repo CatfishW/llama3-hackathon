@@ -466,42 +466,7 @@ stop_backend
 stop_frontend
 sleep 1
 
-# Start backend in background (no logs)
-cd ../backend
-print_step "Starting backend on port $BACKEND_PORT..."
-nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
-BACKEND_PID=$!
-echo $BACKEND_PID > backend.pid
-
-# Wait for backend port to be ready (up to ~10s)
-for i in $(seq 1 20); do
-    if curl -s --max-time 1 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
-        break
-    fi
-    sleep 0.5
-done
-
-if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
-    print_warning "Backend process exited unexpectedly. Attempting one restart..."
-    stop_backend
-    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
-    BACKEND_PID=$!
-    echo $BACKEND_PID > backend.pid
-    sleep 2
-fi
-
-# Fail fast if backend is not running/healthy
-if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
-    print_error "Backend failed to start. Check if port $BACKEND_PORT is available."
-    exit 1
-fi
-
-if ! curl -s --max-time 2 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
-    print_error "Backend health check failed at http://127.0.0.1:$BACKEND_PORT/docs."
-    exit 1
-fi
-
-# Start frontend in background (silent)
+# Start frontend in background (silent) first
 cd ../frontend
 print_step "Starting frontend on port $FRONTEND_PORT..."
 nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT > /dev/null 2>&1 &
@@ -510,6 +475,10 @@ echo $FRONTEND_PID > frontend.pid
 
 # Give frontend time to start
 sleep 3
+
+if ! ps -p $FRONTEND_PID > /dev/null 2>&1; then
+    print_warning "Frontend failed to start, but continuing..."
+fi
 
 print_step "Skipping monitoring and backup scripts setup..."
 
@@ -673,15 +642,13 @@ EOF
     fi
 fi
 
-BACKEND_OK=0
 FRONTEND_OK=0
-if ps -p $BACKEND_PID > /dev/null 2>&1; then BACKEND_OK=1; fi
 if ps -p $FRONTEND_PID > /dev/null 2>&1; then FRONTEND_OK=1; fi
 
-if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
-    print_step "Deployment completed successfully! 🎉"
+if [ "$FRONTEND_OK" -eq 1 ]; then
+    print_step "Frontend started successfully! 🎉"
 else
-    print_warning "Deployment completed with issues. See status below."
+    print_warning "Frontend failed to start. Check the status below."
 fi
 
 echo ""
@@ -759,13 +726,7 @@ echo "4. Test the MQTT functionality"
 
 # Show service status
 echo ""
-print_step "Checking service status:"
-if ps -p $BACKEND_PID > /dev/null 2>&1; then
-    echo -e "${GREEN}Backend is running (PID: $BACKEND_PID)${NC}"
-else
-    echo -e "${RED}Backend failed to start${NC}"
-fi
-
+print_step "Checking frontend status:"
 if ps -p $FRONTEND_PID > /dev/null 2>&1; then
     echo -e "${GREEN}Frontend is running (PID: $FRONTEND_PID)${NC}"
 else
@@ -773,9 +734,15 @@ else
 fi
 
 echo ""
-if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
-    echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
-else
-    echo -e "${YELLOW}Deployment finished but not all services are healthy.${NC}"
-    echo -e "${YELLOW}Check process status and try restarting.${NC}"
-fi
+echo -e "${GREEN}=== FRONTEND SETUP COMPLETE ===${NC}"
+echo ""
+echo -e "${YELLOW}Now starting backend with visible logs...${NC}"
+echo -e "${BLUE}You are using screen - use Ctrl+A+D to detach and keep backend running.${NC}"
+echo ""
+echo "Press Enter to start the backend..."
+read
+
+# Start backend with logs visible (for screen session)
+cd ../backend
+print_step "Starting backend on port $BACKEND_PORT..."
+exec uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT

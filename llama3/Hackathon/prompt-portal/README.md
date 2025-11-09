@@ -297,6 +297,7 @@ If you have a GPU server without public IP and a separate web server:
 - **[SSE_IMPLEMENTATION_SUMMARY.md](./SSE_IMPLEMENTATION_SUMMARY.md)** - 🔧 Technical overview of SSE changes
 - **[SSE_CHATBOT_FIX.md](./SSE_CHATBOT_FIX.md)** - 💬 Chatbot dual-mode implementation
 - **[MAZE_GAME_SSE_SUPPORT.md](./MAZE_GAME_SSE_SUPPORT.md)** - 🎮 Maze game dual-mode implementation
+- **[MAZE_GAME_SSE_FIX.md](./MAZE_GAME_SSE_FIX.md)** - 🔧 Maze game JSON parsing fix
 - **[STREAMING_MODE_GUIDE.md](./STREAMING_MODE_GUIDE.md)** - 📡 Real-time streaming implementation
 
 ### Feature-Specific Guides
