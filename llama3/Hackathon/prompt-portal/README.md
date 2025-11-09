@@ -37,6 +37,9 @@ All configuration is environment-driven for easy maintenance and extension.
 - JWT auth (`python-jose`, `passlib`)
 - WebSocket stream for per-session hints
 - REST APIs for auth, templates, leaderboard, and MQTT bridge
+- **LLM Integration**: Dual communication modes (MQTT / SSE)
+  - Direct HTTP/SSE communication with llama.cpp server
+  - OpenAI-compatible API client for LLM inference
 
 **Frontend (React + Vite + TypeScript)**
 - Axios for HTTP
@@ -97,6 +100,24 @@ prompt-portal/
 
 ## 🚀 Quick Start
 
+### LLM Communication Modes
+
+The framework supports two modes for communicating with LLM servers:
+
+#### **MQTT Mode** (Traditional)
+- Uses MQTT broker for pub/sub communication
+- Ideal for distributed systems and multiple services
+- Requires MQTT broker with public IP
+
+#### **SSE Mode** (Simplified - **NEW!**)
+- Direct HTTP/SSE communication with llama.cpp server
+- **Perfect for 2-machine setups** (GPU server + web server)
+- Works with reverse SSH tunneling for private networks
+- Lower latency, easier debugging
+
+**📚 See [SSE_QUICK_REFERENCE.md](./SSE_QUICK_REFERENCE.md) for quick setup**
+**📘 See [TWO_MACHINE_SETUP.md](./TWO_MACHINE_SETUP.md) for complete 2-machine guide**
+
 ### Production Deployment with Custom Domain
 
 **For deploying to lammp.agaii.org:**
@@ -118,6 +139,10 @@ For general server deployment without custom domain:
 # Quick deployment (development mode)
 chmod +x deploy.sh
 ./deploy.sh
+
+# During deployment, choose:
+# - MQTT mode: Traditional with broker
+# - SSE mode: Direct connection (new!)
 
 # Or production deployment with Nginx
 chmod +x deploy-production.sh
@@ -209,6 +234,33 @@ Open http://localhost:5173
 
 ---
 
+## 🔧 Advanced Setup
+
+### Two-Machine Deployment (GPU Server + Web Server)
+
+If you have a GPU server without public IP and a separate web server:
+
+1. **Machine A (GPU Server)**: Run llama.cpp + reverse SSH tunnel
+2. **Machine B (Web Server)**: Run frontend + backend in SSE mode
+
+**Quick Start:**
+```bash
+# Machine A (GPU server)
+./start_llm_server.sh
+
+# Machine B (web server)
+./deploy.sh
+# Choose SSE mode when prompted
+```
+
+**Complete Guide**: See [TWO_MACHINE_SETUP.md](./TWO_MACHINE_SETUP.md)
+
+### Helper Scripts
+
+- `maintain_tunnel.sh` - Auto-reconnecting SSH tunnel (Linux/Mac)
+- `maintain_tunnel.bat` - Auto-reconnecting SSH tunnel (Windows)
+- `start_llm_server.sh` - Quick start for LLM server + tunnel
+
 ## Extending the System
 
 - Add fields to `PromptTemplate` (e.g., tags, language, model hints)
@@ -216,6 +268,7 @@ Open http://localhost:5173
 - Add an endpoint for games to fetch the **active prompt** for a user or session
 - Add admin roles and moderation features
 - Provide per-session state history persistence (e.g., store incoming hints and states)
+- Scale LLM infrastructure with multiple GPU servers
 
 ---
 

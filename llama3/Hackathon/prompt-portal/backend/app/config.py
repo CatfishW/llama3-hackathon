@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./app.db"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
 
+    # LLM Communication Mode: 'mqtt' or 'sse'
+    LLM_COMM_MODE: str = "mqtt"
+    
+    # MQTT Configuration (used when LLM_COMM_MODE='mqtt')
     MQTT_BROKER_HOST: str = "47.89.252.2"
     MQTT_BROKER_PORT: int = 1883
     MQTT_CLIENT_ID: str = "prompt_portal_backend"
@@ -19,6 +23,15 @@ class Settings(BaseSettings):
     MQTT_TOPIC_USER_INPUT: str = "prompt_portal/user_input"
     MQTT_TOPIC_ASSISTANT_RESPONSE: str = "prompt_portal/assistant_response"
     MQTT_TOPIC_TEMPLATE: str = "maze/template"
+    
+    # SSE/Direct HTTP Configuration (used when LLM_COMM_MODE='sse')
+    LLM_SERVER_URL: str = "http://localhost:8080"
+    LLM_TIMEOUT: int = 300
+    LLM_TEMPERATURE: float = 0.6
+    LLM_TOP_P: float = 0.9
+    LLM_MAX_TOKENS: int = 512
+    LLM_SKIP_THINKING: bool = True
+    LLM_MAX_HISTORY_TOKENS: int = 10000
 
     class Config:
         env_file = ".env"
