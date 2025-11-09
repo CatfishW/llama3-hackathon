@@ -1,0 +1,36 @@
+[Unit]
+Description=Prompt Portal Backend (FastAPI)
+After=network.target mosquitto.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/prompt-portal/backend
+Environment="PATH=/opt/prompt-portal/backend/.venv/bin"
+
+# Start command
+ExecStart=/opt/prompt-portal/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+# Restart policy - automatically restart if crashed
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=10
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=4G
+
+# Logging
+StandardOutput=append:/var/log/prompt-portal/backend.log
+StandardError=append:/var/log/prompt-portal/backend-error.log
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

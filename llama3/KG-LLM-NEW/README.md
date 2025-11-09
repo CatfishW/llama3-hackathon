@@ -11,6 +11,8 @@ Implementation of a maintainable prototype for the multi-granular knowledge-grap
 - **LLM backend abstraction** supporting:
   - HTTP OpenAI-compatible llama.cpp server (`llama-server` via `OpenAI` SDK).
   - MQTT broker workflow to reuse the `llamacpp_mqtt_deploy.py` infrastructure when needed.
+  - KG-only fallback that synthesizes answers purely from retrieved shard evidence when no LLM backend is available.
+  - Classifier-free KG+LLM mode via `--no-classifier`, which activates uniform label priors while still sending grounded prompts to the configured LLM transport.
 - **Firebase ingest tooling** to pull Firestore collections with filters, dump raw JSONL, and emit shard files compatible with the retriever.
 - **Freebase Easy ingestion** to transform the public dump into retriever-ready shard files.
 
@@ -61,7 +63,19 @@ KG-LLM-NEW/
 
 4. **Run the CLI** via MQTT bridge:
    ```powershell
-   python -m kg_llm_new.cli "When was the director of the film starring Tom Hanks born?" Tom_Hanks --classifier-head .\weights.json --kg-path .\kg_data --mode mqtt --mqtt-broker 127.0.0.1 --mqtt-username user --mqtt-password pass
+  python -m kg_llm_new.cli "When was the director of the film starring Tom Hanks born?" Tom_Hanks --classifier-head .\weights.json --kg-path .\kg_data --mode mqtt --mqtt-broker 127.0.0.1 --mqtt-username user --mqtt-password pass
+
+5. **Run the CLI** in KG-only mode (no LLM backend required):
+  ```powershell
+  python -m kg_llm_new.cli "When was Tom Hanks born?" Tom_Hanks --classifier-head .\weights.json --kg-path .\kg_data --mode kg-only
+  ```
+  The pipeline ranks retrieved evidence and renders an explanatory answer directly from the knowledge graph.
+
+6. **Skip the classifier (use KG + LLM only):**
+  ```powershell
+  python -m kg_llm_new.cli "When was Tom Hanks born?" Tom_Hanks --kg-path .\kg_data --mode http --server-url http://localhost:8080/v1 --no-classifier
+  ```
+  This keeps the LLM backend active while using uniform label priors to maximize KG retrieval without loading the SentenceTransformer weights.
    ```
 
 The MQTT path expects the deployment script to publish answers on `kg_llm_new/response`.
@@ -175,3 +189,5 @@ See `docs/PIPELINE.md` for a stage-by-stage overview of data ingestion, classifi
 - Add reranker integration (e.g., cosine similarity) and type-aware filtering heuristics.
 - Integrate constrained decoding strategies when llama.cpp adds support for logit bias / grammar constraints.
 - Expand end-to-end tests with synthetic KG shards to validate retrieval coverage and prompt assembly.
+
+python -m kg_llm_new.cli "When was the director of the film starring Tom Hanks born?" Tom_Hanks --classifier-head .\weights.json --kg-path .\kg_data --mode mqtt --mqtt-broker 47.89.252.2:1883 --mqtt-username TangClinic --mqtt-password Tang123

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
-from typing import Iterable, List, Mapping, Sequence
+from typing import Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from kg_llm_new.logging_utils import get_logger
 
@@ -14,9 +15,17 @@ from .kg.firebase import FirebaseDownloadConfig, FirebaseDownloader, FirebasePro
 from .kg.freebase import FreebaseEasyShardBuilder
 from .kg.freebase_parquet import ParquetFreebaseEasyShardBuilder
 from .kg.loader import KnowledgeGraphLoader
-from .llm.client import LLMClient, LLMClientConfig
+from .kg.structures import (
+    KGDescription,
+    KGLiteral,
+    KGPath2,
+    KGSubgraphShard,
+    KGTriple,
+    ShardType,
+)
+from .llm.client import LLMClient, LLMClientConfig, LLMMode
 from .prompt import PromptBuilder
-from .retrieval.retriever import RetrievalRequest, Retriever
+from .retrieval.retriever import RetrievalRequest, RetrievalResult, Retriever
 
 LOGGER = get_logger(__name__)
 
@@ -39,17 +48,29 @@ class KGPipeline:
         config: PipelineConfig,
         classifier: QuestionClassifier,
         llm_client_config: LLMClientConfig,
+        use_kg: bool = True,
+        rebalance_budgets: bool = True,
     ) -> None:
         self.config = config
         self.classifier = classifier
+        self.use_kg = use_kg
+        self.mode = llm_client_config.mode
+        self.rebalance_budgets = rebalance_budgets
+        if self.mode == LLMMode.KG_ONLY and not self.use_kg:
+            raise ValueError("KG-only mode requires knowledge retrieval; disable --no-kg")
         self.prompt_builder = PromptBuilder(config.prompt.system_prompt)
-        self._prepare_knowledge()
-        self.store = KnowledgeGraphLoader(config.storage.kg_path or config.storage.base_dir).load()
-        self.retriever = Retriever(
-            store=self.store,
-            lexical_weight=config.retriever.lexical_weight,
-            semantic_weight=config.retriever.semantic_weight,
-        )
+        if self.use_kg:
+            self._prepare_knowledge()
+            base_path = config.storage.kg_path or config.storage.base_dir
+            self.store = KnowledgeGraphLoader(base_path).load()
+            self.retriever = Retriever(
+                store=self.store,
+                lexical_weight=config.retriever.lexical_weight,
+                semantic_weight=config.retriever.semantic_weight,
+            )
+        else:
+            self.store = None
+            self.retriever = None
         self.llm_client = LLMClient(llm_client_config)
 
     def run(
@@ -62,37 +83,51 @@ class KGPipeline:
     ) -> PipelineOutput:
         start_time = time.time()
         classification = self.classifier.predict(question)
-        budgets = self._derive_budgets(classification.active_labels)
-        retrieval_request = RetrievalRequest(
-            question=question,
-            entities=entities,
-            active_labels=classification.active_labels,
-            budgets=budgets,
-        )
-        retrieval_result = self.retriever.retrieve(retrieval_request)
-        prompt_bundle = self.prompt_builder.build(
-            question=question,
-            shards=retrieval_result.shards,
-            label_probabilities=classification.probabilities,
-        )
-        answer = self.llm_client.generate(
-            messages=prompt_bundle.messages,
-            temperature=temperature or self.config.default_temperature,
-            top_p=top_p or self.config.default_top_p,
-            max_tokens=max_tokens or self.config.retriever.budget.max_tokens,
-        )
+        retrieval_result: Optional[RetrievalResult] = None
+        prompt_bundle = None
+        if self.use_kg and self.retriever is not None:
+            budgets = self._derive_budgets(classification.active_labels)
+            retrieval_request = RetrievalRequest(
+                question=question,
+                entities=entities,
+                active_labels=classification.active_labels,
+                budgets=budgets,
+            )
+            retrieval_result = self.retriever.retrieve(retrieval_request)
+            if self.mode != LLMMode.KG_ONLY:
+                prompt_bundle = self.prompt_builder.build(
+                    question=question,
+                    shards=retrieval_result.shards,
+                    label_probabilities=classification.probabilities,
+                )
+        if prompt_bundle is None and self.mode != LLMMode.KG_ONLY:
+            prompt_bundle = self.prompt_builder.build_simple(
+                question=question,
+                label_probabilities=classification.probabilities,
+            )
+        if self.mode == LLMMode.KG_ONLY:
+            answer, evidence_tokens = self._build_kg_only_answer(question, retrieval_result)
+        else:
+            answer = self.llm_client.generate(
+                messages=prompt_bundle.messages,
+                temperature=temperature or self.config.default_temperature,
+                top_p=top_p or self.config.default_top_p,
+                max_tokens=max_tokens or self.config.retriever.budget.max_tokens,
+            )
+            evidence_tokens = prompt_bundle.evidence_tokens
         latency_ms = (time.time() - start_time) * 1000
         if self.config.enable_latency_logging:
             LOGGER.info(
-                "Pipeline completed in %.1f ms | labels=%s | evidence_tokens=%d",
+                "Pipeline completed in %.1f ms | labels=%s | evidence_tokens=%d | use_kg=%s",
                 latency_ms,
                 [label.name for label in classification.active_labels],
-                prompt_bundle.evidence_tokens,
+                evidence_tokens,
+                self.use_kg,
             )
         return PipelineOutput(
             answer=answer,
             latency_ms=latency_ms,
-            evidence_tokens=prompt_bundle.evidence_tokens,
+            evidence_tokens=evidence_tokens,
             active_labels=classification.active_labels,
         )
 
@@ -106,9 +141,170 @@ class KGPipeline:
         }
         # Simple rebalancing: divide budget among active labels if > 0
         if active_labels:
-            scale = max(1, len(active_labels))
-            return {label: max(1, mapping[label] // scale) for label in active_labels}
+            if self.rebalance_budgets:
+                scale = max(1, len(active_labels))
+                return {label: max(1, mapping[label] // scale) for label in active_labels}
+            return {label: mapping[label] for label in active_labels}
         return mapping
+
+    def _build_kg_only_answer(
+        self,
+        question: str,
+        retrieval_result: Optional[RetrievalResult],
+    ) -> Tuple[str, int]:
+        """Compose a KG-only response by ranking textualized shard items."""
+        if not self.use_kg:
+            return ("KG-only mode requested but knowledge retrieval is disabled.", 0)
+        if retrieval_result is None or not retrieval_result.shards:
+            return (f"No knowledge retrieved for question: {question}", 0)
+
+        question_tokens = set(self._tokenize(question))
+        candidates: List[dict[str, object]] = []
+        for shard in retrieval_result.shards:
+            lines = shard.textualize()
+            for idx, line in enumerate(lines):
+                tokens = self._tokenize(line)
+                token_set = set(tokens)
+                overlap = len(question_tokens & token_set) if question_tokens else 0
+                score = float(overlap) * self._kg_type_bonus(shard.shard_type)
+                candidates.append(
+                    {
+                        "score": score,
+                        "overlap": overlap,
+                        "shard_type": shard.shard_type,
+                        "item": shard.items[idx],
+                        "text": line,
+                        "tokens": tokens,
+                    }
+                )
+
+        if not candidates:
+            return (f"Retrieved shards contained no textual evidence for question: {question}", 0)
+
+        candidates.sort(
+            key=lambda entry: (
+                float(entry["score"]),
+                int(entry["overlap"]),
+                - len(entry["tokens"]),
+            ),
+            reverse=True,
+        )
+
+        best = candidates[0]
+        primary_line = self._render_item_text(best["shard_type"], best["item"])
+        best_score = float(best["score"])
+        if best_score <= 0:
+            main_answer = (
+                "KG-only mode could not align evidence directly with the question. "
+                "Most relevant snippet:\n"
+                + primary_line
+            )
+        else:
+            main_answer = self._render_primary_answer(best["shard_type"], best["item"])
+
+        support_limit = min(5, len(candidates))
+        seen_lines: set[str] = set()
+        token_total = 0
+        support_lines: List[str] = []
+        for entry in candidates[:support_limit]:
+            formatted = self._render_item_text(entry["shard_type"], entry["item"])
+            if formatted in seen_lines:
+                continue
+            seen_lines.add(formatted)
+            token_total += len(entry["tokens"])
+            if formatted == primary_line:
+                continue
+            support_lines.append(formatted)
+
+        answer = main_answer
+        if support_lines:
+            support_block = "\n".join(f"- {line}" for line in support_lines)
+            answer = f"{main_answer}\n\nSupporting evidence:\n{support_block}"
+
+        return (answer, token_total)
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        return re.findall(r"[0-9A-Za-z_]+", text.lower())
+
+    @staticmethod
+    def _kg_type_bonus(shard_type: ShardType) -> float:
+        if shard_type == ShardType.LITERAL:
+            return 1.5
+        if shard_type == ShardType.ONE_HOP:
+            return 1.3
+        if shard_type == ShardType.TWO_HOP:
+            return 1.1
+        return 1.0
+
+    def _render_primary_answer(self, shard_type: ShardType, item: object) -> str:
+        if isinstance(item, KGLiteral):
+            entity = self._clean_text(item.entity)
+            relation = self._clean_relation(item.relation)
+            value = item.value.strip()
+            pretty_value = self._clean_text(value)
+            return f"KG-only answer: {pretty_value} (via {relation} of {entity})"
+        if isinstance(item, KGTriple):
+            head = self._clean_text(item.head)
+            relation = self._clean_relation(item.relation)
+            tail = self._clean_text(item.tail)
+            return f"KG-only answer: {head} {relation} {tail}"
+        if isinstance(item, KGPath2):
+            head = self._clean_text(item.head)
+            mid = self._clean_text(item.middle)
+            tail = self._clean_text(item.tail)
+            rel1 = self._clean_relation(item.relation1)
+            rel2 = self._clean_relation(item.relation2)
+            return (
+                "KG-only answer: "
+                f"{head} {rel1} {mid}; {mid} {rel2} {tail}"
+            )
+        if isinstance(item, KGDescription):
+            entity = self._clean_text(item.entity)
+            desc = self._truncate_text(item.text)
+            return f"KG-only answer: {entity} — {desc}"
+        return f"KG-only answer: {self._clean_text(str(item))}"
+
+    def _render_item_text(self, shard_type: ShardType, item: object) -> str:
+        if isinstance(item, KGLiteral):
+            entity = self._clean_text(item.entity)
+            relation = self._clean_relation(item.relation)
+            value = self._clean_text(item.value)
+            return f"{entity} {relation} {value}"
+        if isinstance(item, KGTriple):
+            head = self._clean_text(item.head)
+            relation = self._clean_relation(item.relation)
+            tail = self._clean_text(item.tail)
+            return f"{head} {relation} {tail}"
+        if isinstance(item, KGPath2):
+            head = self._clean_text(item.head)
+            mid = self._clean_text(item.middle)
+            tail = self._clean_text(item.tail)
+            rel1 = self._clean_relation(item.relation1)
+            rel2 = self._clean_relation(item.relation2)
+            return f"{head} {rel1} {mid}; {mid} {rel2} {tail}"
+        if isinstance(item, KGDescription):
+            entity = self._clean_text(item.entity)
+            desc = self._truncate_text(item.text)
+            return f"{entity}: {desc}"
+        return self._clean_text(str(item))
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        replaced = value.replace("_", " ").strip()
+        return " ".join(replaced.split())
+
+    @staticmethod
+    def _clean_relation(value: str) -> str:
+        clean = value.rsplit("/", 1)[-1] if "/" in value else value
+        return KGPipeline._clean_text(clean)
+
+    @staticmethod
+    def _truncate_text(value: str, limit: int = 196) -> str:
+        text = value.strip()
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3].rstrip() + "..."
 
     def _prepare_knowledge(self) -> None:
         if self._prepare_freebase_easy():

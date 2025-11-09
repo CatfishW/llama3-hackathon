@@ -1,0 +1,1639 @@
+{"id": "WebQTest-0", "question": "what does jamaican people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1", "question": "what did james k polk do before he was president", "labels": ["one_hop"]}
+{"id": "WebQTest-3", "question": "who plays ken barlow in coronation street", "labels": ["two_hop"]}
+{"id": "WebQTest-6", "question": "where is jamarcus russell from", "labels": ["one_hop"]}
+{"id": "WebQTest-7", "question": "where was george washington carver from", "labels": ["one_hop"]}
+{"id": "WebQTest-8", "question": "what else did ben franklin invent", "labels": ["one_hop"]}
+{"id": "WebQTest-9", "question": "who was richard nixon married to", "labels": ["two_hop"]}
+{"id": "WebQTest-12", "question": "who is governor of ohio 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-13", "question": "who was vice president after kennedy died", "labels": ["one_hop"]}
+{"id": "WebQTest-14", "question": "where is the fukushima daiichi nuclear plant located", "labels": ["one_hop"]}
+{"id": "WebQTest-16", "question": "what countries are part of the uk", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-19", "question": "what is my timezone in louisiana", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-20", "question": "what did st augustine do", "labels": ["one_hop"]}
+{"id": "WebQTest-21", "question": "who is keyshia cole dad", "labels": ["one_hop"]}
+{"id": "WebQTest-22", "question": "what kind government does egypt have", "labels": ["one_hop"]}
+{"id": "WebQTest-23", "question": "what town was martin luther king assassinated in", "labels": ["one_hop"]}
+{"id": "WebQTest-24", "question": "where did edgar allan poe died", "labels": ["one_hop"]}
+{"id": "WebQTest-26", "question": "what to do today in atlanta with kids", "labels": ["one_hop"]}
+{"id": "WebQTest-28", "question": "what electorate does anna bligh represent", "labels": ["two_hop"]}
+{"id": "WebQTest-31", "question": "where did andy murray started playing tennis", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-32", "question": "what is the australian dollar called", "labels": ["one_hop", "literal", "description"]}
+{"id": "WebQTest-33", "question": "what timezone is sweden", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-34", "question": "who did cam newton sign with", "labels": ["two_hop"]}
+{"id": "WebQTest-35", "question": "what county is frederick md in", "labels": ["one_hop"]}
+{"id": "WebQTest-36", "question": "what highschool did harper lee go to", "labels": ["two_hop"]}
+{"id": "WebQTest-37", "question": "what timezone is utah in", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-38", "question": "who did george w. bush run against for the second term", "labels": ["one_hop"]}
+{"id": "WebQTest-39", "question": "who is niall ferguson 's wife", "labels": ["two_hop"]}
+{"id": "WebQTest-41", "question": "where is the galapagos islands located on a world map", "labels": ["one_hop"]}
+{"id": "WebQTest-42", "question": "what are the songs that justin bieber wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-43", "question": "what did george clemenceau do", "labels": ["one_hop"]}
+{"id": "WebQTest-44", "question": "what is the state flower of arizona", "labels": ["two_hop"]}
+{"id": "WebQTest-45", "question": "where was rihanna born and raised", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-46", "question": "what year did president william henry harrison take office", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-47", "question": "where george lopez was born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-48", "question": "where are samsung based", "labels": ["two_hop"]}
+{"id": "WebQTest-49", "question": "what did the islamic people believe in", "labels": ["one_hop"]}
+{"id": "WebQTest-51", "question": "who will play mr gray in the film", "labels": ["two_hop"]}
+{"id": "WebQTest-52", "question": "what did george orwell died of", "labels": ["one_hop"]}
+{"id": "WebQTest-54", "question": "what country did adolf hitler control", "labels": ["two_hop"]}
+{"id": "WebQTest-55", "question": "who is michael buble", "labels": ["one_hop"]}
+{"id": "WebQTest-56", "question": "what county is kansas city kansas", "labels": ["one_hop"]}
+{"id": "WebQTest-58", "question": "who did jackie robinson first play for", "labels": ["two_hop"]}
+{"id": "WebQTest-59", "question": "when did annie open", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-60", "question": "where did eleanor roosevelt die", "labels": ["one_hop"]}
+{"id": "WebQTest-61", "question": "what are the religions practiced in indonesia", "labels": ["two_hop"]}
+{"id": "WebQTest-62", "question": "what was jesse james killed with", "labels": ["one_hop"]}
+{"id": "WebQTest-63", "question": "who was vp for lincoln", "labels": ["one_hop"]}
+{"id": "WebQTest-64", "question": "what other books did charles dickens write", "labels": ["one_hop"]}
+{"id": "WebQTest-65", "question": "who was the first dictator of the soviet union", "labels": ["two_hop"]}
+{"id": "WebQTest-66", "question": "what is the currency of puerto rico called", "labels": ["one_hop"]}
+{"id": "WebQTest-67", "question": "what kind of cancer did carl wilson have", "labels": ["one_hop"]}
+{"id": "WebQTest-68", "question": "who plays the voice of kitt in knight rider", "labels": ["two_hop"]}
+{"id": "WebQTest-69", "question": "what county is brentwood tennessee in", "labels": ["one_hop"]}
+{"id": "WebQTest-71", "question": "who did michael j fox marry", "labels": ["two_hop"]}
+{"id": "WebQTest-72", "question": "what battles did stonewall jackson fight in", "labels": ["two_hop"]}
+{"id": "WebQTest-73", "question": "what language do the maasai tribe speak", "labels": ["one_hop"]}
+{"id": "WebQTest-74", "question": "who did benjamin franklin get married to", "labels": ["two_hop"]}
+{"id": "WebQTest-75", "question": "what disease did patrick swayze died from", "labels": ["one_hop"]}
+{"id": "WebQTest-76", "question": "what works of art did leonardo da vinci produce", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-77", "question": "what capital of austria", "labels": ["one_hop"]}
+{"id": "WebQTest-78", "question": "what type of cancer did eva peron have", "labels": ["one_hop"]}
+{"id": "WebQTest-79", "question": "what country did buddha come from", "labels": ["one_hop"]}
+{"id": "WebQTest-80", "question": "what county is greeley colorado in", "labels": ["one_hop"]}
+{"id": "WebQTest-82", "question": "what did peter tchaikovsky do", "labels": ["one_hop"]}
+{"id": "WebQTest-83", "question": "which countries speak german officially", "labels": ["one_hop"]}
+{"id": "WebQTest-84", "question": "what type of music did john lennon sing", "labels": ["one_hop"]}
+{"id": "WebQTest-85", "question": "who are the colorado representatives", "labels": ["two_hop"]}
+{"id": "WebQTest-86", "question": "which country does greenland belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-87", "question": "what the zip code for seattle washington", "labels": ["one_hop"]}
+{"id": "WebQTest-88", "question": "who is willow smith mom name", "labels": ["one_hop"]}
+{"id": "WebQTest-89", "question": "what do you call the chinese writing system", "labels": ["one_hop"]}
+{"id": "WebQTest-90", "question": "who played on the jeffersons", "labels": ["two_hop"]}
+{"id": "WebQTest-91", "question": "what is the name of the san francisco newspaper", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-93", "question": "what continent does armenia belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-94", "question": "what did randy savage died of", "labels": ["one_hop"]}
+{"id": "WebQTest-95", "question": "what was the title of the book charles darwin wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-96", "question": "where did richard nixon die", "labels": ["one_hop"]}
+{"id": "WebQTest-97", "question": "what songs does smokey robinson sing", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-98", "question": "who was vice president when jfk was president", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-99", "question": "what is serbian language called", "labels": ["one_hop"]}
+{"id": "WebQTest-100", "question": "what language is spoken in haiti today", "labels": ["one_hop"]}
+{"id": "WebQTest-102", "question": "who played barbara gordon batgirl", "labels": ["two_hop"]}
+{"id": "WebQTest-103", "question": "what basketball teams has shaq played for", "labels": ["two_hop"]}
+{"id": "WebQTest-104", "question": "where is jay leno from", "labels": ["one_hop"]}
+{"id": "WebQTest-105", "question": "what language do people from thailand speak", "labels": ["one_hop"]}
+{"id": "WebQTest-106", "question": "who did armie hammer play in the social network", "labels": ["two_hop"]}
+{"id": "WebQTest-107", "question": "what was thomas jefferson role in the declaration of independence", "labels": ["one_hop"]}
+{"id": "WebQTest-108", "question": "what was the book written by charles darwin", "labels": ["one_hop"]}
+{"id": "WebQTest-109", "question": "who did tim tebow play college football for", "labels": ["two_hop"]}
+{"id": "WebQTest-110", "question": "who does peyton manning play football for", "labels": ["two_hop"]}
+{"id": "WebQTest-111", "question": "where is the carpathian mountain range located", "labels": ["one_hop"]}
+{"id": "WebQTest-112", "question": "what was robert burns", "labels": ["one_hop"]}
+{"id": "WebQTest-114", "question": "who did the voice of darth vader in episode 3", "labels": ["two_hop"]}
+{"id": "WebQTest-115", "question": "what super bowl did peyton manning win", "labels": ["one_hop"]}
+{"id": "WebQTest-116", "question": "which country was justin bieber born in", "labels": ["literal"]}
+{"id": "WebQTest-118", "question": "who fought in the gulf war 1991", "labels": ["two_hop"]}
+{"id": "WebQTest-119", "question": "who plays london tipton in suite life on deck", "labels": ["two_hop"]}
+{"id": "WebQTest-121", "question": "what team did david beckham play for in 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-122", "question": "where did francisco coronado come from", "labels": ["one_hop"]}
+{"id": "WebQTest-123", "question": "what all does google now do", "labels": ["two_hop"]}
+{"id": "WebQTest-124", "question": "what language does egyptian people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-125", "question": "what are abraham sons names", "labels": ["one_hop"]}
+{"id": "WebQTest-126", "question": "who wrote the jana gana mana", "labels": ["one_hop"]}
+{"id": "WebQTest-127", "question": "what type of cancer did gilda radner die of", "labels": ["one_hop"]}
+{"id": "WebQTest-128", "question": "who plays juni cortez", "labels": ["two_hop"]}
+{"id": "WebQTest-129", "question": "what was lucille ball", "labels": ["one_hop"]}
+{"id": "WebQTest-131", "question": "who inspired obama", "labels": ["one_hop"]}
+{"id": "WebQTest-132", "question": "who is michael j fox wife", "labels": ["two_hop"]}
+{"id": "WebQTest-133", "question": "where did dolly parton grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-134", "question": "what type of books did agatha christie wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-138", "question": "what are the four main languages spoken in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-139", "question": "where is the nra headquarters located", "labels": ["two_hop"]}
+{"id": "WebQTest-141", "question": "who is gimli 's father in the hobbit", "labels": ["one_hop"]}
+{"id": "WebQTest-142", "question": "who developed the tcp ip reference model", "labels": ["one_hop"]}
+{"id": "WebQTest-145", "question": "what college did albert einstein go to", "labels": ["two_hop"]}
+{"id": "WebQTest-146", "question": "what team does jordan own", "labels": ["one_hop"]}
+{"id": "WebQTest-147", "question": "who is the state governor of tennessee", "labels": ["two_hop"]}
+{"id": "WebQTest-149", "question": "what do portuguese people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-150", "question": "what language does cuba speak", "labels": ["one_hop"]}
+{"id": "WebQTest-153", "question": "what are the sights to see in madrid", "labels": ["one_hop"]}
+{"id": "WebQTest-154", "question": "what instruments did louis armstrong play", "labels": ["one_hop"]}
+{"id": "WebQTest-155", "question": "what year was george w bush elected", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-156", "question": "what time zone am i in california", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-157", "question": "where is mission san buenaventura located", "labels": ["one_hop"]}
+{"id": "WebQTest-159", "question": "what time in hilo hawaii", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-160", "question": "where did rudolf virchow conduct his research", "labels": ["two_hop"]}
+{"id": "WebQTest-161", "question": "what university did gordon brown attend", "labels": ["two_hop"]}
+{"id": "WebQTest-162", "question": "what countries does greece share borders with", "labels": ["two_hop"]}
+{"id": "WebQTest-163", "question": "what year did the seahawks win the superbowl", "labels": ["one_hop"]}
+{"id": "WebQTest-164", "question": "what did stephen hawking become famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-165", "question": "who plays donna noble", "labels": ["two_hop"]}
+{"id": "WebQTest-166", "question": "what was dr seuss education", "labels": ["two_hop"]}
+{"id": "WebQTest-167", "question": "where did queensland get its name from", "labels": ["one_hop"]}
+{"id": "WebQTest-168", "question": "what document did james madison write", "labels": ["one_hop"]}
+{"id": "WebQTest-169", "question": "what are the three official languages of belgium", "labels": ["one_hop"]}
+{"id": "WebQTest-170", "question": "who played bilbo in lord of the rings", "labels": ["two_hop"]}
+{"id": "WebQTest-171", "question": "what airport do you fly into to get to destin fl", "labels": ["one_hop"]}
+{"id": "WebQTest-172", "question": "what do you call members of the senate", "labels": ["two_hop"]}
+{"id": "WebQTest-173", "question": "what countries are part of the baltic", "labels": ["one_hop"]}
+{"id": "WebQTest-174", "question": "what team does colin kaepernick play for", "labels": ["two_hop"]}
+{"id": "WebQTest-175", "question": "where did joe flacco attend college", "labels": ["two_hop"]}
+{"id": "WebQTest-176", "question": "who is emma stone father", "labels": ["one_hop"]}
+{"id": "WebQTest-177", "question": "where was theodore roosevelt buried", "labels": ["one_hop"]}
+{"id": "WebQTest-178", "question": "who was the leader of the us during wwii", "labels": ["one_hop"]}
+{"id": "WebQTest-179", "question": "what artistic movement did henri matisse belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-180", "question": "where the missouri river ends", "labels": ["one_hop"]}
+{"id": "WebQTest-181", "question": "what type of currency do they use in thailand", "labels": ["one_hop"]}
+{"id": "WebQTest-182", "question": "who is khloe kardashian 's husband", "labels": ["two_hop"]}
+{"id": "WebQTest-184", "question": "what state does romney live in", "labels": ["two_hop"]}
+{"id": "WebQTest-185", "question": "what type of government does france use", "labels": ["one_hop"]}
+{"id": "WebQTest-186", "question": "who rules denmark right now", "labels": ["two_hop"]}
+{"id": "WebQTest-187", "question": "what did stephen hawking study", "labels": ["two_hop"]}
+{"id": "WebQTest-188", "question": "where did bristol palin go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-189", "question": "what region of the world is egypt associated with", "labels": ["one_hop"]}
+{"id": "WebQTest-190", "question": "what did dr. seuss do", "labels": ["one_hop"]}
+{"id": "WebQTest-191", "question": "where did drew brees go to college wikianswers", "labels": ["two_hop"]}
+{"id": "WebQTest-193", "question": "what school did ben roethlisberger go to", "labels": ["two_hop"]}
+{"id": "WebQTest-194", "question": "where did the iroquois indians come from", "labels": ["one_hop"]}
+{"id": "WebQTest-195", "question": "what kind of guitar did george harrison use", "labels": ["one_hop"]}
+{"id": "WebQTest-196", "question": "what language do navajo people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-197", "question": "what places make up new england", "labels": ["one_hop"]}
+{"id": "WebQTest-199", "question": "what type of government does iraq have now", "labels": ["one_hop"]}
+{"id": "WebQTest-200", "question": "where was the vietnam war location", "labels": ["one_hop"]}
+{"id": "WebQTest-201", "question": "who did gerald ford select as his vice president when he became president", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-202", "question": "what is the currency used in italy", "labels": ["one_hop"]}
+{"id": "WebQTest-204", "question": "what is the capital of modern egypt", "labels": ["one_hop"]}
+{"id": "WebQTest-205", "question": "what school did sir ernest rutherford go to", "labels": ["two_hop"]}
+{"id": "WebQTest-206", "question": "what position does brandon roy play", "labels": ["one_hop"]}
+{"id": "WebQTest-207", "question": "where is harvard university", "labels": ["one_hop"]}
+{"id": "WebQTest-209", "question": "where is laos in world map", "labels": ["one_hop"]}
+{"id": "WebQTest-210", "question": "where is tyrese gibson from", "labels": ["one_hop"]}
+{"id": "WebQTest-211", "question": "what countries are near italy", "labels": ["two_hop"]}
+{"id": "WebQTest-212", "question": "which states does the colorado river run through", "labels": ["one_hop"]}
+{"id": "WebQTest-213", "question": "who did scarlett johansson date", "labels": ["two_hop"]}
+{"id": "WebQTest-214", "question": "which continents were part of the roman empire", "labels": ["two_hop"]}
+{"id": "WebQTest-215", "question": "where was elvis costello born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-216", "question": "where are the gobi desert located on a map", "labels": ["one_hop"]}
+{"id": "WebQTest-217", "question": "what type of government does the us follow", "labels": ["one_hop"]}
+{"id": "WebQTest-218", "question": "in which continent is germany", "labels": ["one_hop"]}
+{"id": "WebQTest-220", "question": "what language turkey people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-221", "question": "who does jeremy lin play for", "labels": ["two_hop"]}
+{"id": "WebQTest-222", "question": "where is the seychelles on world map", "labels": ["one_hop"]}
+{"id": "WebQTest-224", "question": "where did william morris go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-225", "question": "what state is mount st. helens in", "labels": ["one_hop"]}
+{"id": "WebQTest-226", "question": "who is jimmy savile", "labels": ["one_hop"]}
+{"id": "WebQTest-227", "question": "where were the seneca indians located", "labels": ["one_hop"]}
+{"id": "WebQTest-231", "question": "when did florida marlins join mlb", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-232", "question": "what countries have spanish as the national language", "labels": ["one_hop"]}
+{"id": "WebQTest-233", "question": "what to see in phoenix arizona", "labels": ["one_hop"]}
+{"id": "WebQTest-234", "question": "what countries does the panama canal go through", "labels": ["one_hop"]}
+{"id": "WebQTest-235", "question": "what is charlie chaplin famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-237", "question": "what did fred durst do", "labels": ["one_hop"]}
+{"id": "WebQTest-238", "question": "who did the chargers draft in 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-239", "question": "where do american bulldogs originate from", "labels": ["one_hop"]}
+{"id": "WebQTest-240", "question": "what colleges did albert einstein teach at", "labels": ["two_hop"]}
+{"id": "WebQTest-241", "question": "who plays the voice of brian on family guy", "labels": ["two_hop"]}
+{"id": "WebQTest-243", "question": "where did george w bush live as a child", "labels": ["one_hop"]}
+{"id": "WebQTest-245", "question": "what year was the first miss america pageant held", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-246", "question": "what was nikola tesla inventions", "labels": ["one_hop"]}
+{"id": "WebQTest-247", "question": "where did flemish people come from", "labels": ["one_hop"]}
+{"id": "WebQTest-248", "question": "what state new york city belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-249", "question": "what was the cause of death for bruce lee", "labels": ["one_hop"]}
+{"id": "WebQTest-250", "question": "what type of government does usa follow", "labels": ["one_hop"]}
+{"id": "WebQTest-251", "question": "what type of currency do they use in england", "labels": ["one_hop"]}
+{"id": "WebQTest-252", "question": "where was benjamin franklin educated", "labels": ["two_hop"]}
+{"id": "WebQTest-253", "question": "what countries included in the uk", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-254", "question": "what countries in the world speak chinese", "labels": ["one_hop"]}
+{"id": "WebQTest-255", "question": "where obama went to school", "labels": ["two_hop"]}
+{"id": "WebQTest-256", "question": "what is the primary language of china", "labels": ["one_hop"]}
+{"id": "WebQTest-257", "question": "who was the soviet leader during world war ii", "labels": ["two_hop"]}
+{"id": "WebQTest-258", "question": "which of the following does australia export the most", "labels": ["two_hop"]}
+{"id": "WebQTest-260", "question": "where was the city of david", "labels": ["one_hop"]}
+{"id": "WebQTest-261", "question": "what is cindy sherman known for", "labels": ["one_hop"]}
+{"id": "WebQTest-262", "question": "what tv shows did shawnee smith play in", "labels": ["two_hop"]}
+{"id": "WebQTest-264", "question": "what does australia use for currency", "labels": ["one_hop"]}
+{"id": "WebQTest-265", "question": "which airport to fly into rome", "labels": ["two_hop"]}
+{"id": "WebQTest-266", "question": "what is there to do for fun in kansas city", "labels": ["one_hop"]}
+{"id": "WebQTest-267", "question": "where was martin luther king jr raised", "labels": ["one_hop"]}
+{"id": "WebQTest-268", "question": "what year was lebron james rookie season", "labels": ["two_hop"]}
+{"id": "WebQTest-269", "question": "where does delaware river start", "labels": ["one_hop"]}
+{"id": "WebQTest-270", "question": "what kind of monarchy does japan have", "labels": ["one_hop"]}
+{"id": "WebQTest-271", "question": "where did mitt romney 's parents come from", "labels": ["one_hop"]}
+{"id": "WebQTest-273", "question": "when did michael jordan return to the nba", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-276", "question": "where was mission san rafael located", "labels": ["one_hop"]}
+{"id": "WebQTest-277", "question": "who was esther 's husband", "labels": ["two_hop"]}
+{"id": "WebQTest-278", "question": "who 's dating claire danes", "labels": ["two_hop"]}
+{"id": "WebQTest-279", "question": "what county is st paul va in", "labels": ["one_hop"]}
+{"id": "WebQTest-281", "question": "what type of sports do japanese play", "labels": ["one_hop"]}
+{"id": "WebQTest-282", "question": "which countries share a border with russia", "labels": ["two_hop"]}
+{"id": "WebQTest-284", "question": "where did the latin language originate from", "labels": ["one_hop"]}
+{"id": "WebQTest-286", "question": "what school did karl benz go to", "labels": ["two_hop"]}
+{"id": "WebQTest-287", "question": "what movies has carmen electra been in", "labels": ["two_hop"]}
+{"id": "WebQTest-289", "question": "when do world war ii end", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-291", "question": "where did morgan freeman graduate", "labels": ["two_hop"]}
+{"id": "WebQTest-294", "question": "who was carolus linnaeus", "labels": ["one_hop"]}
+{"id": "WebQTest-295", "question": "what type of government does germany have now", "labels": ["one_hop"]}
+{"id": "WebQTest-296", "question": "what kind of government does libya have today", "labels": ["one_hop"]}
+{"id": "WebQTest-297", "question": "what time zone is anaheim california", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-298", "question": "what year did the orioles go to the world series", "labels": ["one_hop"]}
+{"id": "WebQTest-300", "question": "who is sir francis bacon", "labels": ["one_hop", "literal", "description"]}
+{"id": "WebQTest-301", "question": "what were amelia earhart 's achievements", "labels": ["one_hop"]}
+{"id": "WebQTest-302", "question": "what are the official colors of the dallas cowboys", "labels": ["one_hop"]}
+{"id": "WebQTest-303", "question": "where did margaret hoover go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-304", "question": "what is jamie oliver children names", "labels": ["one_hop"]}
+{"id": "WebQTest-305", "question": "where does bradley walsh live", "labels": ["two_hop"]}
+{"id": "WebQTest-306", "question": "who is the head coach of inter milan", "labels": ["two_hop"]}
+{"id": "WebQTest-308", "question": "who did reese witherspoon get married to", "labels": ["two_hop"]}
+{"id": "WebQTest-310", "question": "what kind of money should i take to costa rica", "labels": ["one_hop"]}
+{"id": "WebQTest-311", "question": "where is the ufc headquarters", "labels": ["two_hop"]}
+{"id": "WebQTest-312", "question": "who plays captain kirk in star trek", "labels": ["two_hop"]}
+{"id": "WebQTest-313", "question": "who does albert pujols play for 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-314", "question": "what kind of government is sweden", "labels": ["one_hop"]}
+{"id": "WebQTest-315", "question": "where was country singer george jones born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-316", "question": "what did shakespeare become famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-317", "question": "where does russia import from", "labels": ["two_hop"]}
+{"id": "WebQTest-318", "question": "what is the money of switzerland called", "labels": ["one_hop"]}
+{"id": "WebQTest-321", "question": "what do people in australia speak", "labels": ["one_hop"]}
+{"id": "WebQTest-322", "question": "what has ian somerhalder acted in", "labels": ["two_hop"]}
+{"id": "WebQTest-323", "question": "what movies did ron howard director", "labels": ["one_hop"]}
+{"id": "WebQTest-326", "question": "what did gerald r ford die from", "labels": ["one_hop"]}
+{"id": "WebQTest-327", "question": "what two continents is turkey on", "labels": ["one_hop"]}
+{"id": "WebQTest-328", "question": "where did kevin love go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-329", "question": "what type of government was formed when italy unified", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-331", "question": "where was the temple of karnak built", "labels": ["one_hop"]}
+{"id": "WebQTest-333", "question": "what movies did morgan freeman star in", "labels": ["two_hop"]}
+{"id": "WebQTest-334", "question": "who did john kennedy have affairs with", "labels": ["two_hop"]}
+{"id": "WebQTest-335", "question": "what type of money to take to cuba", "labels": ["one_hop"]}
+{"id": "WebQTest-336", "question": "what currency should you take to morocco", "labels": ["one_hop"]}
+{"id": "WebQTest-337", "question": "who is mary mcleod bethune for kids", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-338", "question": "what do they call money in japan", "labels": ["one_hop"]}
+{"id": "WebQTest-339", "question": "what nationality is mother teresa", "labels": ["one_hop"]}
+{"id": "WebQTest-340", "question": "who is richard pryor son", "labels": ["one_hop"]}
+{"id": "WebQTest-341", "question": "what countries share borders with spain", "labels": ["two_hop"]}
+{"id": "WebQTest-342", "question": "what countries have english as their official language", "labels": ["one_hop"]}
+{"id": "WebQTest-343", "question": "what international organizations is china part of", "labels": ["two_hop"]}
+{"id": "WebQTest-344", "question": "what county is west st paul in", "labels": ["one_hop"]}
+{"id": "WebQTest-346", "question": "who does donnie wahlberg play in the sixth sense", "labels": ["two_hop"]}
+{"id": "WebQTest-347", "question": "what did baron de montesquie influence", "labels": ["one_hop"]}
+{"id": "WebQTest-349", "question": "who did carlos boozer play for", "labels": ["two_hop"]}
+{"id": "WebQTest-351", "question": "who owns the portland press herald", "labels": ["one_hop"]}
+{"id": "WebQTest-352", "question": "what did albert speer design", "labels": ["one_hop"]}
+{"id": "WebQTest-353", "question": "who does jordan palmer play for", "labels": ["two_hop"]}
+{"id": "WebQTest-354", "question": "what art movement did leonardo da vinci belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-356", "question": "what airport is near arlington tx", "labels": ["one_hop"]}
+{"id": "WebQTest-359", "question": "what team does heskey play for", "labels": ["two_hop"]}
+{"id": "WebQTest-360", "question": "where did emperor hirohito live", "labels": ["one_hop"]}
+{"id": "WebQTest-361", "question": "what to do and see in vienna austria", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-362", "question": "when did conflict start in ireland", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-365", "question": "what is there to do in peoria illinois", "labels": ["one_hop"]}
+{"id": "WebQTest-366", "question": "what language do british speak", "labels": ["one_hop"]}
+{"id": "WebQTest-367", "question": "what makes elvis presley famous", "labels": ["one_hop"]}
+{"id": "WebQTest-370", "question": "what language do people speak in the netherlands", "labels": ["one_hop"]}
+{"id": "WebQTest-371", "question": "what are the major languages spoken in greece", "labels": ["one_hop"]}
+{"id": "WebQTest-374", "question": "what type of artist is henri matisse", "labels": ["one_hop"]}
+{"id": "WebQTest-375", "question": "what was the first book charles dickens wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-376", "question": "what books did agatha christie wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-377", "question": "what school did michael jordan attend", "labels": ["two_hop"]}
+{"id": "WebQTest-379", "question": "what year does hitler die", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-380", "question": "where is mount st helens volcano", "labels": ["one_hop"]}
+{"id": "WebQTest-381", "question": "what shows are shot in new york", "labels": ["one_hop"]}
+{"id": "WebQTest-382", "question": "what book did tupac write", "labels": ["one_hop"]}
+{"id": "WebQTest-383", "question": "what language do chinese people write in", "labels": ["one_hop"]}
+{"id": "WebQTest-384", "question": "what was robert burns famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-385", "question": "when did william mckinley died", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-386", "question": "how deep is lake merritt oakland", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-388", "question": "what are the important holidays of islam", "labels": ["one_hop"]}
+{"id": "WebQTest-389", "question": "what type of music did claude debussy play", "labels": ["one_hop"]}
+{"id": "WebQTest-390", "question": "when was the last time the toronto maple leafs were in the stanley cup finals", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-392", "question": "what team is hank baskett on 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-393", "question": "what are the two official languages of paraguay", "labels": ["one_hop"]}
+{"id": "WebQTest-395", "question": "what state is the steelers from", "labels": ["one_hop"]}
+{"id": "WebQTest-396", "question": "what college did sir isaac newton go to", "labels": ["two_hop"]}
+{"id": "WebQTest-397", "question": "what are the school colors for harvard university", "labels": ["one_hop"]}
+{"id": "WebQTest-398", "question": "where is the university of the rockies located", "labels": ["one_hop"]}
+{"id": "WebQTest-399", "question": "what disease does robin roberts have", "labels": ["one_hop"]}
+{"id": "WebQTest-400", "question": "what was the capital city of the east roman empire", "labels": ["one_hop"]}
+{"id": "WebQTest-401", "question": "who plays edward scissorhands", "labels": ["two_hop"]}
+{"id": "WebQTest-402", "question": "what does joey jordison play in slipknot", "labels": ["two_hop"]}
+{"id": "WebQTest-403", "question": "what kind of language does turkey speak", "labels": ["one_hop"]}
+{"id": "WebQTest-404", "question": "what was lebron james first team", "labels": ["two_hop"]}
+{"id": "WebQTest-405", "question": "who fought the battle of gettysburg", "labels": ["one_hop"]}
+{"id": "WebQTest-406", "question": "who is the coach of the sf giants", "labels": ["two_hop"]}
+{"id": "WebQTest-408", "question": "who was the first president of the afl", "labels": ["one_hop"]}
+{"id": "WebQTest-409", "question": "where did giuliana rancic grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-410", "question": "what are the major cities in ukraine", "labels": ["one_hop"]}
+{"id": "WebQTest-414", "question": "who does brian dawkins play for 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-415", "question": "what movies did tupac star in", "labels": ["two_hop"]}
+{"id": "WebQTest-416", "question": "what form of currency does china have", "labels": ["one_hop"]}
+{"id": "WebQTest-417", "question": "who plays kenneth", "labels": ["two_hop"]}
+{"id": "WebQTest-418", "question": "what league are the indianapolis colts in", "labels": ["two_hop"]}
+{"id": "WebQTest-419", "question": "what country did magellan represent", "labels": ["one_hop"]}
+{"id": "WebQTest-420", "question": "where is perpignan located", "labels": ["one_hop"]}
+{"id": "WebQTest-421", "question": "who did kim richards marry", "labels": ["two_hop"]}
+{"id": "WebQTest-422", "question": "what happened in bosnia in the 90s", "labels": ["one_hop"]}
+{"id": "WebQTest-423", "question": "when 's the last time the steelers won the superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-425", "question": "where english is spoken", "labels": ["one_hop"]}
+{"id": "WebQTest-426", "question": "where is giza pyramids located", "labels": ["one_hop"]}
+{"id": "WebQTest-427", "question": "what is the zip code for midland tx", "labels": ["one_hop"]}
+{"id": "WebQTest-428", "question": "what states make up the midwest us", "labels": ["one_hop"]}
+{"id": "WebQTest-430", "question": "what instruments does justin bieber use", "labels": ["two_hop"]}
+{"id": "WebQTest-431", "question": "what language does australians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-432", "question": "who did annie oakley married", "labels": ["two_hop"]}
+{"id": "WebQTest-433", "question": "who has played lex luthor", "labels": ["two_hop"]}
+{"id": "WebQTest-434", "question": "where does the zambezi river start", "labels": ["one_hop"]}
+{"id": "WebQTest-436", "question": "what is the nigeria time", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-437", "question": "where did they find jenni rivera 's body", "labels": ["one_hop"]}
+{"id": "WebQTest-438", "question": "what university did romney graduated from", "labels": ["two_hop"]}
+{"id": "WebQTest-439", "question": "where is the time zone line in south dakota", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-440", "question": "where is jason mraz from", "labels": ["one_hop"]}
+{"id": "WebQTest-441", "question": "what killed john bonham", "labels": ["one_hop"]}
+{"id": "WebQTest-442", "question": "what industry does walmart operate in", "labels": ["one_hop"]}
+{"id": "WebQTest-443", "question": "what county is texarkana arkansas in", "labels": ["one_hop"]}
+{"id": "WebQTest-446", "question": "what music period did beethoven live in", "labels": ["one_hop"]}
+{"id": "WebQTest-447", "question": "what did laura ingalls wilder wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-448", "question": "what type of government system does italy have", "labels": ["one_hop"]}
+{"id": "WebQTest-449", "question": "what did john irving wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-450", "question": "what is the national flower of hawaii", "labels": ["two_hop"]}
+{"id": "WebQTest-451", "question": "what did alice paul accomplish", "labels": ["one_hop"]}
+{"id": "WebQTest-453", "question": "what languages do they speak in costa rica", "labels": ["one_hop"]}
+{"id": "WebQTest-454", "question": "where did hank marvin come from", "labels": ["one_hop"]}
+{"id": "WebQTest-455", "question": "when did chipper jones get drafted", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-456", "question": "what part did winona ryder play in star trek", "labels": ["two_hop"]}
+{"id": "WebQTest-459", "question": "where did jovan belcher kill himself", "labels": ["one_hop"]}
+{"id": "WebQTest-461", "question": "where did clay matthews go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-462", "question": "what time is it in texas houston right now", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-463", "question": "who is princess leia in star wars", "labels": ["two_hop"]}
+{"id": "WebQTest-464", "question": "what is the political structure of china", "labels": ["one_hop"]}
+{"id": "WebQTest-465", "question": "what is new york city airport", "labels": ["two_hop"]}
+{"id": "WebQTest-466", "question": "what language brazil speak", "labels": ["one_hop"]}
+{"id": "WebQTest-467", "question": "who played obi wan in episode 2", "labels": ["two_hop"]}
+{"id": "WebQTest-468", "question": "where did venus williams come from", "labels": ["one_hop"]}
+{"id": "WebQTest-469", "question": "what currency is used in panama", "labels": ["one_hop"]}
+{"id": "WebQTest-470", "question": "where does the zambezi river originate", "labels": ["one_hop"]}
+{"id": "WebQTest-472", "question": "what team did ronaldo play for in 2003", "labels": ["two_hop"]}
+{"id": "WebQTest-473", "question": "where does robin williams live 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-474", "question": "who played jacob black in twilight", "labels": ["two_hop"]}
+{"id": "WebQTest-475", "question": "when was president john adams elected", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-477", "question": "which airport to fly into in buenos aires", "labels": ["one_hop"]}
+{"id": "WebQTest-479", "question": "what team did adrian peterson play for in college", "labels": ["two_hop"]}
+{"id": "WebQTest-480", "question": "where does name pennsylvania come from", "labels": ["one_hop"]}
+{"id": "WebQTest-481", "question": "what kind of money do they use in germany", "labels": ["one_hop"]}
+{"id": "WebQTest-482", "question": "who plays blaine in batman", "labels": ["one_hop"]}
+{"id": "WebQTest-484", "question": "what language does australia use", "labels": ["one_hop"]}
+{"id": "WebQTest-487", "question": "who did veronica lake mary", "labels": ["two_hop"]}
+{"id": "WebQTest-488", "question": "who did sir francis drake marry", "labels": ["two_hop"]}
+{"id": "WebQTest-489", "question": "who plays stephanie plum in one for the money", "labels": ["two_hop"]}
+{"id": "WebQTest-490", "question": "what did the ancient romans speak", "labels": ["one_hop"]}
+{"id": "WebQTest-491", "question": "what does ringo sing", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-492", "question": "where was st. lucy born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-493", "question": "what type of government does australia have", "labels": ["one_hop"]}
+{"id": "WebQTest-497", "question": "who was the father of king george vi", "labels": ["one_hop"]}
+{"id": "WebQTest-500", "question": "what is the zip code for trenton", "labels": ["one_hop"]}
+{"id": "WebQTest-501", "question": "what has ashley greene been in", "labels": ["two_hop"]}
+{"id": "WebQTest-502", "question": "where did al qaeda attack", "labels": ["two_hop"]}
+{"id": "WebQTest-503", "question": "what language is spoken in switzerland", "labels": ["one_hop"]}
+{"id": "WebQTest-504", "question": "who was philip in acts chapter 8", "labels": ["one_hop"]}
+{"id": "WebQTest-506", "question": "what the time zone in england", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-508", "question": "what is the best currency to take to turkey", "labels": ["one_hop"]}
+{"id": "WebQTest-509", "question": "what system of government is practiced in nigeria", "labels": ["one_hop"]}
+{"id": "WebQTest-512", "question": "who were mary shelley", "labels": ["one_hop"]}
+{"id": "WebQTest-513", "question": "what language do most australians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-514", "question": "where is denmark situated", "labels": ["one_hop"]}
+{"id": "WebQTest-515", "question": "where was teddy roosevelt 's house", "labels": ["two_hop"]}
+{"id": "WebQTest-516", "question": "what is the government system of malaysia", "labels": ["one_hop"]}
+{"id": "WebQTest-517", "question": "what do people speak in canada", "labels": ["one_hop"]}
+{"id": "WebQTest-518", "question": "what type of money do they use in costa rica", "labels": ["one_hop"]}
+{"id": "WebQTest-519", "question": "what timezone is nashville tn", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-521", "question": "who was anakin skywalker", "labels": ["two_hop"]}
+{"id": "WebQTest-522", "question": "where did adolf hitler die", "labels": ["one_hop"]}
+{"id": "WebQTest-523", "question": "what is the largest nation in europe", "labels": ["one_hop"]}
+{"id": "WebQTest-524", "question": "where was the first gulf war fought", "labels": ["one_hop"]}
+{"id": "WebQTest-525", "question": "who are the senators of virginia 2013", "labels": ["two_hop"]}
+{"id": "WebQTest-526", "question": "what band was george clinton in", "labels": ["two_hop"]}
+{"id": "WebQTest-527", "question": "what country borders slovakia", "labels": ["two_hop"]}
+{"id": "WebQTest-528", "question": "what was james garfield most known for", "labels": ["two_hop"]}
+{"id": "WebQTest-529", "question": "where did paula deen go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-530", "question": "where does robert irvine come from", "labels": ["one_hop"]}
+{"id": "WebQTest-531", "question": "what style of music does michael jackson perform", "labels": ["one_hop"]}
+{"id": "WebQTest-532", "question": "what does david beckham play", "labels": ["two_hop"]}
+{"id": "WebQTest-533", "question": "what does julian lennon do", "labels": ["one_hop"]}
+{"id": "WebQTest-534", "question": "what is the milwaukee brewers mascot", "labels": ["one_hop"]}
+{"id": "WebQTest-535", "question": "what is the second biggest state in the united states", "labels": ["one_hop"]}
+{"id": "WebQTest-537", "question": "what has charlie hunnam been in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-538", "question": "what are all the movies taylor swift has been in", "labels": ["two_hop"]}
+{"id": "WebQTest-540", "question": "what college did brett favre", "labels": ["two_hop"]}
+{"id": "WebQTest-542", "question": "where did alex chilton die", "labels": ["one_hop"]}
+{"id": "WebQTest-543", "question": "what college did martin luther king jr go to", "labels": ["two_hop"]}
+{"id": "WebQTest-545", "question": "what kind of cancer did farrah fawcett die of", "labels": ["one_hop"]}
+{"id": "WebQTest-546", "question": "who is michael j fox 's wife", "labels": ["two_hop"]}
+{"id": "WebQTest-547", "question": "what money do i use in costa rica", "labels": ["one_hop"]}
+{"id": "WebQTest-548", "question": "what guitar did joe walsh play", "labels": ["one_hop"]}
+{"id": "WebQTest-549", "question": "what are the official languages of the eu", "labels": ["one_hop"]}
+{"id": "WebQTest-550", "question": "what is ryan seacrest radio show", "labels": ["one_hop"]}
+{"id": "WebQTest-552", "question": "what language do most italians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-554", "question": "what money do they use in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-555", "question": "what did drew barrymore go to rehab for", "labels": ["two_hop"]}
+{"id": "WebQTest-556", "question": "when is saint george day celebrated", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-557", "question": "what government did the roman empire have", "labels": ["one_hop"]}
+{"id": "WebQTest-559", "question": "what instrument did robin gibb play", "labels": ["one_hop"]}
+{"id": "WebQTest-560", "question": "who voiced darth vader", "labels": ["two_hop"]}
+{"id": "WebQTest-561", "question": "when was abe lincoln president", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-562", "question": "where are the texas rangers playing", "labels": ["one_hop"]}
+{"id": "WebQTest-564", "question": "what is arkansas state capitol", "labels": ["two_hop"]}
+{"id": "WebQTest-567", "question": "what is the zip code for nogales az", "labels": ["one_hop"]}
+{"id": "WebQTest-568", "question": "when did michael vick start playing for the eagles", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-570", "question": "what is william taft famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-572", "question": "where did robin cook die", "labels": ["one_hop"]}
+{"id": "WebQTest-573", "question": "where did melba beals live", "labels": ["two_hop"]}
+{"id": "WebQTest-575", "question": "who is louisiana state senator", "labels": ["two_hop"]}
+{"id": "WebQTest-576", "question": "what are the 7 countries that are part of central america", "labels": ["one_hop"]}
+{"id": "WebQTest-577", "question": "where did derek fisher go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-578", "question": "who was kobe bryant drafted by", "labels": ["two_hop"]}
+{"id": "WebQTest-579", "question": "where are the new orleans hornets moving to", "labels": ["one_hop"]}
+{"id": "WebQTest-580", "question": "what language does algerian people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-581", "question": "where was anne boleyn executed", "labels": ["one_hop"]}
+{"id": "WebQTest-582", "question": "what did galileo do to become famous", "labels": ["one_hop"]}
+{"id": "WebQTest-583", "question": "what school did martin luther king jr received his doctorate degree from", "labels": ["two_hop"]}
+{"id": "WebQTest-584", "question": "where buddha come from", "labels": ["one_hop"]}
+{"id": "WebQTest-585", "question": "what did king henry viii rule", "labels": ["one_hop"]}
+{"id": "WebQTest-586", "question": "what type of cancer did larry hagman have", "labels": ["one_hop"]}
+{"id": "WebQTest-588", "question": "what wars did robert e lee served in", "labels": ["two_hop"]}
+{"id": "WebQTest-589", "question": "what russian language called", "labels": ["one_hop"]}
+{"id": "WebQTest-590", "question": "who is in charge of libya now", "labels": ["two_hop"]}
+{"id": "WebQTest-592", "question": "when did shays rebellion start", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-593", "question": "what kind of disease does montel williams have", "labels": ["one_hop"]}
+{"id": "WebQTest-595", "question": "when is the last time the ravens won a superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-596", "question": "where did kansas city royals come from", "labels": ["one_hop"]}
+{"id": "WebQTest-597", "question": "what style of music does john mayer play", "labels": ["one_hop"]}
+{"id": "WebQTest-599", "question": "what inventions did thomas edison invent list", "labels": ["one_hop"]}
+{"id": "WebQTest-600", "question": "where did djokovic come from", "labels": ["two_hop"]}
+{"id": "WebQTest-602", "question": "what part of the country is new england", "labels": ["one_hop"]}
+{"id": "WebQTest-603", "question": "what money to take to turkey", "labels": ["one_hop"]}
+{"id": "WebQTest-604", "question": "what kind of music did jimi hendrix play", "labels": ["one_hop"]}
+{"id": "WebQTest-605", "question": "what degrees did obama get in college", "labels": ["two_hop"]}
+{"id": "WebQTest-606", "question": "who were alexander graham bell 's siblings", "labels": ["two_hop"]}
+{"id": "WebQTest-608", "question": "when did liverpool fc last win the champions league", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-609", "question": "who played jeannie", "labels": ["two_hop"]}
+{"id": "WebQTest-611", "question": "where was st peter killed", "labels": ["one_hop"]}
+{"id": "WebQTest-612", "question": "who does jeremy shockey play for in 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-613", "question": "what college did deion sanders jr go to", "labels": ["two_hop"]}
+{"id": "WebQTest-614", "question": "when did the battle of alamo start", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-615", "question": "what were the names of henry viii 's three children", "labels": ["one_hop"]}
+{"id": "WebQTest-616", "question": "what was queen elizabeth ii childhood nickname", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-617", "question": "where did tim tebow grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-618", "question": "where is chesapeake bay bridge", "labels": ["one_hop"]}
+{"id": "WebQTest-619", "question": "who played victoria barkley", "labels": ["two_hop"]}
+{"id": "WebQTest-620", "question": "where did kennedy 's inaugural address take place", "labels": ["one_hop"]}
+{"id": "WebQTest-621", "question": "what countries have german as the official language", "labels": ["one_hop"]}
+{"id": "WebQTest-622", "question": "where did the taliban began", "labels": ["one_hop"]}
+{"id": "WebQTest-624", "question": "who plays elena gilbert on vampire diaries", "labels": ["two_hop"]}
+{"id": "WebQTest-626", "question": "what does the missouri river bisect", "labels": ["two_hop"]}
+{"id": "WebQTest-627", "question": "what nationality is taylor lautner jacob black", "labels": ["one_hop"]}
+{"id": "WebQTest-628", "question": "what animal represents california", "labels": ["two_hop"]}
+{"id": "WebQTest-629", "question": "what company does nike own", "labels": ["two_hop"]}
+{"id": "WebQTest-630", "question": "what language do colombian people speak", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-631", "question": "what year did ray allen join the nba", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-633", "question": "what is claire danes famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-634", "question": "what county is san antonio in", "labels": ["one_hop"]}
+{"id": "WebQTest-635", "question": "what characters does matt stone do", "labels": ["two_hop"]}
+{"id": "WebQTest-636", "question": "what timezone is the state of michigan and", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-637", "question": "what type of government did soviet union have", "labels": ["one_hop"]}
+{"id": "WebQTest-638", "question": "what languages are there in japan", "labels": ["one_hop"]}
+{"id": "WebQTest-639", "question": "what year did the bulls get rodman", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-640", "question": "who was saint paul the apostle", "labels": ["one_hop"]}
+{"id": "WebQTest-642", "question": "where did vince scully go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-643", "question": "where does princess leia live", "labels": ["one_hop"]}
+{"id": "WebQTest-644", "question": "what famous people are from el salvador", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-645", "question": "what type of art did leonardo da vinci make", "labels": ["one_hop"]}
+{"id": "WebQTest-646", "question": "where did mary bell live", "labels": ["one_hop"]}
+{"id": "WebQTest-648", "question": "who did kimberly williams marry", "labels": ["two_hop"]}
+{"id": "WebQTest-649", "question": "what other movies has ryan gosling been in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-650", "question": "what political party does julia gillard belong to", "labels": ["two_hop"]}
+{"id": "WebQTest-651", "question": "what is the currency of germany now", "labels": ["one_hop"]}
+{"id": "WebQTest-652", "question": "what kind of hispanic is selena gomez", "labels": ["one_hop"]}
+{"id": "WebQTest-653", "question": "who did denise van outen married", "labels": ["two_hop"]}
+{"id": "WebQTest-654", "question": "what are egyptian money called", "labels": ["one_hop"]}
+{"id": "WebQTest-655", "question": "what is the zip code for wyoming michigan", "labels": ["one_hop"]}
+{"id": "WebQTest-656", "question": "who is the president of costa rica in 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-657", "question": "where did martin luther king got shot at", "labels": ["one_hop"]}
+{"id": "WebQTest-658", "question": "who wrote the gospel according to john", "labels": ["one_hop"]}
+{"id": "WebQTest-659", "question": "what form of government is the uk", "labels": ["one_hop"]}
+{"id": "WebQTest-661", "question": "who did nasri play for before arsenal", "labels": ["one_hop"]}
+{"id": "WebQTest-662", "question": "what currency does the czech republic use now", "labels": ["one_hop"]}
+{"id": "WebQTest-663", "question": "what age did william penn get married", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-664", "question": "what was firefox programmed in", "labels": ["one_hop"]}
+{"id": "WebQTest-665", "question": "what government does new zealand have", "labels": ["one_hop"]}
+{"id": "WebQTest-666", "question": "where is isthmus of panama located on the map", "labels": ["one_hop"]}
+{"id": "WebQTest-667", "question": "what is the capital of republic of ireland", "labels": ["one_hop"]}
+{"id": "WebQTest-668", "question": "what has kristen stewart acted in", "labels": ["two_hop"]}
+{"id": "WebQTest-669", "question": "what did dr josef mengele do", "labels": ["one_hop"]}
+{"id": "WebQTest-670", "question": "what kind of language does egypt speak", "labels": ["one_hop"]}
+{"id": "WebQTest-671", "question": "who are the senators of hawaii 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-672", "question": "what form of government does north korea have", "labels": ["one_hop"]}
+{"id": "WebQTest-673", "question": "where did robert kardashian go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-675", "question": "what county is st james city fl in", "labels": ["one_hop"]}
+{"id": "WebQTest-676", "question": "what did the akkadian empire include", "labels": ["one_hop"]}
+{"id": "WebQTest-677", "question": "after how many years are the olympic games held", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-678", "question": "what system of government does guyana have", "labels": ["one_hop"]}
+{"id": "WebQTest-680", "question": "what team did aguero play for", "labels": ["two_hop"]}
+{"id": "WebQTest-681", "question": "who is the president of the european union 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-683", "question": "what year was kenya moore crowned miss usa", "labels": ["one_hop"]}
+{"id": "WebQTest-684", "question": "what sort of government does nigeria have", "labels": ["one_hop"]}
+{"id": "WebQTest-685", "question": "where does chef ina garten live", "labels": ["two_hop"]}
+{"id": "WebQTest-686", "question": "when the atlanta braves won the world series", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-688", "question": "what kind of language do they speak in iran", "labels": ["one_hop"]}
+{"id": "WebQTest-689", "question": "what was the first language spoken in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-690", "question": "what did scott joplin play", "labels": ["one_hop"]}
+{"id": "WebQTest-691", "question": "what school did miley cyrus", "labels": ["two_hop"]}
+{"id": "WebQTest-693", "question": "what language do most people speak in afghanistan", "labels": ["one_hop"]}
+{"id": "WebQTest-694", "question": "who is the prime minister of jamaica west indies", "labels": ["two_hop"]}
+{"id": "WebQTest-695", "question": "what role did paul mccartney play in the beatles", "labels": ["two_hop"]}
+{"id": "WebQTest-696", "question": "when did juventus win the champions league", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-698", "question": "who is robin roberts father", "labels": ["one_hop"]}
+{"id": "WebQTest-699", "question": "what is the capital of australia victoria state", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-700", "question": "where is french spoken most", "labels": ["one_hop"]}
+{"id": "WebQTest-701", "question": "what team is reggie bush on 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-702", "question": "what highschool did emily osment go to", "labels": ["two_hop"]}
+{"id": "WebQTest-703", "question": "what currency should i take to mexico", "labels": ["one_hop"]}
+{"id": "WebQTest-704", "question": "who is thor heyerdahl", "labels": ["one_hop"]}
+{"id": "WebQTest-706", "question": "where did troy aikman play football", "labels": ["two_hop"]}
+{"id": "WebQTest-707", "question": "who played cletus hogg", "labels": ["two_hop"]}
+{"id": "WebQTest-708", "question": "who won fa cup 1976", "labels": ["two_hop"]}
+{"id": "WebQTest-709", "question": "what did general robert e lee die from", "labels": ["one_hop"]}
+{"id": "WebQTest-710", "question": "what style of art did henri matisse do", "labels": ["one_hop"]}
+{"id": "WebQTest-711", "question": "who plays chuck bass in gossip girl", "labels": ["one_hop"]}
+{"id": "WebQTest-712", "question": "what countries have territories in oceania", "labels": ["one_hop"]}
+{"id": "WebQTest-713", "question": "what county is st. louis park in", "labels": ["one_hop"]}
+{"id": "WebQTest-714", "question": "what is the political system of south africa", "labels": ["one_hop"]}
+{"id": "WebQTest-716", "question": "what language group does germany belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-717", "question": "what timezone is tucson arizona in right now", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-718", "question": "when was lucy lawless born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-719", "question": "which political party does barack obama represent", "labels": ["two_hop"]}
+{"id": "WebQTest-721", "question": "what kind of leukemia did jill clayburgh have", "labels": ["one_hop"]}
+{"id": "WebQTest-722", "question": "what is the name of the book hitler wrote in jail", "labels": ["one_hop"]}
+{"id": "WebQTest-723", "question": "what is there to see in sydney australia", "labels": ["one_hop"]}
+{"id": "WebQTest-724", "question": "where was marilyn monroe found dead", "labels": ["one_hop"]}
+{"id": "WebQTest-725", "question": "what states does the sierra nevada run through", "labels": ["one_hop"]}
+{"id": "WebQTest-726", "question": "what language is spoken in greek", "labels": ["one_hop"]}
+{"id": "WebQTest-728", "question": "what is the name of the speaker of the house of representatives now 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-729", "question": "who plays stanley hudson", "labels": ["two_hop"]}
+{"id": "WebQTest-730", "question": "what record label is kelly clarkson signed with", "labels": ["one_hop"]}
+{"id": "WebQTest-731", "question": "where does tim roth come from", "labels": ["one_hop"]}
+{"id": "WebQTest-733", "question": "what currency should you take to vietnam", "labels": ["one_hop"]}
+{"id": "WebQTest-734", "question": "who did roger federer married", "labels": ["two_hop"]}
+{"id": "WebQTest-735", "question": "what kind of money do i need in costa rica", "labels": ["one_hop"]}
+{"id": "WebQTest-737", "question": "what is the name of the capital of belgium", "labels": ["one_hop"]}
+{"id": "WebQTest-738", "question": "what kind of government does japan have now", "labels": ["one_hop"]}
+{"id": "WebQTest-739", "question": "what pieces of music did claude debussy compose", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-740", "question": "who was selena gomez in barney and friends", "labels": ["two_hop"]}
+{"id": "WebQTest-741", "question": "who plays caesar flickerman in the hunger games", "labels": ["two_hop"]}
+{"id": "WebQTest-742", "question": "where did the gettysburg address", "labels": ["one_hop"]}
+{"id": "WebQTest-743", "question": "what was the name of jfk 's brothers", "labels": ["two_hop"]}
+{"id": "WebQTest-744", "question": "who was tupac signed to", "labels": ["one_hop"]}
+{"id": "WebQTest-745", "question": "what was augustus caesar famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-747", "question": "what language does colombia", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-748", "question": "what is the zip code for schenectady new york", "labels": ["one_hop"]}
+{"id": "WebQTest-749", "question": "who was president in 1988 in the united states", "labels": ["two_hop"]}
+{"id": "WebQTest-751", "question": "who owns google 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-752", "question": "what drink did john pemberton create", "labels": ["one_hop"]}
+{"id": "WebQTest-753", "question": "what position did stanley matthews play", "labels": ["one_hop"]}
+{"id": "WebQTest-755", "question": "what was bonnie prince charlie full name", "labels": ["one_hop"]}
+{"id": "WebQTest-756", "question": "who makes the voice of stewie griffin", "labels": ["two_hop"]}
+{"id": "WebQTest-757", "question": "who is angelina jolie mom and dad", "labels": ["one_hop"]}
+{"id": "WebQTest-758", "question": "who is the governor of indiana 2009", "labels": ["two_hop"]}
+{"id": "WebQTest-759", "question": "who brad pitt has dated", "labels": ["two_hop"]}
+{"id": "WebQTest-760", "question": "what party does barack obama belong to", "labels": ["two_hop"]}
+{"id": "WebQTest-761", "question": "what is san francisco zip code", "labels": ["one_hop"]}
+{"id": "WebQTest-762", "question": "who has stephen ireland played for", "labels": ["two_hop"]}
+{"id": "WebQTest-764", "question": "where did john mayer go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-765", "question": "what celebrities has brody jenner dated", "labels": ["two_hop"]}
+{"id": "WebQTest-766", "question": "what is malaysian currency", "labels": ["one_hop"]}
+{"id": "WebQTest-768", "question": "who owns volkswagen car company", "labels": ["two_hop"]}
+{"id": "WebQTest-769", "question": "which is the main train station in rome", "labels": ["two_hop"]}
+{"id": "WebQTest-770", "question": "what did steve mcnair died from", "labels": ["one_hop"]}
+{"id": "WebQTest-771", "question": "who is the newly elected governor of california", "labels": ["two_hop"]}
+{"id": "WebQTest-772", "question": "who plays roxanne in ghost rider", "labels": ["two_hop"]}
+{"id": "WebQTest-773", "question": "where is the sony ericsson company", "labels": ["two_hop"]}
+{"id": "WebQTest-774", "question": "what kind of currency does the dominican republic have", "labels": ["one_hop"]}
+{"id": "WebQTest-775", "question": "what to do this weekend in manchester with kids", "labels": ["one_hop"]}
+{"id": "WebQTest-776", "question": "what sport is popular in italy", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-777", "question": "where is the main headquarters of google", "labels": ["two_hop"]}
+{"id": "WebQTest-778", "question": "what was jesse owens education", "labels": ["two_hop"]}
+{"id": "WebQTest-779", "question": "where does carlos santana live", "labels": ["two_hop"]}
+{"id": "WebQTest-780", "question": "what is the new movie john carter about", "labels": ["one_hop"]}
+{"id": "WebQTest-782", "question": "what countries does nafta include", "labels": ["two_hop"]}
+{"id": "WebQTest-783", "question": "what county is houston tx in", "labels": ["one_hop"]}
+{"id": "WebQTest-784", "question": "where do the seattle seahawks play", "labels": ["one_hop"]}
+{"id": "WebQTest-785", "question": "who does michael keaton play in cars", "labels": ["two_hop"]}
+{"id": "WebQTest-787", "question": "where is the riviera casino", "labels": ["one_hop"]}
+{"id": "WebQTest-788", "question": "what is the holy book of the buddhist religion", "labels": ["one_hop"]}
+{"id": "WebQTest-789", "question": "who became president when henry harrison died", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-790", "question": "where did richard arkwright grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-791", "question": "what other books did louis sachar write", "labels": ["one_hop"]}
+{"id": "WebQTest-792", "question": "when did roth ira originate", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-794", "question": "who does the voice for darth vader", "labels": ["two_hop"]}
+{"id": "WebQTest-796", "question": "what did thomas malthus do", "labels": ["one_hop"]}
+{"id": "WebQTest-797", "question": "what is the zip code for newark california", "labels": ["one_hop"]}
+{"id": "WebQTest-798", "question": "what states share a border with tennessee", "labels": ["two_hop"]}
+{"id": "WebQTest-800", "question": "what war did the us lose the most soldiers", "labels": ["two_hop"]}
+{"id": "WebQTest-801", "question": "what kind of government is egypt", "labels": ["one_hop"]}
+{"id": "WebQTest-802", "question": "what musical instruments does justin bieber play", "labels": ["two_hop"]}
+{"id": "WebQTest-805", "question": "where do john lennon die", "labels": ["one_hop"]}
+{"id": "WebQTest-809", "question": "what is the current time in bangalore india", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-810", "question": "what language do people from greece speak", "labels": ["one_hop"]}
+{"id": "WebQTest-811", "question": "where is the phillies spring training stadium", "labels": ["two_hop"]}
+{"id": "WebQTest-812", "question": "what movies does matt dallas play in", "labels": ["two_hop"]}
+{"id": "WebQTest-813", "question": "who was john f kennedy 's family", "labels": ["one_hop"]}
+{"id": "WebQTest-814", "question": "where is harley davidson corporate headquarters", "labels": ["two_hop"]}
+{"id": "WebQTest-818", "question": "where was the ottoman empire based", "labels": ["one_hop"]}
+{"id": "WebQTest-819", "question": "where was bin laden found and killed", "labels": ["one_hop"]}
+{"id": "WebQTest-820", "question": "what are the names of harry potter movies in order", "labels": ["one_hop"]}
+{"id": "WebQTest-821", "question": "what did pamela courson die from", "labels": ["one_hop"]}
+{"id": "WebQTest-822", "question": "what did dr jack kevorkian do", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-823", "question": "what does bolivia border", "labels": ["two_hop"]}
+{"id": "WebQTest-825", "question": "who does nolan ryan play for", "labels": ["two_hop"]}
+{"id": "WebQTest-827", "question": "what country does justin bieber come from", "labels": ["one_hop"]}
+{"id": "WebQTest-828", "question": "what is the head judge of the supreme court called", "labels": ["one_hop"]}
+{"id": "WebQTest-829", "question": "who was frida kahlo influenced by", "labels": ["one_hop"]}
+{"id": "WebQTest-830", "question": "where is taylor swift from", "labels": ["one_hop"]}
+{"id": "WebQTest-831", "question": "what type of religion does argentina have", "labels": ["two_hop"]}
+{"id": "WebQTest-832", "question": "when is the last time the giants won the world series", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-833", "question": "what is the main language used in china", "labels": ["one_hop"]}
+{"id": "WebQTest-834", "question": "where did the battle of waterloo occur", "labels": ["one_hop"]}
+{"id": "WebQTest-836", "question": "who did vladimir lenin marry", "labels": ["two_hop"]}
+{"id": "WebQTest-837", "question": "what year did the baltimore ravens win superbowl", "labels": ["one_hop"]}
+{"id": "WebQTest-838", "question": "what team does cristiano ronaldo play for 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-841", "question": "what is money called in italy", "labels": ["one_hop"]}
+{"id": "WebQTest-843", "question": "where did theodor schwann study", "labels": ["two_hop"]}
+{"id": "WebQTest-845", "question": "who are the virginia senators 2013", "labels": ["two_hop"]}
+{"id": "WebQTest-846", "question": "what was dr seuss 's real name", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-847", "question": "what countries are members of the security council", "labels": ["two_hop"]}
+{"id": "WebQTest-848", "question": "where are the nordic countries", "labels": ["one_hop"]}
+{"id": "WebQTest-849", "question": "what country sponsored ferdinand magellan", "labels": ["one_hop"]}
+{"id": "WebQTest-850", "question": "what did vera ellen die from", "labels": ["one_hop"]}
+{"id": "WebQTest-851", "question": "what is the capital of modern day egypt", "labels": ["one_hop"]}
+{"id": "WebQTest-852", "question": "what province is toronto in ( 7 letters )", "labels": ["one_hop"]}
+{"id": "WebQTest-855", "question": "what is the currency of brazil now", "labels": ["one_hop"]}
+{"id": "WebQTest-856", "question": "what types of art did andy warhol do", "labels": ["one_hop"]}
+{"id": "WebQTest-857", "question": "what other states border florida", "labels": ["two_hop"]}
+{"id": "WebQTest-859", "question": "what are the predominant religions in russia", "labels": ["two_hop"]}
+{"id": "WebQTest-861", "question": "who will coach carolina panthers in 2013", "labels": ["one_hop"]}
+{"id": "WebQTest-862", "question": "where did louis sachar grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-863", "question": "who plays marshall eriksen", "labels": ["two_hop"]}
+{"id": "WebQTest-865", "question": "what to do for fun in houston", "labels": ["one_hop"]}
+{"id": "WebQTest-866", "question": "where did otto frank go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-867", "question": "what else has jennifer lawrence played in", "labels": ["two_hop"]}
+{"id": "WebQTest-868", "question": "who is the governor of pennsylvania state now", "labels": ["two_hop"]}
+{"id": "WebQTest-869", "question": "where is ancient phoenician", "labels": ["one_hop"]}
+{"id": "WebQTest-870", "question": "where does the celtics practice", "labels": ["one_hop"]}
+{"id": "WebQTest-872", "question": "where bin laden got killed", "labels": ["one_hop"]}
+{"id": "WebQTest-873", "question": "where does toronto get its water from", "labels": ["one_hop"]}
+{"id": "WebQTest-874", "question": "what language do people from bosnia speak", "labels": ["one_hop"]}
+{"id": "WebQTest-875", "question": "where did hugo chavez go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-876", "question": "who does japan import from", "labels": ["two_hop"]}
+{"id": "WebQTest-877", "question": "what is the name of sonia gandhi daughter", "labels": ["one_hop"]}
+{"id": "WebQTest-878", "question": "who do islamic people pray to", "labels": ["one_hop"]}
+{"id": "WebQTest-879", "question": "where was mary todd lincoln from", "labels": ["one_hop"]}
+{"id": "WebQTest-880", "question": "where did charles darwin die", "labels": ["one_hop"]}
+{"id": "WebQTest-881", "question": "what movies does nick cannon play in", "labels": ["two_hop"]}
+{"id": "WebQTest-882", "question": "when did the big earthquake hit san francisco", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-883", "question": "who was king george vi married to", "labels": ["two_hop"]}
+{"id": "WebQTest-884", "question": "where was jesus after he died on the cross", "labels": ["one_hop"]}
+{"id": "WebQTest-885", "question": "who is sir james dyson", "labels": ["one_hop"]}
+{"id": "WebQTest-886", "question": "who voiced darth vader in the original star wars movies", "labels": ["two_hop"]}
+{"id": "WebQTest-887", "question": "what high school did maya angelou go to", "labels": ["two_hop"]}
+{"id": "WebQTest-888", "question": "what 5 countries border switzerland", "labels": ["two_hop"]}
+{"id": "WebQTest-889", "question": "what country did benito mussolini govern", "labels": ["two_hop"]}
+{"id": "WebQTest-891", "question": "who was the leader of the first communist party of china", "labels": ["one_hop"]}
+{"id": "WebQTest-892", "question": "what did miles davis died of", "labels": ["one_hop"]}
+{"id": "WebQTest-893", "question": "what is the zip code for azle texas", "labels": ["one_hop"]}
+{"id": "WebQTest-894", "question": "what date did sally pearson won gold", "labels": ["two_hop"]}
+{"id": "WebQTest-895", "question": "when did the detroit pistons last win the championship", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-896", "question": "when did the philadelphia flyers win the cup", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-897", "question": "who is number 22 for the dallas cowboys", "labels": ["two_hop"]}
+{"id": "WebQTest-898", "question": "what county is st paul nc in", "labels": ["one_hop"]}
+{"id": "WebQTest-899", "question": "where is olympic national park wa", "labels": ["one_hop"]}
+{"id": "WebQTest-900", "question": "where did nat turner 1831 rebellion occur", "labels": ["one_hop"]}
+{"id": "WebQTest-901", "question": "who would play luke skywalker", "labels": ["two_hop"]}
+{"id": "WebQTest-903", "question": "where turkish people originate", "labels": ["one_hop"]}
+{"id": "WebQTest-904", "question": "what state is barack obama from", "labels": ["one_hop"]}
+{"id": "WebQTest-905", "question": "what years did joe montana win super bowl", "labels": ["literal"]}
+{"id": "WebQTest-908", "question": "what awards gary paulsen won", "labels": ["two_hop"]}
+{"id": "WebQTest-910", "question": "where did alexander graham bell die", "labels": ["one_hop"]}
+{"id": "WebQTest-911", "question": "what year did the golden state warriors win their first nba championship", "labels": ["one_hop"]}
+{"id": "WebQTest-912", "question": "what currency should i take to turkey", "labels": ["one_hop"]}
+{"id": "WebQTest-914", "question": "what countries are in the uk yahoo", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-915", "question": "what superbowl did the baltimore ravens win", "labels": ["one_hop"]}
+{"id": "WebQTest-916", "question": "what is the language of russia s spoken", "labels": ["one_hop"]}
+{"id": "WebQTest-918", "question": "who is the king of cambodia now", "labels": ["two_hop"]}
+{"id": "WebQTest-919", "question": "who are serena williams parents", "labels": ["one_hop"]}
+{"id": "WebQTest-920", "question": "what schools did sir isaac newton go to", "labels": ["two_hop"]}
+{"id": "WebQTest-921", "question": "what was the cause of death for huell howser", "labels": ["one_hop"]}
+{"id": "WebQTest-922", "question": "what books are written by suzanne collins", "labels": ["one_hop"]}
+{"id": "WebQTest-923", "question": "what countries does england border", "labels": ["two_hop"]}
+{"id": "WebQTest-924", "question": "what team did messi play for in 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-925", "question": "what time zone is greensburg indiana", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-927", "question": "who plays voldemort", "labels": ["two_hop"]}
+{"id": "WebQTest-928", "question": "what colleges did harper lee attend", "labels": ["two_hop"]}
+{"id": "WebQTest-929", "question": "who founded the kkk", "labels": ["one_hop"]}
+{"id": "WebQTest-931", "question": "what jobs did john adams have before he was president", "labels": ["one_hop"]}
+{"id": "WebQTest-932", "question": "what year did super mario bros 2 come out", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-933", "question": "what political party did andrew johnson belong to", "labels": ["two_hop"]}
+{"id": "WebQTest-935", "question": "where was osama bin laden killed", "labels": ["one_hop"]}
+{"id": "WebQTest-936", "question": "where were greek temples built", "labels": ["one_hop"]}
+{"id": "WebQTest-937", "question": "where are people who speak arabic from", "labels": ["one_hop"]}
+{"id": "WebQTest-938", "question": "who was queen elizabeth ii mom", "labels": ["one_hop"]}
+{"id": "WebQTest-939", "question": "what type of art did pablo picasso paint", "labels": ["one_hop"]}
+{"id": "WebQTest-941", "question": "what is ella fitzgerald parents name", "labels": ["one_hop"]}
+{"id": "WebQTest-942", "question": "who is anne hathaway parents", "labels": ["one_hop"]}
+{"id": "WebQTest-943", "question": "who does don draper gets engaged to", "labels": ["two_hop"]}
+{"id": "WebQTest-944", "question": "what was van halen first album", "labels": ["one_hop"]}
+{"id": "WebQTest-945", "question": "what political system did spain have", "labels": ["one_hop"]}
+{"id": "WebQTest-948", "question": "what are the supreme court cases", "labels": ["one_hop"]}
+{"id": "WebQTest-949", "question": "what is penn state 's main campus", "labels": ["two_hop"]}
+{"id": "WebQTest-952", "question": "what country does alaska belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-953", "question": "where is kansas city", "labels": ["one_hop"]}
+{"id": "WebQTest-954", "question": "what was pink floyd 's first album", "labels": ["one_hop"]}
+{"id": "WebQTest-955", "question": "who did granville t. woods married", "labels": ["two_hop"]}
+{"id": "WebQTest-957", "question": "what language did the sioux indians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-958", "question": "what are some famous people from el salvador", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-959", "question": "who did brett gardner play for in 2008", "labels": ["two_hop"]}
+{"id": "WebQTest-960", "question": "who plays dwight in the office", "labels": ["two_hop"]}
+{"id": "WebQTest-962", "question": "what county is san diego ca", "labels": ["one_hop"]}
+{"id": "WebQTest-963", "question": "who is the miami dolphins quarterback", "labels": ["two_hop"]}
+{"id": "WebQTest-965", "question": "where did anne frank go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-966", "question": "what basketball player is married to monica", "labels": ["two_hop"]}
+{"id": "WebQTest-967", "question": "what did hitler use to kill himself", "labels": ["one_hop"]}
+{"id": "WebQTest-968", "question": "what do people speak in germany", "labels": ["one_hop"]}
+{"id": "WebQTest-969", "question": "when is the last time the denver broncos won the superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-970", "question": "where was caesar when he was stabbed", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-971", "question": "what style of music did bessie smith perform", "labels": ["one_hop"]}
+{"id": "WebQTest-972", "question": "what team did jackie robinson", "labels": ["two_hop"]}
+{"id": "WebQTest-973", "question": "what time zone is chicago in right now", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-974", "question": "what two countries make up the dominican republic", "labels": ["one_hop"]}
+{"id": "WebQTest-975", "question": "who was the vice president under ronald reagan", "labels": ["one_hop"]}
+{"id": "WebQTest-976", "question": "where do the chicago white sox play home games", "labels": ["one_hop"]}
+{"id": "WebQTest-977", "question": "what part did jeff conaway play in grease", "labels": ["two_hop"]}
+{"id": "WebQTest-978", "question": "what book did benjamin franklin published", "labels": ["one_hop"]}
+{"id": "WebQTest-979", "question": "what currency to take to barbados", "labels": ["one_hop"]}
+{"id": "WebQTest-980", "question": "where did they get the name stanley cup", "labels": ["one_hop"]}
+{"id": "WebQTest-982", "question": "what is the zip code of syracuse ny", "labels": ["one_hop"]}
+{"id": "WebQTest-983", "question": "where did tennessee williams go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-984", "question": "what is the name of airport in new york", "labels": ["two_hop"]}
+{"id": "WebQTest-985", "question": "who was queen victoria 's husband", "labels": ["two_hop"]}
+{"id": "WebQTest-986", "question": "where did benjamin franklin work", "labels": ["two_hop"]}
+{"id": "WebQTest-987", "question": "what does barbara bush do for work", "labels": ["two_hop"]}
+{"id": "WebQTest-988", "question": "who is jacob latimore", "labels": ["one_hop"]}
+{"id": "WebQTest-989", "question": "what happened to dunkirk during ww2", "labels": ["one_hop"]}
+{"id": "WebQTest-990", "question": "what was scottie pippen good at", "labels": ["two_hop"]}
+{"id": "WebQTest-991", "question": "who played donna on west wing", "labels": ["two_hop"]}
+{"id": "WebQTest-993", "question": "who played meg in season 1 of family guy", "labels": ["two_hop"]}
+{"id": "WebQTest-994", "question": "when was the last time the dallas cowboys won the superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-996", "question": "where do ireland play rugby union", "labels": ["one_hop"]}
+{"id": "WebQTest-997", "question": "who killed lee harvey oswald shot", "labels": ["one_hop"]}
+{"id": "WebQTest-998", "question": "when was the last time knicks won the championship", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-999", "question": "when did celtics win the championship", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1000", "question": "what countries included in oceania", "labels": ["one_hop"]}
+{"id": "WebQTest-1001", "question": "what country is nicki minaj from", "labels": ["one_hop"]}
+{"id": "WebQTest-1002", "question": "who played harry potter dumbledore actor", "labels": ["two_hop"]}
+{"id": "WebQTest-1003", "question": "who was the prime minister of pakistan in 1999", "labels": ["two_hop"]}
+{"id": "WebQTest-1004", "question": "what movies did christopher plummer play in", "labels": ["two_hop"]}
+{"id": "WebQTest-1005", "question": "what is capital city of morocco", "labels": ["one_hop"]}
+{"id": "WebQTest-1006", "question": "what movies is omar epps in", "labels": ["two_hop"]}
+{"id": "WebQTest-1007", "question": "what district does nancy pelosi represent", "labels": ["two_hop"]}
+{"id": "WebQTest-1008", "question": "where is walton indiana", "labels": ["one_hop"]}
+{"id": "WebQTest-1009", "question": "where did george herbert walker bush go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-1010", "question": "what did bruce jenner win gold medal for", "labels": ["two_hop"]}
+{"id": "WebQTest-1011", "question": "where do they speak tibetan", "labels": ["one_hop"]}
+{"id": "WebQTest-1012", "question": "what to do in hollywood ca this weekend", "labels": ["one_hop"]}
+{"id": "WebQTest-1014", "question": "where did kim kardashian come from", "labels": ["one_hop"]}
+{"id": "WebQTest-1015", "question": "what town did justin bieber grew up in", "labels": ["two_hop"]}
+{"id": "WebQTest-1017", "question": "who plays charlie in the santa clause movies", "labels": ["two_hop"]}
+{"id": "WebQTest-1020", "question": "what highschool did r. kelly attend", "labels": ["two_hop"]}
+{"id": "WebQTest-1021", "question": "what happened at benghazi", "labels": ["one_hop"]}
+{"id": "WebQTest-1022", "question": "what country is nike based in", "labels": ["two_hop"]}
+{"id": "WebQTest-1024", "question": "what kind of money do i bring to mexico", "labels": ["one_hop"]}
+{"id": "WebQTest-1025", "question": "who did steve spurrier play pro football for", "labels": ["two_hop"]}
+{"id": "WebQTest-1027", "question": "where do the blackhawks play", "labels": ["one_hop"]}
+{"id": "WebQTest-1028", "question": "who plays john connor", "labels": ["two_hop"]}
+{"id": "WebQTest-1029", "question": "what is the main language spoken in mexico", "labels": ["one_hop"]}
+{"id": "WebQTest-1030", "question": "what are italians classified as", "labels": ["one_hop"]}
+{"id": "WebQTest-1031", "question": "what has angelina jolie accomplished", "labels": ["one_hop"]}
+{"id": "WebQTest-1032", "question": "who played captain kirk in star trek movie", "labels": ["two_hop"]}
+{"id": "WebQTest-1033", "question": "who played dana scully in x files", "labels": ["two_hop"]}
+{"id": "WebQTest-1035", "question": "what was f. scott fitzgerald", "labels": ["one_hop"]}
+{"id": "WebQTest-1036", "question": "what is the dominant language spoken in jamaica", "labels": ["one_hop"]}
+{"id": "WebQTest-1037", "question": "who is the coach for the new york knicks", "labels": ["one_hop"]}
+{"id": "WebQTest-1038", "question": "who was wesley snipes", "labels": ["one_hop"]}
+{"id": "WebQTest-1039", "question": "where does sherrod brown live", "labels": ["two_hop"]}
+{"id": "WebQTest-1040", "question": "what kind of language does colombia speak", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1041", "question": "what currency does england use now", "labels": ["one_hop"]}
+{"id": "WebQTest-1042", "question": "who was the original voice of meg griffin on family guy", "labels": ["two_hop"]}
+{"id": "WebQTest-1043", "question": "what kind of government is mali", "labels": ["one_hop"]}
+{"id": "WebQTest-1044", "question": "who did cristiano ronaldo play for in 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-1045", "question": "what is the zip code for morgantown wv", "labels": ["one_hop"]}
+{"id": "WebQTest-1046", "question": "what is jacksonville fl timezone", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1047", "question": "who does amy stiller play in dodgeball", "labels": ["two_hop"]}
+{"id": "WebQTest-1048", "question": "who were king henry vii children", "labels": ["one_hop"]}
+{"id": "WebQTest-1050", "question": "who does mila kunis play on family guy", "labels": ["two_hop"]}
+{"id": "WebQTest-1051", "question": "when did the san francisco earthquake occur", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1052", "question": "who played damien in the omen 2006", "labels": ["two_hop"]}
+{"id": "WebQTest-1054", "question": "who played denver in four christmases", "labels": ["two_hop"]}
+{"id": "WebQTest-1055", "question": "what to do with kids in essex", "labels": ["one_hop"]}
+{"id": "WebQTest-1056", "question": "who did the cleveland cavaliers draft", "labels": ["two_hop"]}
+{"id": "WebQTest-1057", "question": "what concentration camp did anne frank died in", "labels": ["one_hop"]}
+{"id": "WebQTest-1059", "question": "what language does east timor speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1060", "question": "what is the currency in italy", "labels": ["one_hop"]}
+{"id": "WebQTest-1061", "question": "where does greek language come from", "labels": ["one_hop"]}
+{"id": "WebQTest-1062", "question": "what is the name of the currency used in italy", "labels": ["one_hop"]}
+{"id": "WebQTest-1063", "question": "where is audrey hepburn from", "labels": ["one_hop"]}
+{"id": "WebQTest-1065", "question": "who does darth vaders voice", "labels": ["two_hop"]}
+{"id": "WebQTest-1067", "question": "what school did douglas macarthur go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1068", "question": "what famous people are from barbados", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1069", "question": "what is the name of the currency used in china", "labels": ["one_hop"]}
+{"id": "WebQTest-1070", "question": "what are the names of michael jackson 's 3 children", "labels": ["one_hop"]}
+{"id": "WebQTest-1072", "question": "who is the current governor of arizona 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-1074", "question": "who is lamar odom playing for this year", "labels": ["two_hop"]}
+{"id": "WebQTest-1075", "question": "where were the great pyramids of giza built", "labels": ["one_hop"]}
+{"id": "WebQTest-1077", "question": "what language do the russian speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1078", "question": "what language do australia people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1079", "question": "what country was king tut 's tomb found", "labels": ["one_hop"]}
+{"id": "WebQTest-1080", "question": "where did abraham and his descendants live", "labels": ["two_hop"]}
+{"id": "WebQTest-1081", "question": "where did george washington carver go to collage", "labels": ["two_hop"]}
+{"id": "WebQTest-1082", "question": "what are the sports in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-1083", "question": "where president obama was born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1084", "question": "what sports do people play in poland", "labels": ["one_hop"]}
+{"id": "WebQTest-1085", "question": "who was demi lovato dating", "labels": ["two_hop"]}
+{"id": "WebQTest-1087", "question": "what films has scarlett johansson been in", "labels": ["two_hop"]}
+{"id": "WebQTest-1088", "question": "who originally voiced meg on family guy", "labels": ["two_hop"]}
+{"id": "WebQTest-1089", "question": "who played amy squirrel in bad teacher", "labels": ["two_hop"]}
+{"id": "WebQTest-1090", "question": "where are boeing headquarters", "labels": ["two_hop"]}
+{"id": "WebQTest-1091", "question": "what type of religions are in the united states", "labels": ["two_hop"]}
+{"id": "WebQTest-1092", "question": "who did viggo mortensen play in lord of the rings", "labels": ["two_hop"]}
+{"id": "WebQTest-1094", "question": "who was isaac newton and what did he do", "labels": ["one_hop"]}
+{"id": "WebQTest-1095", "question": "who did william shakespeare marry", "labels": ["two_hop"]}
+{"id": "WebQTest-1096", "question": "what movies queen latifah is in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1097", "question": "where did michelle obama graduated from", "labels": ["two_hop"]}
+{"id": "WebQTest-1098", "question": "what kind of music did franz liszt compose", "labels": ["one_hop"]}
+{"id": "WebQTest-1099", "question": "what country does david luiz play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1100", "question": "what document did thomas jefferson wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-1101", "question": "who is martin luther king jr facts", "labels": ["one_hop"]}
+{"id": "WebQTest-1102", "question": "where is victoria british columbia", "labels": ["one_hop"]}
+{"id": "WebQTest-1103", "question": "how many mary mary sisters", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1104", "question": "what do we call the currency of france", "labels": ["one_hop"]}
+{"id": "WebQTest-1106", "question": "what team does david beckham play for in 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-1107", "question": "what movies did nick cannon star in", "labels": ["two_hop"]}
+{"id": "WebQTest-1108", "question": "what radio station is npr on in nyc", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1109", "question": "who did tom landry play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1110", "question": "where was john jay born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1111", "question": "where is mount fuji located", "labels": ["one_hop"]}
+{"id": "WebQTest-1113", "question": "where was toussaint l'ouverture born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1114", "question": "what countries makes up the uk", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1115", "question": "what is lawton ok zip code", "labels": ["one_hop"]}
+{"id": "WebQTest-1116", "question": "what is the capital city of spain wiki answers", "labels": ["one_hop"]}
+{"id": "WebQTest-1117", "question": "where do they speak german", "labels": ["one_hop"]}
+{"id": "WebQTest-1118", "question": "when did mark mcgwire retired", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1119", "question": "what is colorado technical university", "labels": ["one_hop"]}
+{"id": "WebQTest-1120", "question": "what was the currency used in france before the euro", "labels": ["one_hop"]}
+{"id": "WebQTest-1121", "question": "what is kentucky state slogan", "labels": ["two_hop"]}
+{"id": "WebQTest-1124", "question": "who played samantha stephens in bewitched", "labels": ["two_hop"]}
+{"id": "WebQTest-1125", "question": "what area of science did sir isaac newton study", "labels": ["one_hop"]}
+{"id": "WebQTest-1126", "question": "what county is san diego in", "labels": ["one_hop"]}
+{"id": "WebQTest-1127", "question": "which country in north america is divided into provinces", "labels": ["one_hop"]}
+{"id": "WebQTest-1130", "question": "what is real name of santa claus", "labels": ["one_hop"]}
+{"id": "WebQTest-1131", "question": "when did kelly slater go pro", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1132", "question": "what did coretta scott king died from", "labels": ["one_hop"]}
+{"id": "WebQTest-1133", "question": "what does wh smith stand for", "labels": ["one_hop"]}
+{"id": "WebQTest-1135", "question": "who was vp for nixon", "labels": ["one_hop"]}
+{"id": "WebQTest-1136", "question": "what religion did adolf hitler follow", "labels": ["one_hop"]}
+{"id": "WebQTest-1137", "question": "where is the illinois river on a map", "labels": ["one_hop"]}
+{"id": "WebQTest-1138", "question": "where honduras in the world", "labels": ["one_hop"]}
+{"id": "WebQTest-1142", "question": "who does ronaldinho play for now 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1143", "question": "what galileo galilei was famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-1144", "question": "what are the major trading partners of germany", "labels": ["one_hop"]}
+{"id": "WebQTest-1145", "question": "where did romney graduated college", "labels": ["two_hop"]}
+{"id": "WebQTest-1146", "question": "who did johnny depp play in corpse bride", "labels": ["two_hop"]}
+{"id": "WebQTest-1147", "question": "what is the zip code for jonesboro ar", "labels": ["one_hop"]}
+{"id": "WebQTest-1148", "question": "what college did se hinton go", "labels": ["two_hop"]}
+{"id": "WebQTest-1149", "question": "when was taylor swift fearless tour", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1151", "question": "where did charles darwin and his wife live", "labels": ["two_hop"]}
+{"id": "WebQTest-1152", "question": "who is the voice of kitt", "labels": ["two_hop"]}
+{"id": "WebQTest-1153", "question": "what is eminem 's real full name", "labels": ["one_hop", "literal", "description"]}
+{"id": "WebQTest-1154", "question": "who is amy grant 's first husband", "labels": ["two_hop"]}
+{"id": "WebQTest-1155", "question": "what are the seven nations of central america", "labels": ["one_hop"]}
+{"id": "WebQTest-1156", "question": "what is jamie spears baby name", "labels": ["one_hop"]}
+{"id": "WebQTest-1160", "question": "who is the mother of prince michael jackson", "labels": ["one_hop"]}
+{"id": "WebQTest-1161", "question": "what is the clemson mascot name", "labels": ["one_hop"]}
+{"id": "WebQTest-1163", "question": "what rainforest is in south america", "labels": ["one_hop"]}
+{"id": "WebQTest-1164", "question": "what type of art does claude monet do", "labels": ["one_hop"]}
+{"id": "WebQTest-1166", "question": "when did we start war with iraq", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1168", "question": "what guitar did kurt cobain", "labels": ["one_hop"]}
+{"id": "WebQTest-1169", "question": "who did jennifer lawrence play in x men", "labels": ["two_hop"]}
+{"id": "WebQTest-1170", "question": "who is the governor of virginia 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1171", "question": "who did darth vaders voice", "labels": ["two_hop"]}
+{"id": "WebQTest-1173", "question": "where is walton county ga", "labels": ["one_hop"]}
+{"id": "WebQTest-1174", "question": "what cancer did jackie kennedy die of", "labels": ["one_hop"]}
+{"id": "WebQTest-1175", "question": "what does lauren conrad major in", "labels": ["two_hop"]}
+{"id": "WebQTest-1176", "question": "what time zone is pennsylvania in right now", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1177", "question": "where did mario lopez go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1178", "question": "where is tupac from originally", "labels": ["one_hop"]}
+{"id": "WebQTest-1179", "question": "what role did george lucas play in star wars", "labels": ["two_hop"]}
+{"id": "WebQTest-1180", "question": "what sarah dessen books are movies", "labels": ["one_hop"]}
+{"id": "WebQTest-1181", "question": "what is the current time in kauai hawaii", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1183", "question": "where was farrah fawcett buried", "labels": ["one_hop"]}
+{"id": "WebQTest-1185", "question": "what inspired steinbeck", "labels": ["one_hop"]}
+{"id": "WebQTest-1186", "question": "what kind of government does cuba have today", "labels": ["one_hop"]}
+{"id": "WebQTest-1187", "question": "where are english speakers distributed", "labels": ["one_hop"]}
+{"id": "WebQTest-1189", "question": "what is the capital of italy today", "labels": ["one_hop"]}
+{"id": "WebQTest-1191", "question": "what language do people speak in the bahamas", "labels": ["one_hop"]}
+{"id": "WebQTest-1192", "question": "where did george michael go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1194", "question": "what club does cristiano ronaldo play for in 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-1195", "question": "what time zone is in the bahamas", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1197", "question": "what language do people speak in brazil", "labels": ["one_hop"]}
+{"id": "WebQTest-1198", "question": "who influenced samuel taylor coleridge", "labels": ["one_hop"]}
+{"id": "WebQTest-1199", "question": "what does kim kardashian work as", "labels": ["one_hop"]}
+{"id": "WebQTest-1200", "question": "where did the mississippi river end", "labels": ["one_hop"]}
+{"id": "WebQTest-1201", "question": "who played carlton lassiter on psych", "labels": ["two_hop"]}
+{"id": "WebQTest-1203", "question": "who is president of israel", "labels": ["two_hop"]}
+{"id": "WebQTest-1204", "question": "where did the anasazi indians live", "labels": ["one_hop"]}
+{"id": "WebQTest-1205", "question": "who plays harley quinn", "labels": ["two_hop"]}
+{"id": "WebQTest-1206", "question": "what was francis bacon contributions", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1208", "question": "who is ruling libya", "labels": ["two_hop", "description"]}
+{"id": "WebQTest-1209", "question": "when does ziva start on ncis", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1210", "question": "what is the name of the national anthem of canada ( 2 words )", "labels": ["two_hop"]}
+{"id": "WebQTest-1212", "question": "what did mark zuckerberg study", "labels": ["two_hop"]}
+{"id": "WebQTest-1213", "question": "which country was michael jackson born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1215", "question": "who was stephen r covey", "labels": ["one_hop"]}
+{"id": "WebQTest-1216", "question": "what country was stalin in charge of", "labels": ["two_hop"]}
+{"id": "WebQTest-1217", "question": "what is monta ellis career high points", "labels": ["two_hop"]}
+{"id": "WebQTest-1219", "question": "what nationality is rihanna", "labels": ["one_hop"]}
+{"id": "WebQTest-1220", "question": "what has shannen doherty played in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1221", "question": "what college did joakim noah", "labels": ["two_hop"]}
+{"id": "WebQTest-1223", "question": "who plays billy elliot", "labels": ["two_hop"]}
+{"id": "WebQTest-1225", "question": "what kourtney kardashian boyfriends name", "labels": ["two_hop"]}
+{"id": "WebQTest-1226", "question": "what form of government does australia use", "labels": ["one_hop"]}
+{"id": "WebQTest-1227", "question": "what team did howie long", "labels": ["two_hop"]}
+{"id": "WebQTest-1228", "question": "where did the greek alphabet come from", "labels": ["one_hop"]}
+{"id": "WebQTest-1229", "question": "what timezone is elizabethtown kentucky", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1230", "question": "what to see in christchurch new zealand", "labels": ["one_hop"]}
+{"id": "WebQTest-1231", "question": "where is chris paul from", "labels": ["one_hop"]}
+{"id": "WebQTest-1232", "question": "what year was albert pujols rookie year", "labels": ["two_hop"]}
+{"id": "WebQTest-1233", "question": "what are the colors of the ny giants", "labels": ["one_hop"]}
+{"id": "WebQTest-1234", "question": "what business did andrew carnegie dominate", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1235", "question": "what was sir isaac newton 's inventions", "labels": ["one_hop"]}
+{"id": "WebQTest-1237", "question": "who did shaq first play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1238", "question": "who was the artist of mickey mouse", "labels": ["one_hop"]}
+{"id": "WebQTest-1239", "question": "what is the zip code for concord", "labels": ["one_hop"]}
+{"id": "WebQTest-1240", "question": "what football team is michael vick on", "labels": ["two_hop"]}
+{"id": "WebQTest-1241", "question": "where does the columbia river start", "labels": ["one_hop"]}
+{"id": "WebQTest-1242", "question": "what are all the names of the harry potter books", "labels": ["one_hop"]}
+{"id": "WebQTest-1244", "question": "who was sir walter raleigh and what did he do", "labels": ["one_hop"]}
+{"id": "WebQTest-1245", "question": "what countries are in the euro dollar", "labels": ["one_hop"]}
+{"id": "WebQTest-1246", "question": "what currency can you use in barbados", "labels": ["one_hop"]}
+{"id": "WebQTest-1247", "question": "who is angelina jolie", "labels": ["one_hop"]}
+{"id": "WebQTest-1248", "question": "where is nineveh city", "labels": ["one_hop"]}
+{"id": "WebQTest-1249", "question": "what is the state flower of new mexico", "labels": ["two_hop"]}
+{"id": "WebQTest-1250", "question": "where is the national ffa foundation located today", "labels": ["two_hop"]}
+{"id": "WebQTest-1251", "question": "which countries speak germanic languages", "labels": ["one_hop"]}
+{"id": "WebQTest-1252", "question": "who plays eowyn in lord of the rings", "labels": ["two_hop"]}
+{"id": "WebQTest-1254", "question": "where is augusta masters 2012", "labels": ["one_hop"]}
+{"id": "WebQTest-1255", "question": "what type of cancer did eva peron die from", "labels": ["one_hop"]}
+{"id": "WebQTest-1256", "question": "who did terrell owens play for in 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-1257", "question": "where is denmark south carolina", "labels": ["one_hop"]}
+{"id": "WebQTest-1259", "question": "what books did ernest hemingway write", "labels": ["one_hop"]}
+{"id": "WebQTest-1260", "question": "what year did baltimore ravens win super bowl", "labels": ["one_hop"]}
+{"id": "WebQTest-1261", "question": "where did the battle of passchendaele happen", "labels": ["one_hop"]}
+{"id": "WebQTest-1262", "question": "what part of the country is ohio considered", "labels": ["one_hop"]}
+{"id": "WebQTest-1263", "question": "what team is cristiano ronaldo play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1264", "question": "what standard time is michigan", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1265", "question": "what was john tyler", "labels": ["one_hop"]}
+{"id": "WebQTest-1266", "question": "what did romo do", "labels": ["one_hop"]}
+{"id": "WebQTest-1267", "question": "what currency can you use in jamaica", "labels": ["one_hop"]}
+{"id": "WebQTest-1268", "question": "where did jay moriarty die", "labels": ["one_hop"]}
+{"id": "WebQTest-1269", "question": "where was the boston tea party 1773", "labels": ["one_hop"]}
+{"id": "WebQTest-1270", "question": "what drugs lindsay lohan abuse", "labels": ["two_hop"]}
+{"id": "WebQTest-1271", "question": "when did carolina panthers go to superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1272", "question": "when did the burma cyclone happen", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1274", "question": "who won the governor election in texas", "labels": ["two_hop"]}
+{"id": "WebQTest-1275", "question": "what does helen flanagan do", "labels": ["one_hop"]}
+{"id": "WebQTest-1276", "question": "when are the summer and winter olympics held", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1277", "question": "where is tennessee river", "labels": ["one_hop"]}
+{"id": "WebQTest-1278", "question": "what are some major events in venezuela", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1279", "question": "what guitar does corey taylor play", "labels": ["one_hop"]}
+{"id": "WebQTest-1280", "question": "who was president after franklin d. roosevelt", "labels": ["one_hop"]}
+{"id": "WebQTest-1281", "question": "where did kate gosselin grew up", "labels": ["one_hop"]}
+{"id": "WebQTest-1282", "question": "under what political system does the united states government operate", "labels": ["one_hop"]}
+{"id": "WebQTest-1284", "question": "what to do in paris in 1 day", "labels": ["one_hop"]}
+{"id": "WebQTest-1285", "question": "what city is mt lassen in", "labels": ["one_hop"]}
+{"id": "WebQTest-1287", "question": "what is the state motto of ohio", "labels": ["two_hop"]}
+{"id": "WebQTest-1289", "question": "what type of music did mozart composed", "labels": ["one_hop"]}
+{"id": "WebQTest-1291", "question": "how many kids were there in the kennedy family", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1292", "question": "which barcelona airport is closest to the port", "labels": ["one_hop"]}
+{"id": "WebQTest-1293", "question": "where has the english language evolved from", "labels": ["one_hop"]}
+{"id": "WebQTest-1294", "question": "what country did hitler invade that started ww2", "labels": ["one_hop"]}
+{"id": "WebQTest-1295", "question": "what does matt damon play in", "labels": ["two_hop"]}
+{"id": "WebQTest-1296", "question": "what was scottie pippen known for", "labels": ["one_hop"]}
+{"id": "WebQTest-1297", "question": "what continent does canada belong to", "labels": ["one_hop"]}
+{"id": "WebQTest-1298", "question": "what does george wilson do for a living", "labels": ["one_hop"]}
+{"id": "WebQTest-1300", "question": "what city does fulham play in", "labels": ["one_hop"]}
+{"id": "WebQTest-1301", "question": "what are fun things to do in sacramento ca", "labels": ["one_hop"]}
+{"id": "WebQTest-1303", "question": "what other movies is josh hutcherson in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1304", "question": "what was hitler the leader of", "labels": ["one_hop"]}
+{"id": "WebQTest-1305", "question": "what awards did marilyn monroe won", "labels": ["two_hop"]}
+{"id": "WebQTest-1306", "question": "what kind of government does iran have after 1979", "labels": ["one_hop"]}
+{"id": "WebQTest-1307", "question": "where did harper lee attend high school", "labels": ["two_hop"]}
+{"id": "WebQTest-1308", "question": "what college did jrr tolkien go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1309", "question": "what art did wassily kandinsky do", "labels": ["one_hop"]}
+{"id": "WebQTest-1310", "question": "who won the league cup in 2002", "labels": ["two_hop"]}
+{"id": "WebQTest-1311", "question": "what was antoni gaudi inspired by", "labels": ["one_hop"]}
+{"id": "WebQTest-1312", "question": "in what country do people speak danish", "labels": ["one_hop"]}
+{"id": "WebQTest-1313", "question": "who were demeter 's siblings", "labels": ["two_hop"]}
+{"id": "WebQTest-1314", "question": "where should a family stay in paris", "labels": ["one_hop"]}
+{"id": "WebQTest-1316", "question": "what was the name of benjamin franklin wife", "labels": ["two_hop"]}
+{"id": "WebQTest-1317", "question": "what the largest city in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-1319", "question": "who has pudge rodriguez played for", "labels": ["two_hop"]}
+{"id": "WebQTest-1320", "question": "what is the milwaukee brewers stadium called", "labels": ["one_hop"]}
+{"id": "WebQTest-1321", "question": "where did the gallipoli war take place", "labels": ["one_hop"]}
+{"id": "WebQTest-1322", "question": "what other movies has tom hardy played in", "labels": ["two_hop"]}
+{"id": "WebQTest-1323", "question": "what to visit in atlanta", "labels": ["one_hop"]}
+{"id": "WebQTest-1324", "question": "what college did john nash go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1325", "question": "what language do maltese speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1326", "question": "what did thomas edison do for the world", "labels": ["one_hop"]}
+{"id": "WebQTest-1327", "question": "where is shakira from", "labels": ["one_hop"]}
+{"id": "WebQTest-1328", "question": "what did hayes do", "labels": ["two_hop"]}
+{"id": "WebQTest-1329", "question": "who played bilbo in the fellowship of the ring", "labels": ["two_hop"]}
+{"id": "WebQTest-1330", "question": "what is the most populated state in united states", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1331", "question": "who is my state senator arizona", "labels": ["two_hop"]}
+{"id": "WebQTest-1332", "question": "when does the vietnam war end", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1333", "question": "where does the tennessee river go", "labels": ["one_hop"]}
+{"id": "WebQTest-1334", "question": "who did tom hanks play in apollo 13", "labels": ["two_hop"]}
+{"id": "WebQTest-1335", "question": "what language do they in ghana", "labels": ["one_hop"]}
+{"id": "WebQTest-1336", "question": "what is utah 's state capitol", "labels": ["two_hop"]}
+{"id": "WebQTest-1337", "question": "what all did ben franklin invent", "labels": ["one_hop"]}
+{"id": "WebQTest-1339", "question": "what team does jeremy lin play for 2013", "labels": ["two_hop"]}
+{"id": "WebQTest-1340", "question": "what is steve nash nationality", "labels": ["one_hop"]}
+{"id": "WebQTest-1341", "question": "who are the u s senators of pennsylvania", "labels": ["two_hop"]}
+{"id": "WebQTest-1342", "question": "what kind of language does france speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1343", "question": "what degree did martin luther king earn", "labels": ["two_hop"]}
+{"id": "WebQTest-1344", "question": "what two states is st louis in", "labels": ["one_hop"]}
+{"id": "WebQTest-1348", "question": "what team did peyton manning 's dad play for", "labels": ["one_hop"]}
+{"id": "WebQTest-1350", "question": "what did jesse owens won", "labels": ["two_hop"]}
+{"id": "WebQTest-1351", "question": "what is the name of the currency used in peru", "labels": ["one_hop"]}
+{"id": "WebQTest-1353", "question": "what are the four nations of the united kingdom", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1354", "question": "who is judy garland father", "labels": ["one_hop"]}
+{"id": "WebQTest-1355", "question": "what school did robert f kennedy go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1356", "question": "what drug killed marilyn monroe", "labels": ["one_hop"]}
+{"id": "WebQTest-1357", "question": "where is the fukushima daiichi nuclear power station", "labels": ["one_hop"]}
+{"id": "WebQTest-1358", "question": "what is los angeles california time zone", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1359", "question": "what did nicolas cage name his son", "labels": ["one_hop"]}
+{"id": "WebQTest-1361", "question": "what currency should take to mexico", "labels": ["one_hop"]}
+{"id": "WebQTest-1362", "question": "who is the state governor of florida", "labels": ["two_hop"]}
+{"id": "WebQTest-1363", "question": "who was jessica simpson married too", "labels": ["two_hop"]}
+{"id": "WebQTest-1364", "question": "what do they speak in scotland", "labels": ["one_hop"]}
+{"id": "WebQTest-1365", "question": "what did john dalton study", "labels": ["one_hop"]}
+{"id": "WebQTest-1366", "question": "what songs do zac brown band sing", "labels": ["one_hop"]}
+{"id": "WebQTest-1367", "question": "where is glastonbury england", "labels": ["one_hop"]}
+{"id": "WebQTest-1368", "question": "who formed the american federation of labor", "labels": ["one_hop"]}
+{"id": "WebQTest-1369", "question": "what to visit in denver", "labels": ["one_hop"]}
+{"id": "WebQTest-1370", "question": "where did thomas hobbes live", "labels": ["two_hop"]}
+{"id": "WebQTest-1373", "question": "where was john f kennedy when he got shot", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1374", "question": "what type of government does italy have 2011", "labels": ["one_hop"]}
+{"id": "WebQTest-1376", "question": "what province is montreal canada located", "labels": ["one_hop"]}
+{"id": "WebQTest-1378", "question": "who does kellan lutz play in prom night", "labels": ["two_hop"]}
+{"id": "WebQTest-1379", "question": "what did franz liszt do to earn a living", "labels": ["one_hop"]}
+{"id": "WebQTest-1380", "question": "what was nikola tesla known for", "labels": ["one_hop"]}
+{"id": "WebQTest-1381", "question": "what is the zip code for princeton nj", "labels": ["one_hop"]}
+{"id": "WebQTest-1382", "question": "what other countries border argentina", "labels": ["two_hop"]}
+{"id": "WebQTest-1383", "question": "what language does people in iceland speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1384", "question": "what is the predominant religion in israel", "labels": ["two_hop"]}
+{"id": "WebQTest-1385", "question": "who has coached the carolina panthers", "labels": ["two_hop"]}
+{"id": "WebQTest-1387", "question": "what time zone is toronto gmt", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1388", "question": "what country did toussaint l'ouverture help free", "labels": ["two_hop"]}
+{"id": "WebQTest-1389", "question": "what jobs did robert burns have", "labels": ["one_hop"]}
+{"id": "WebQTest-1390", "question": "who won utah attorney general", "labels": ["two_hop"]}
+{"id": "WebQTest-1391", "question": "who is the leader of libya 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1392", "question": "what the language spoken in indonesia", "labels": ["one_hop"]}
+{"id": "WebQTest-1394", "question": "who coaches the carolina panthers", "labels": ["one_hop"]}
+{"id": "WebQTest-1395", "question": "what other countries does south africa share borders with", "labels": ["two_hop"]}
+{"id": "WebQTest-1396", "question": "who played darth vader at the end of return of the jedi", "labels": ["two_hop"]}
+{"id": "WebQTest-1398", "question": "what movies did joan crawford play in", "labels": ["two_hop"]}
+{"id": "WebQTest-1399", "question": "what products does the united states export", "labels": ["two_hop"]}
+{"id": "WebQTest-1402", "question": "what is the kentucky state bird", "labels": ["two_hop"]}
+{"id": "WebQTest-1403", "question": "who was canadian prime minister in 1993", "labels": ["two_hop"]}
+{"id": "WebQTest-1405", "question": "what there to do in salt lake city utah", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1408", "question": "who is the current ohio state senator", "labels": ["two_hop"]}
+{"id": "WebQTest-1409", "question": "what are the major languages spoken in the united kingdom", "labels": ["one_hop"]}
+{"id": "WebQTest-1410", "question": "what did st. nicholas do in his life", "labels": ["one_hop"]}
+{"id": "WebQTest-1414", "question": "what happened to pope john paul ii", "labels": ["one_hop"]}
+{"id": "WebQTest-1416", "question": "what was franklin pierce famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-1417", "question": "when was the last time the boston bruins went to the stanley cup", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1418", "question": "who is meredith gray married to in real life", "labels": ["two_hop"]}
+{"id": "WebQTest-1419", "question": "what inspired michelangelo buonarroti", "labels": ["one_hop"]}
+{"id": "WebQTest-1420", "question": "what does monsanto own", "labels": ["one_hop"]}
+{"id": "WebQTest-1421", "question": "who did woody harrelson play on cheers", "labels": ["two_hop"]}
+{"id": "WebQTest-1422", "question": "what language do they speak in sweden yahoo", "labels": ["one_hop"]}
+{"id": "WebQTest-1423", "question": "what language did they speak in ghana", "labels": ["one_hop"]}
+{"id": "WebQTest-1424", "question": "what form of government do we have in the philippines", "labels": ["one_hop"]}
+{"id": "WebQTest-1425", "question": "what colleges did mitt romney attend", "labels": ["two_hop"]}
+{"id": "WebQTest-1426", "question": "where is ibrahim afellay from", "labels": ["one_hop"]}
+{"id": "WebQTest-1427", "question": "who was the secretary of state when andrew jackson was president", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1428", "question": "who does ron stoppable 's voice", "labels": ["two_hop"]}
+{"id": "WebQTest-1429", "question": "what currency is accepted in new zealand", "labels": ["one_hop"]}
+{"id": "WebQTest-1432", "question": "what places are in the west midlands", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1433", "question": "what to do with kids in asheville nc", "labels": ["one_hop"]}
+{"id": "WebQTest-1434", "question": "who is in the american league in baseball", "labels": ["one_hop"]}
+{"id": "WebQTest-1435", "question": "who did kurt warner play 4", "labels": ["two_hop"]}
+{"id": "WebQTest-1436", "question": "who is dirk nowitzki wife", "labels": ["two_hop"]}
+{"id": "WebQTest-1441", "question": "where all did picasso live", "labels": ["two_hop"]}
+{"id": "WebQTest-1442", "question": "what currency shall i take to croatia", "labels": ["one_hop"]}
+{"id": "WebQTest-1443", "question": "what team is raul ibanez on", "labels": ["two_hop"]}
+{"id": "WebQTest-1445", "question": "what tv series did mark harmon star in", "labels": ["two_hop"]}
+{"id": "WebQTest-1446", "question": "what year did jimmy the rev sullivan die", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1447", "question": "who plays anakin skywalker in star wars 1", "labels": ["two_hop"]}
+{"id": "WebQTest-1448", "question": "where does michelle pfeiffer live now", "labels": ["two_hop"]}
+{"id": "WebQTest-1449", "question": "what was laura ingalls wilder famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-1452", "question": "where is dwight howard now", "labels": ["two_hop"]}
+{"id": "WebQTest-1453", "question": "who is nick lachey married to", "labels": ["two_hop"]}
+{"id": "WebQTest-1454", "question": "where did madonna grew up", "labels": ["one_hop"]}
+{"id": "WebQTest-1455", "question": "what capital city of brazil", "labels": ["one_hop"]}
+{"id": "WebQTest-1456", "question": "what college did john stockton go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1457", "question": "what kind of currency does mexico use", "labels": ["one_hop"]}
+{"id": "WebQTest-1458", "question": "who owns chrysler corporation 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1459", "question": "what are some books that mark twain wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-1460", "question": "what was gregor mendel contribution", "labels": ["one_hop"]}
+{"id": "WebQTest-1461", "question": "who has ray allen dated", "labels": ["two_hop"]}
+{"id": "WebQTest-1462", "question": "who is running for vice president with barack obama 2012", "labels": ["one_hop"]}
+{"id": "WebQTest-1463", "question": "what language do people from the uk speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1464", "question": "what to do with my kids in toronto", "labels": ["one_hop"]}
+{"id": "WebQTest-1465", "question": "what kind of government is south korea", "labels": ["one_hop"]}
+{"id": "WebQTest-1467", "question": "who did ben franklin marry", "labels": ["two_hop"]}
+{"id": "WebQTest-1468", "question": "what sri lanka capital", "labels": ["one_hop"]}
+{"id": "WebQTest-1470", "question": "what kind of government does poland have", "labels": ["one_hop"]}
+{"id": "WebQTest-1471", "question": "what famous people came from delaware", "labels": ["one_hop"]}
+{"id": "WebQTest-1472", "question": "when did romney become governor", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1473", "question": "what currency does cyprus use", "labels": ["one_hop"]}
+{"id": "WebQTest-1475", "question": "what type of guitar does johnny depp play", "labels": ["one_hop"]}
+{"id": "WebQTest-1477", "question": "what episode of how i met your mother is carrie underwood on", "labels": ["two_hop"]}
+{"id": "WebQTest-1478", "question": "who are the 9 justices of the supreme court 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1479", "question": "who is dustin johnson the golfer", "labels": ["one_hop"]}
+{"id": "WebQTest-1480", "question": "who did cher have a son with", "labels": ["one_hop"]}
+{"id": "WebQTest-1481", "question": "what city is the university of oregon state in", "labels": ["two_hop"]}
+{"id": "WebQTest-1482", "question": "who played carmen cortez in spy kids", "labels": ["two_hop"]}
+{"id": "WebQTest-1483", "question": "what is the political system in germany", "labels": ["one_hop"]}
+{"id": "WebQTest-1484", "question": "what prompted shakespeare to write poetry", "labels": ["one_hop"]}
+{"id": "WebQTest-1485", "question": "what is the currency in turkey called", "labels": ["one_hop"]}
+{"id": "WebQTest-1486", "question": "what school did mark zuckerberg attend", "labels": ["two_hop"]}
+{"id": "WebQTest-1487", "question": "where does kate middleton live 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-1488", "question": "what type of art does marc chagall do", "labels": ["one_hop"]}
+{"id": "WebQTest-1489", "question": "what character did billy d williams play in star wars", "labels": ["two_hop"]}
+{"id": "WebQTest-1490", "question": "what language is spoken in argentina", "labels": ["one_hop"]}
+{"id": "WebQTest-1493", "question": "what school did wilfred owen go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1494", "question": "who is kevin jonas married to", "labels": ["two_hop"]}
+{"id": "WebQTest-1495", "question": "where does airtran airways fly", "labels": ["two_hop"]}
+{"id": "WebQTest-1496", "question": "where does the city of paris get its name", "labels": ["one_hop"]}
+{"id": "WebQTest-1499", "question": "who did sandra bullock marry", "labels": ["two_hop"]}
+{"id": "WebQTest-1500", "question": "where is olympic national park located", "labels": ["one_hop"]}
+{"id": "WebQTest-1501", "question": "where is the un based", "labels": ["two_hop"]}
+{"id": "WebQTest-1502", "question": "what city and state is yale located in", "labels": ["two_hop"]}
+{"id": "WebQTest-1503", "question": "where did thomas paine die", "labels": ["one_hop"]}
+{"id": "WebQTest-1504", "question": "where was barack hussein obama sr born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1506", "question": "where is the home stadium of the new england patriots", "labels": ["one_hop"]}
+{"id": "WebQTest-1507", "question": "who was kate chopin", "labels": ["one_hop"]}
+{"id": "WebQTest-1508", "question": "when did bill clinton go to college", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1510", "question": "what are staffordshire terriers", "labels": ["one_hop"]}
+{"id": "WebQTest-1513", "question": "what to do downtown sacramento", "labels": ["one_hop"]}
+{"id": "WebQTest-1515", "question": "who is michael j fox parents", "labels": ["one_hop"]}
+{"id": "WebQTest-1516", "question": "where did sanjay gupta go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1518", "question": "what countries are involved in the nafta", "labels": ["two_hop"]}
+{"id": "WebQTest-1519", "question": "what continent is cayman islands located", "labels": ["one_hop"]}
+{"id": "WebQTest-1520", "question": "what language speak in brazil", "labels": ["one_hop"]}
+{"id": "WebQTest-1522", "question": "who does kroy biermann play football for", "labels": ["two_hop"]}
+{"id": "WebQTest-1523", "question": "when is the last time the pittsburgh steelers won a superbowl", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1524", "question": "who invented islamic religion", "labels": ["one_hop"]}
+{"id": "WebQTest-1525", "question": "who were we fighting in the gulf war", "labels": ["two_hop"]}
+{"id": "WebQTest-1526", "question": "how many languages do they speak in switzerland", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1527", "question": "what political party does barack obama represent", "labels": ["two_hop"]}
+{"id": "WebQTest-1528", "question": "what movies does logan lerman play in", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1529", "question": "where did emperor constantine die", "labels": ["one_hop"]}
+{"id": "WebQTest-1531", "question": "where is mali located", "labels": ["one_hop"]}
+{"id": "WebQTest-1533", "question": "what planet did luke skywalker came from", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1534", "question": "who are the coaches for the oakland raiders", "labels": ["one_hop"]}
+{"id": "WebQTest-1535", "question": "where was the first microsoft headquarters located", "labels": ["two_hop"]}
+{"id": "WebQTest-1536", "question": "where did john steinbeck go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-1537", "question": "what did niels bohr discover about the atomic structure", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1538", "question": "what books did louis sachar wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-1539", "question": "who is ryan reynolds married to 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-1540", "question": "what is newt gingrich 's wife 's name", "labels": ["two_hop"]}
+{"id": "WebQTest-1541", "question": "what type of music did antonio vivaldi play", "labels": ["one_hop"]}
+{"id": "WebQTest-1542", "question": "what school does james franco go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1543", "question": "what is samuel langhorne clemens well known for", "labels": ["one_hop"]}
+{"id": "WebQTest-1544", "question": "who was president after william henry harrison", "labels": ["two_hop"]}
+{"id": "WebQTest-1546", "question": "where did rick santorum attend high school", "labels": ["two_hop"]}
+{"id": "WebQTest-1547", "question": "what is the title of george bush 's new book", "labels": ["one_hop"]}
+{"id": "WebQTest-1548", "question": "where did antoine lavoisier die", "labels": ["one_hop"]}
+{"id": "WebQTest-1550", "question": "what is the name of king george vi wife", "labels": ["two_hop"]}
+{"id": "WebQTest-1551", "question": "what year did seattle seahawks go to the super bowl", "labels": ["one_hop"]}
+{"id": "WebQTest-1553", "question": "where does sami yusuf live", "labels": ["two_hop"]}
+{"id": "WebQTest-1554", "question": "what is the official language of brazil now", "labels": ["one_hop"]}
+{"id": "WebQTest-1555", "question": "what is the parliament of nepal called", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1556", "question": "when 's the last time the mets won the world series", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1557", "question": "where do florida panthers play", "labels": ["one_hop"]}
+{"id": "WebQTest-1558", "question": "who is john cena married to", "labels": ["two_hop"]}
+{"id": "WebQTest-1559", "question": "what to do san jose ca", "labels": ["one_hop"]}
+{"id": "WebQTest-1560", "question": "who founded new york university", "labels": ["one_hop"]}
+{"id": "WebQTest-1561", "question": "who created arthur", "labels": ["one_hop"]}
+{"id": "WebQTest-1562", "question": "what countries constitute the eu", "labels": ["two_hop"]}
+{"id": "WebQTest-1563", "question": "what are all the countries in north africa", "labels": ["one_hop"]}
+{"id": "WebQTest-1564", "question": "what did bobby darin die of", "labels": ["one_hop"]}
+{"id": "WebQTest-1565", "question": "where does houston dynamo play", "labels": ["one_hop"]}
+{"id": "WebQTest-1566", "question": "what kind of guitar john mayer", "labels": ["one_hop"]}
+{"id": "WebQTest-1567", "question": "what cancer did patrick swayze", "labels": ["one_hop"]}
+{"id": "WebQTest-1568", "question": "what university did obama graduated from", "labels": ["two_hop"]}
+{"id": "WebQTest-1569", "question": "what jamaican money called", "labels": ["one_hop"]}
+{"id": "WebQTest-1570", "question": "where is the arizona cardinals stadium located", "labels": ["one_hop"]}
+{"id": "WebQTest-1571", "question": "what is sir isaac newton theory", "labels": ["one_hop"]}
+{"id": "WebQTest-1572", "question": "what should i do today in san francisco", "labels": ["one_hop"]}
+{"id": "WebQTest-1573", "question": "who influenced picasso art", "labels": ["one_hop"]}
+{"id": "WebQTest-1574", "question": "what is my timezone in pennsylvania", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1575", "question": "what products and\\/or services does google offer customers", "labels": ["two_hop"]}
+{"id": "WebQTest-1577", "question": "who did cliff lee play for last year", "labels": ["two_hop"]}
+{"id": "WebQTest-1580", "question": "what type of democracy is the united states", "labels": ["one_hop"]}
+{"id": "WebQTest-1582", "question": "what time in china hong kong", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1583", "question": "what all movies has taylor lautner been in", "labels": ["two_hop"]}
+{"id": "WebQTest-1584", "question": "what disease did bernie mac die of", "labels": ["one_hop"]}
+{"id": "WebQTest-1585", "question": "who plays spike spiegel", "labels": ["two_hop"]}
+{"id": "WebQTest-1586", "question": "who was queen isabella 's mother", "labels": ["one_hop"]}
+{"id": "WebQTest-1587", "question": "who does chris hemsworth have a baby with", "labels": ["two_hop"]}
+{"id": "WebQTest-1589", "question": "where is the mts iceplex in winnipeg", "labels": ["one_hop"]}
+{"id": "WebQTest-1590", "question": "what are the most popular religions in israel", "labels": ["two_hop"]}
+{"id": "WebQTest-1591", "question": "what was obama 's former occupation", "labels": ["one_hop"]}
+{"id": "WebQTest-1592", "question": "what are all the songs justin bieber wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-1593", "question": "where is the thames river source", "labels": ["one_hop"]}
+{"id": "WebQTest-1595", "question": "what new movies is robert pattinson in", "labels": ["two_hop"]}
+{"id": "WebQTest-1596", "question": "what language do they use in pakistan", "labels": ["one_hop"]}
+{"id": "WebQTest-1597", "question": "what kind of products does nike sell", "labels": ["one_hop"]}
+{"id": "WebQTest-1598", "question": "who did lbj marry", "labels": ["two_hop"]}
+{"id": "WebQTest-1599", "question": "where did kim jong il die", "labels": ["one_hop"]}
+{"id": "WebQTest-1600", "question": "what honor did agatha christie receive in 1971", "labels": ["two_hop"]}
+{"id": "WebQTest-1603", "question": "what is the sacred text of daoism", "labels": ["one_hop"]}
+{"id": "WebQTest-1604", "question": "what countries speak english natively", "labels": ["one_hop"]}
+{"id": "WebQTest-1607", "question": "who won fedex cup 2012", "labels": ["two_hop"]}
+{"id": "WebQTest-1608", "question": "what language is mainly spoken in egypt", "labels": ["one_hop"]}
+{"id": "WebQTest-1609", "question": "who played alf on tv show", "labels": ["two_hop"]}
+{"id": "WebQTest-1610", "question": "who was gerald ford vp", "labels": ["one_hop"]}
+{"id": "WebQTest-1611", "question": "what is armenian currency", "labels": ["one_hop"]}
+{"id": "WebQTest-1612", "question": "what type of art did raphael sanzio create", "labels": ["one_hop"]}
+{"id": "WebQTest-1613", "question": "what language do they speak in malta", "labels": ["one_hop"]}
+{"id": "WebQTest-1614", "question": "what religion was king louis xiv", "labels": ["one_hop"]}
+{"id": "WebQTest-1615", "question": "what football team does mike wright play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1616", "question": "what did shannon hoon die from", "labels": ["one_hop"]}
+{"id": "WebQTest-1617", "question": "what did nicholas copernicus discover", "labels": ["one_hop"]}
+{"id": "WebQTest-1618", "question": "what teams has manny ramirez played for", "labels": ["two_hop"]}
+{"id": "WebQTest-1619", "question": "where do the appalachian mountains run", "labels": ["one_hop"]}
+{"id": "WebQTest-1620", "question": "when was president wilson in office", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1621", "question": "what political party is jerry brown", "labels": ["two_hop"]}
+{"id": "WebQTest-1622", "question": "what ocean is around hawaii", "labels": ["one_hop"]}
+{"id": "WebQTest-1623", "question": "what is the most common language spoken in argentina", "labels": ["one_hop"]}
+{"id": "WebQTest-1624", "question": "what language tunisia", "labels": ["one_hop"]}
+{"id": "WebQTest-1625", "question": "what are some inventions that leonardo da vinci invented", "labels": ["one_hop"]}
+{"id": "WebQTest-1626", "question": "who wrote st trinians", "labels": ["one_hop"]}
+{"id": "WebQTest-1627", "question": "what are malaysian coins called", "labels": ["one_hop"]}
+{"id": "WebQTest-1628", "question": "what type government does mexico have", "labels": ["one_hop"]}
+{"id": "WebQTest-1629", "question": "what currency does dominican republic take", "labels": ["one_hop"]}
+{"id": "WebQTest-1630", "question": "what inspired michael jackson to become a singer", "labels": ["one_hop"]}
+{"id": "WebQTest-1631", "question": "who is the texas state senator", "labels": ["two_hop"]}
+{"id": "WebQTest-1632", "question": "what to visit in london city", "labels": ["one_hop"]}
+{"id": "WebQTest-1633", "question": "what genre of art is the mona lisa", "labels": ["one_hop"]}
+{"id": "WebQTest-1634", "question": "who does peter griffin voice", "labels": ["two_hop"]}
+{"id": "WebQTest-1635", "question": "when did tony romo got drafted", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1637", "question": "what are the catholic holy days", "labels": ["one_hop"]}
+{"id": "WebQTest-1638", "question": "what language is most commonly spoken in belgium", "labels": ["one_hop"]}
+{"id": "WebQTest-1639", "question": "where did frank baum die", "labels": ["one_hop"]}
+{"id": "WebQTest-1640", "question": "where is tunis on a map", "labels": ["one_hop"]}
+{"id": "WebQTest-1641", "question": "who is nicolas cage married too", "labels": ["two_hop"]}
+{"id": "WebQTest-1643", "question": "who does the voice for chucky in child 's play", "labels": ["two_hop"]}
+{"id": "WebQTest-1644", "question": "what did mary wollstonecraft fight for", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1646", "question": "what year did the phillies begin", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1648", "question": "what language does iceland speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1649", "question": "what was dr seuss real name", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1650", "question": "what did gloria steinem founded", "labels": ["one_hop"]}
+{"id": "WebQTest-1652", "question": "what language they speak in scotland", "labels": ["one_hop"]}
+{"id": "WebQTest-1653", "question": "what boarding school did mark zuckerberg go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1654", "question": "what are bigos", "labels": ["one_hop"]}
+{"id": "WebQTest-1655", "question": "where are ike and tina turner 's children", "labels": ["one_hop"]}
+{"id": "WebQTest-1656", "question": "what are some of leonardo da vinci most famous inventions", "labels": ["one_hop"]}
+{"id": "WebQTest-1657", "question": "when did shaq come into the nba", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1658", "question": "where do they speak turkish", "labels": ["one_hop"]}
+{"id": "WebQTest-1659", "question": "what is the zip code for walnut creek", "labels": ["one_hop"]}
+{"id": "WebQTest-1661", "question": "who was the voice of darth vader in the original star wars movie", "labels": ["two_hop"]}
+{"id": "WebQTest-1662", "question": "where is english spoken around the world", "labels": ["one_hop"]}
+{"id": "WebQTest-1663", "question": "what music did louis armstrong play", "labels": ["one_hop"]}
+{"id": "WebQTest-1664", "question": "what form of currency does germany use", "labels": ["one_hop"]}
+{"id": "WebQTest-1665", "question": "where is the latin language from", "labels": ["one_hop"]}
+{"id": "WebQTest-1666", "question": "what are the top tourist attractions in rome", "labels": ["one_hop"]}
+{"id": "WebQTest-1667", "question": "who were the children of king solomon", "labels": ["one_hop"]}
+{"id": "WebQTest-1668", "question": "what did andy irons die from", "labels": ["one_hop"]}
+{"id": "WebQTest-1669", "question": "where is auburn university located", "labels": ["one_hop"]}
+{"id": "WebQTest-1670", "question": "who is tatyana ali parents", "labels": ["one_hop"]}
+{"id": "WebQTest-1671", "question": "where did leif ericson grow up", "labels": ["one_hop"]}
+{"id": "WebQTest-1672", "question": "what language do the maasai speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1673", "question": "what political party was hitler in", "labels": ["two_hop"]}
+{"id": "WebQTest-1674", "question": "who is the leader of north korea today", "labels": ["two_hop"]}
+{"id": "WebQTest-1675", "question": "where do the appalachian mountains run through", "labels": ["one_hop"]}
+{"id": "WebQTest-1676", "question": "what money does spain use", "labels": ["one_hop"]}
+{"id": "WebQTest-1677", "question": "where was terry waite born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1678", "question": "what country did the battle of san juan hill take place", "labels": ["one_hop"]}
+{"id": "WebQTest-1679", "question": "what kind of government does the united states have currently", "labels": ["one_hop"]}
+{"id": "WebQTest-1680", "question": "when was the last time the orioles won the world series", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1682", "question": "who did ben stiller date", "labels": ["two_hop"]}
+{"id": "WebQTest-1683", "question": "what is the most common language in norway", "labels": ["one_hop"]}
+{"id": "WebQTest-1684", "question": "what influenced william shakespeare to start writing", "labels": ["one_hop"]}
+{"id": "WebQTest-1685", "question": "where did benjamin franklin went to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1686", "question": "who is the governor of arizona 2009", "labels": ["two_hop"]}
+{"id": "WebQTest-1687", "question": "what movies has spike lee made", "labels": ["one_hop"]}
+{"id": "WebQTest-1688", "question": "what did bernie mac died of", "labels": ["one_hop"]}
+{"id": "WebQTest-1690", "question": "where is electrolux based", "labels": ["two_hop"]}
+{"id": "WebQTest-1691", "question": "what is houston timezone", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1694", "question": "what was shakespeare 's wife called", "labels": ["two_hop"]}
+{"id": "WebQTest-1695", "question": "when did truman become president", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1696", "question": "what did ferdinand magellan do", "labels": ["one_hop"]}
+{"id": "WebQTest-1698", "question": "where do burmese cats originate from", "labels": ["one_hop"]}
+{"id": "WebQTest-1699", "question": "who played kirk", "labels": ["two_hop"]}
+{"id": "WebQTest-1700", "question": "where is mt st helens located", "labels": ["one_hop"]}
+{"id": "WebQTest-1701", "question": "what county is st paul minnesota in", "labels": ["one_hop"]}
+{"id": "WebQTest-1702", "question": "who was king henry viii son", "labels": ["one_hop"]}
+{"id": "WebQTest-1703", "question": "who does david beckham play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1705", "question": "where was franz ferdinand from", "labels": ["one_hop"]}
+{"id": "WebQTest-1706", "question": "what was benedict arnold most famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-1707", "question": "who plays lex luthor on smallville", "labels": ["two_hop"]}
+{"id": "WebQTest-1708", "question": "what are dallas cowboys colors", "labels": ["one_hop"]}
+{"id": "WebQTest-1710", "question": "what is the currency of the czech republic", "labels": ["one_hop"]}
+{"id": "WebQTest-1711", "question": "when was the last time the la kings won a playoff series", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1712", "question": "where did spencer pratt go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1713", "question": "what disease did abraham lincoln had", "labels": ["one_hop"]}
+{"id": "WebQTest-1714", "question": "who is vancouver canucks coach", "labels": ["two_hop"]}
+{"id": "WebQTest-1715", "question": "where did cs lewis wrote", "labels": ["two_hop"]}
+{"id": "WebQTest-1716", "question": "what is carlos pena jr nationality", "labels": ["one_hop"]}
+{"id": "WebQTest-1719", "question": "who was married to jane wyman", "labels": ["two_hop"]}
+{"id": "WebQTest-1721", "question": "what language does peru speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1723", "question": "where is english spoken in the world map", "labels": ["one_hop"]}
+{"id": "WebQTest-1724", "question": "when did arsenal won the league", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1725", "question": "what timezone is phoenix az in right now", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1726", "question": "where is south portland", "labels": ["one_hop"]}
+{"id": "WebQTest-1727", "question": "what countries speak french as a first language", "labels": ["one_hop"]}
+{"id": "WebQTest-1728", "question": "who was ptolemy and what did he do", "labels": ["one_hop"]}
+{"id": "WebQTest-1729", "question": "what was the name of henry viii first wife", "labels": ["two_hop"]}
+{"id": "WebQTest-1730", "question": "where does the parana river flow", "labels": ["one_hop"]}
+{"id": "WebQTest-1731", "question": "what is president nixon 's first name", "labels": ["one_hop", "literal", "description"]}
+{"id": "WebQTest-1732", "question": "where did theodor schwann get his education", "labels": ["two_hop"]}
+{"id": "WebQTest-1733", "question": "who or what influenced frank lloyd wright", "labels": ["one_hop"]}
+{"id": "WebQTest-1734", "question": "what year did houston rockets win their first championship", "labels": ["one_hop"]}
+{"id": "WebQTest-1735", "question": "where do most of the people live in russia", "labels": ["one_hop"]}
+{"id": "WebQTest-1736", "question": "where is holy roman empire located", "labels": ["one_hop"]}
+{"id": "WebQTest-1737", "question": "what movies has liam hemsworth played in", "labels": ["two_hop"]}
+{"id": "WebQTest-1738", "question": "who plays nicholas newman on the young and the restless", "labels": ["two_hop"]}
+{"id": "WebQTest-1739", "question": "who is the voice of eric cartman on south park", "labels": ["two_hop"]}
+{"id": "WebQTest-1740", "question": "who is angelina jolies brother", "labels": ["two_hop"]}
+{"id": "WebQTest-1741", "question": "where is the headquarters of bank of america", "labels": ["two_hop"]}
+{"id": "WebQTest-1742", "question": "what type of government japan have", "labels": ["one_hop"]}
+{"id": "WebQTest-1744", "question": "what team does josh hamilton play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1746", "question": "where is burundi country", "labels": ["one_hop"]}
+{"id": "WebQTest-1748", "question": "through which countries of the sahel does the niger river flow", "labels": ["one_hop"]}
+{"id": "WebQTest-1750", "question": "what city does paul ryan live in", "labels": ["two_hop"]}
+{"id": "WebQTest-1751", "question": "what city is acadia university in", "labels": ["two_hop"]}
+{"id": "WebQTest-1752", "question": "what did f. scott fitzgerald do", "labels": ["one_hop"]}
+{"id": "WebQTest-1753", "question": "what countries does tomtom western europe include", "labels": ["two_hop"]}
+{"id": "WebQTest-1754", "question": "what is the national language of iran", "labels": ["one_hop"]}
+{"id": "WebQTest-1755", "question": "where did the second battle of ypres occur", "labels": ["one_hop"]}
+{"id": "WebQTest-1756", "question": "what languages do people speak in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-1757", "question": "what did michael crabtree do", "labels": ["one_hop"]}
+{"id": "WebQTest-1758", "question": "where do they speak afrikaans", "labels": ["one_hop"]}
+{"id": "WebQTest-1759", "question": "what 3 states border florida", "labels": ["two_hop"]}
+{"id": "WebQTest-1760", "question": "who plays ziva david on ncis", "labels": ["two_hop"]}
+{"id": "WebQTest-1761", "question": "who ruled after king henry viii died", "labels": ["one_hop"]}
+{"id": "WebQTest-1763", "question": "who are the st louis cardinals coaches", "labels": ["two_hop"]}
+{"id": "WebQTest-1764", "question": "where is daud ibrahim", "labels": ["two_hop"]}
+{"id": "WebQTest-1765", "question": "what region is turkey considered", "labels": ["one_hop"]}
+{"id": "WebQTest-1766", "question": "what language do russians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1767", "question": "where was martin luther king jr buried", "labels": ["one_hop"]}
+{"id": "WebQTest-1768", "question": "what are the official languages of argentina", "labels": ["one_hop"]}
+{"id": "WebQTest-1769", "question": "where is the city wales", "labels": ["one_hop"]}
+{"id": "WebQTest-1770", "question": "what country does rafael nadal play for", "labels": ["one_hop"]}
+{"id": "WebQTest-1771", "question": "what is the islamic belief", "labels": ["one_hop"]}
+{"id": "WebQTest-1772", "question": "who is the prime minister of spain 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1773", "question": "who was the son of king leonidas", "labels": ["one_hop"]}
+{"id": "WebQTest-1774", "question": "who was judi dench married to", "labels": ["two_hop"]}
+{"id": "WebQTest-1775", "question": "how many languages do they speak in spain", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1776", "question": "where are the sahara desert located", "labels": ["one_hop"]}
+{"id": "WebQTest-1777", "question": "what is rihanna mum called", "labels": ["one_hop"]}
+{"id": "WebQTest-1779", "question": "when did president theodore roosevelt take office", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1780", "question": "who does michael oher play for in 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-1781", "question": "who or what influenced albert einstein", "labels": ["one_hop"]}
+{"id": "WebQTest-1782", "question": "where does egypt export to", "labels": ["two_hop"]}
+{"id": "WebQTest-1784", "question": "where is the seat of the african union", "labels": ["two_hop"]}
+{"id": "WebQTest-1785", "question": "what was kim richards in", "labels": ["two_hop"]}
+{"id": "WebQTest-1788", "question": "what artistic style did henri rousseau work in", "labels": ["one_hop"]}
+{"id": "WebQTest-1789", "question": "what is john edwards indicted for", "labels": ["two_hop"]}
+{"id": "WebQTest-1790", "question": "where was huey newton killed", "labels": ["one_hop"]}
+{"id": "WebQTest-1791", "question": "when was the printing press invented by gutenberg", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1792", "question": "where is midlothian scotland", "labels": ["one_hop"]}
+{"id": "WebQTest-1793", "question": "where does marta play soccer", "labels": ["two_hop"]}
+{"id": "WebQTest-1794", "question": "where is mitt romney 's family from", "labels": ["one_hop"]}
+{"id": "WebQTest-1795", "question": "what are john terry 's children called", "labels": ["one_hop"]}
+{"id": "WebQTest-1796", "question": "what city was michael jackson born in", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1797", "question": "who fought in the battle of vicksburg", "labels": ["one_hop"]}
+{"id": "WebQTest-1799", "question": "what kind of writing is nikolai gogol famous for", "labels": ["one_hop"]}
+{"id": "WebQTest-1800", "question": "what year was first world series", "labels": ["one_hop"]}
+{"id": "WebQTest-1801", "question": "who plays simon birch", "labels": ["two_hop"]}
+{"id": "WebQTest-1802", "question": "where are the timezones in the usa", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1803", "question": "what does gm make", "labels": ["one_hop"]}
+{"id": "WebQTest-1804", "question": "what do people speak in uk", "labels": ["one_hop"]}
+{"id": "WebQTest-1805", "question": "what do people in jamaica speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1806", "question": "what position did lebron james play", "labels": ["one_hop"]}
+{"id": "WebQTest-1807", "question": "what was wayne gretzky 's first team", "labels": ["two_hop"]}
+{"id": "WebQTest-1808", "question": "who is the president of peru now", "labels": ["two_hop"]}
+{"id": "WebQTest-1809", "question": "what kind of guitar did jerry garcia play", "labels": ["one_hop"]}
+{"id": "WebQTest-1810", "question": "what type of art leonardo da vinci do", "labels": ["one_hop"]}
+{"id": "WebQTest-1811", "question": "who are the senators of new jersey now", "labels": ["two_hop"]}
+{"id": "WebQTest-1812", "question": "where was rihanna raised", "labels": ["one_hop"]}
+{"id": "WebQTest-1813", "question": "what team does messi play for 2011", "labels": ["two_hop"]}
+{"id": "WebQTest-1815", "question": "where does lil wayne go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1817", "question": "where did jrr tolkien go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1818", "question": "what state is saint louis university in", "labels": ["one_hop"]}
+{"id": "WebQTest-1819", "question": "what religion does canada follow", "labels": ["two_hop"]}
+{"id": "WebQTest-1821", "question": "which countries have spanish as their main language", "labels": ["one_hop"]}
+{"id": "WebQTest-1822", "question": "who is in paul ryan 's family", "labels": ["one_hop"]}
+{"id": "WebQTest-1823", "question": "what government does iraq use", "labels": ["one_hop"]}
+{"id": "WebQTest-1824", "question": "what type of currency do they use in spain", "labels": ["one_hop"]}
+{"id": "WebQTest-1825", "question": "what did lincoln steffens wrote", "labels": ["one_hop"]}
+{"id": "WebQTest-1826", "question": "what schools did anders celsius attend", "labels": ["two_hop"]}
+{"id": "WebQTest-1827", "question": "what can do in new york", "labels": ["one_hop"]}
+{"id": "WebQTest-1828", "question": "what currency does france accept", "labels": ["one_hop"]}
+{"id": "WebQTest-1829", "question": "what type of religion did massachusetts have", "labels": ["two_hop"]}
+{"id": "WebQTest-1830", "question": "what language do they speak in colombia south america", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1833", "question": "what kind of government does brazil has", "labels": ["one_hop"]}
+{"id": "WebQTest-1835", "question": "what country did gregor mendel live in", "labels": ["two_hop"]}
+{"id": "WebQTest-1836", "question": "where laura ingalls wilder lived", "labels": ["two_hop"]}
+{"id": "WebQTest-1838", "question": "what sports are popular in germany", "labels": ["one_hop"]}
+{"id": "WebQTest-1839", "question": "what 's my timezone in oklahoma", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1840", "question": "what do they speak in norway", "labels": ["one_hop"]}
+{"id": "WebQTest-1842", "question": "what currency does singapore use", "labels": ["one_hop"]}
+{"id": "WebQTest-1843", "question": "what did the blackfoot indians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1844", "question": "who plays robin hood in prince of thieves", "labels": ["two_hop"]}
+{"id": "WebQTest-1845", "question": "what standard time is texas", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1847", "question": "where does kurdish people live", "labels": ["one_hop"]}
+{"id": "WebQTest-1848", "question": "what instrument does louis armstrong", "labels": ["one_hop"]}
+{"id": "WebQTest-1849", "question": "who does alyson stoner play in camp rock", "labels": ["two_hop"]}
+{"id": "WebQTest-1850", "question": "what religion does madonna practice", "labels": ["one_hop"]}
+{"id": "WebQTest-1851", "question": "what countries are located near egypt", "labels": ["two_hop"]}
+{"id": "WebQTest-1853", "question": "what made richard hammond famous", "labels": ["one_hop"]}
+{"id": "WebQTest-1854", "question": "who originally voiced lois griffin", "labels": ["two_hop"]}
+{"id": "WebQTest-1855", "question": "what airport do you fly into in paris", "labels": ["two_hop"]}
+{"id": "WebQTest-1857", "question": "what rihanna new album called 2012", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1858", "question": "where does dave ramsey live", "labels": ["two_hop"]}
+{"id": "WebQTest-1860", "question": "what discovery did galileo make", "labels": ["one_hop"]}
+{"id": "WebQTest-1861", "question": "what is the government system of saudi arabia", "labels": ["one_hop"]}
+{"id": "WebQTest-1864", "question": "who plays the role of tony dinozzo on ncis", "labels": ["two_hop"]}
+{"id": "WebQTest-1865", "question": "what did jesus do for living", "labels": ["one_hop"]}
+{"id": "WebQTest-1866", "question": "what is the state name of new york city", "labels": ["one_hop"]}
+{"id": "WebQTest-1868", "question": "who plays knox overstreet", "labels": ["two_hop"]}
+{"id": "WebQTest-1870", "question": "what movies did david carradine play in", "labels": ["two_hop"]}
+{"id": "WebQTest-1871", "question": "what is the stanley cup named after", "labels": ["one_hop"]}
+{"id": "WebQTest-1873", "question": "where is traditional chinese used", "labels": ["one_hop"]}
+{"id": "WebQTest-1874", "question": "who does portugal trade with", "labels": ["one_hop"]}
+{"id": "WebQTest-1875", "question": "what type of political system is brazil", "labels": ["one_hop"]}
+{"id": "WebQTest-1876", "question": "what language did the ancient babylonians speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1877", "question": "what kind of painter was wassily kandinsky", "labels": ["one_hop"]}
+{"id": "WebQTest-1878", "question": "what form of government does the united states use", "labels": ["one_hop"]}
+{"id": "WebQTest-1879", "question": "what money does cuba use", "labels": ["one_hop"]}
+{"id": "WebQTest-1880", "question": "who is my representative in illinois house", "labels": ["two_hop"]}
+{"id": "WebQTest-1881", "question": "what timezone is sweden gmt", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1882", "question": "what was franklin d roosevelt 's job before president", "labels": ["one_hop"]}
+{"id": "WebQTest-1883", "question": "where did robert downey jr go to jail", "labels": ["two_hop"]}
+{"id": "WebQTest-1884", "question": "what degrees did barack obama get", "labels": ["two_hop"]}
+{"id": "WebQTest-1885", "question": "what does god shiva represent", "labels": ["one_hop"]}
+{"id": "WebQTest-1886", "question": "what inventions were made by ben franklin", "labels": ["one_hop"]}
+{"id": "WebQTest-1887", "question": "what is the name of the currency used in switzerland", "labels": ["one_hop"]}
+{"id": "WebQTest-1888", "question": "what year did the milwaukee brewers go to the world series", "labels": ["one_hop"]}
+{"id": "WebQTest-1889", "question": "who was vice president with bill clinton", "labels": ["one_hop"]}
+{"id": "WebQTest-1890", "question": "what songs did franz liszt compose", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1891", "question": "where did the russian japanese war happen", "labels": ["one_hop"]}
+{"id": "WebQTest-1892", "question": "what year did the la kings win the cup", "labels": ["one_hop"]}
+{"id": "WebQTest-1893", "question": "what kind of money does egypt have", "labels": ["one_hop"]}
+{"id": "WebQTest-1894", "question": "what baseball team was jackie robinson on", "labels": ["two_hop"]}
+{"id": "WebQTest-1895", "question": "what body of water does st lawrence river flow into", "labels": ["one_hop"]}
+{"id": "WebQTest-1896", "question": "what form of government does the united states have", "labels": ["one_hop"]}
+{"id": "WebQTest-1897", "question": "what are the names of ariel 's six sisters", "labels": ["two_hop"]}
+{"id": "WebQTest-1898", "question": "what voices does seth macfarlane play on family guy", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1899", "question": "who was william mckinley married to", "labels": ["two_hop"]}
+{"id": "WebQTest-1900", "question": "who played darth vader in the first movie", "labels": ["two_hop"]}
+{"id": "WebQTest-1901", "question": "where did kevin james go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-1902", "question": "what year was hitler was born", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1904", "question": "what 's there to see in atlanta", "labels": ["one_hop"]}
+{"id": "WebQTest-1905", "question": "where was auschwitz concentration camp located", "labels": ["one_hop"]}
+{"id": "WebQTest-1907", "question": "what kind of currency does dominican republic use", "labels": ["one_hop"]}
+{"id": "WebQTest-1909", "question": "what is spoken in czech republic", "labels": ["one_hop"]}
+{"id": "WebQTest-1910", "question": "where was shakespeare born at", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1911", "question": "where did scott fitzgerald go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-1912", "question": "what did joan crawford died of", "labels": ["one_hop"]}
+{"id": "WebQTest-1913", "question": "where did rob kardashian go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1914", "question": "what year was allen iverson mvp", "labels": ["two_hop"]}
+{"id": "WebQTest-1915", "question": "where did harry s truman go to school", "labels": ["two_hop"]}
+{"id": "WebQTest-1916", "question": "what county is utica ny in", "labels": ["one_hop"]}
+{"id": "WebQTest-1917", "question": "what did charles babbage discover", "labels": ["one_hop"]}
+{"id": "WebQTest-1919", "question": "who plays king julian madagascar", "labels": ["two_hop"]}
+{"id": "WebQTest-1920", "question": "who is rick scott", "labels": ["one_hop"]}
+{"id": "WebQTest-1921", "question": "where did the crimean war take place", "labels": ["one_hop"]}
+{"id": "WebQTest-1922", "question": "what offices did theodore roosevelt hold", "labels": ["two_hop"]}
+{"id": "WebQTest-1923", "question": "what movies has miley cyrus been in", "labels": ["two_hop"]}
+{"id": "WebQTest-1925", "question": "who did james franco play in milk", "labels": ["two_hop"]}
+{"id": "WebQTest-1926", "question": "when did the libyan conflict start", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1928", "question": "what wnba team is diana taurasi on", "labels": ["two_hop"]}
+{"id": "WebQTest-1929", "question": "what do see in paris", "labels": ["one_hop"]}
+{"id": "WebQTest-1932", "question": "who made the laws in canada", "labels": ["two_hop"]}
+{"id": "WebQTest-1933", "question": "what year did adam morrison get drafted", "labels": ["two_hop"]}
+{"id": "WebQTest-1934", "question": "where michael jackson from", "labels": ["one_hop"]}
+{"id": "WebQTest-1935", "question": "what college did maya moore go to", "labels": ["two_hop"]}
+{"id": "WebQTest-1936", "question": "when was the last time the dodgers won a championship", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1937", "question": "who is captain james cook facts", "labels": ["one_hop"]}
+{"id": "WebQTest-1938", "question": "where did robin williams get married", "labels": ["two_hop"]}
+{"id": "WebQTest-1939", "question": "what form of government does canada", "labels": ["one_hop"]}
+{"id": "WebQTest-1940", "question": "who do islamic people follow", "labels": ["one_hop"]}
+{"id": "WebQTest-1941", "question": "what kind of government does peru", "labels": ["one_hop"]}
+{"id": "WebQTest-1942", "question": "who was in the israeli palestinian conflict", "labels": ["one_hop"]}
+{"id": "WebQTest-1943", "question": "who founded the afl", "labels": ["one_hop"]}
+{"id": "WebQTest-1944", "question": "where did diego velazquez die", "labels": ["one_hop"]}
+{"id": "WebQTest-1946", "question": "what is the country code for mexico", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1947", "question": "what currency do they use in switzerland", "labels": ["one_hop"]}
+{"id": "WebQTest-1950", "question": "where is president kennedy buried", "labels": ["one_hop"]}
+{"id": "WebQTest-1952", "question": "where was the prophet mohammed from", "labels": ["one_hop"]}
+{"id": "WebQTest-1954", "question": "what language do ukrainian people speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1955", "question": "who are the judges appointed in the supreme court", "labels": ["two_hop"]}
+{"id": "WebQTest-1956", "question": "which country in europe has the largest land area", "labels": ["one_hop"]}
+{"id": "WebQTest-1957", "question": "when did kaley cuoco join charmed", "labels": ["two_hop", "literal"]}
+{"id": "WebQTest-1958", "question": "where is chris rock from", "labels": ["one_hop"]}
+{"id": "WebQTest-1960", "question": "when was the last time the toronto maple leafs win the stanley cup", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-1961", "question": "what kind of language do egyptian speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1962", "question": "what language do brazilians use", "labels": ["one_hop"]}
+{"id": "WebQTest-1963", "question": "what position did vince lombardi play", "labels": ["one_hop"]}
+{"id": "WebQTest-1964", "question": "who played stanley kowalski in a streetcar named desire movie", "labels": ["two_hop"]}
+{"id": "WebQTest-1965", "question": "who did the voice for lola bunny", "labels": ["one_hop"]}
+{"id": "WebQTest-1966", "question": "what book did charles darwin wrote in 1859", "labels": ["one_hop"]}
+{"id": "WebQTest-1967", "question": "what language do serbs speak", "labels": ["one_hop"]}
+{"id": "WebQTest-1968", "question": "what was the cause of death for laci peterson", "labels": ["one_hop"]}
+{"id": "WebQTest-1969", "question": "what team is kris humphries play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1971", "question": "what movies gerard butler has been in", "labels": ["two_hop"]}
+{"id": "WebQTest-1972", "question": "where did john franklin live", "labels": ["two_hop"]}
+{"id": "WebQTest-1975", "question": "what was the last movie sean connery was in", "labels": ["two_hop"]}
+{"id": "WebQTest-1976", "question": "what team did drogba play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1977", "question": "where did crabtree go to college", "labels": ["two_hop"]}
+{"id": "WebQTest-1978", "question": "where does freddie ljungberg come from", "labels": ["one_hop"]}
+{"id": "WebQTest-1979", "question": "who is number 22 on miami dolphins", "labels": ["two_hop"]}
+{"id": "WebQTest-1981", "question": "what state did john adams live in", "labels": ["two_hop"]}
+{"id": "WebQTest-1982", "question": "what type of music did vivaldi compose", "labels": ["one_hop"]}
+{"id": "WebQTest-1985", "question": "what team does mike fisher play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1986", "question": "what films has daniel craig been in", "labels": ["two_hop"]}
+{"id": "WebQTest-1987", "question": "what materials did eduardo paolozzi use in his work", "labels": ["one_hop"]}
+{"id": "WebQTest-1988", "question": "what did joe biden study in college", "labels": ["two_hop"]}
+{"id": "WebQTest-1990", "question": "who plays timon 's voice in the lion king", "labels": ["two_hop"]}
+{"id": "WebQTest-1991", "question": "what part of the country is ohio in", "labels": ["one_hop"]}
+{"id": "WebQTest-1992", "question": "which island is kailua on", "labels": ["one_hop"]}
+{"id": "WebQTest-1993", "question": "what language do speak in argentina", "labels": ["one_hop"]}
+{"id": "WebQTest-1994", "question": "what did whoopi goldberg won a grammy for", "labels": ["two_hop"]}
+{"id": "WebQTest-1996", "question": "who played maggie in himym", "labels": ["two_hop"]}
+{"id": "WebQTest-1997", "question": "who does owen schmitt play for", "labels": ["two_hop"]}
+{"id": "WebQTest-1998", "question": "what party was thomas jefferson affiliated with", "labels": ["two_hop"]}
+{"id": "WebQTest-1999", "question": "what religions are popular in france", "labels": ["two_hop"]}
+{"id": "WebQTest-2000", "question": "who played berger in sex and the city", "labels": ["two_hop"]}
+{"id": "WebQTest-2001", "question": "who won the 2000 fa cup final", "labels": ["two_hop"]}
+{"id": "WebQTest-2002", "question": "what are the names of michael jackson 's kids", "labels": ["one_hop"]}
+{"id": "WebQTest-2003", "question": "what movies have robert pattinson in them", "labels": ["two_hop"]}
+{"id": "WebQTest-2004", "question": "what the time zone in japan", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-2005", "question": "who plays bob kelso in scrubs", "labels": ["two_hop"]}
+{"id": "WebQTest-2006", "question": "what race is vanessa carlton", "labels": ["one_hop"]}
+{"id": "WebQTest-2007", "question": "what do people in czech republic speak", "labels": ["one_hop"]}
+{"id": "WebQTest-2008", "question": "which countries speak arabic language", "labels": ["one_hop"]}
+{"id": "WebQTest-2009", "question": "where does tim cook work", "labels": ["two_hop"]}
+{"id": "WebQTest-2010", "question": "what degrees does romney have", "labels": ["two_hop"]}
+{"id": "WebQTest-2011", "question": "where is bob marley buried", "labels": ["one_hop"]}
+{"id": "WebQTest-2012", "question": "what is london uk time zone", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-2013", "question": "where to stay in chicago tourist", "labels": ["one_hop"]}
+{"id": "WebQTest-2014", "question": "what type of breast cancer did sheryl crow have", "labels": ["one_hop"]}
+{"id": "WebQTest-2015", "question": "what type of government does argentina have today", "labels": ["one_hop"]}
+{"id": "WebQTest-2016", "question": "where does fabio capello come from", "labels": ["one_hop"]}
+{"id": "WebQTest-2017", "question": "what party was abe lincoln part of", "labels": ["two_hop"]}
+{"id": "WebQTest-2018", "question": "what did jack london do for a living", "labels": ["one_hop"]}
+{"id": "WebQTest-2019", "question": "who did morgan freeman marry", "labels": ["two_hop"]}
+{"id": "WebQTest-2020", "question": "what are the mountains in northern italy called", "labels": ["one_hop", "literal"]}
+{"id": "WebQTest-2021", "question": "what influenced john steinbeck to start writing", "labels": ["one_hop"]}
+{"id": "WebQTest-2022", "question": "where is dwayne johnson ethnicity", "labels": ["one_hop"]}
+{"id": "WebQTest-2023", "question": "where are the nato headquarters located", "labels": ["two_hop"]}
+{"id": "WebQTest-2024", "question": "in which state was the battle of antietam fought", "labels": ["one_hop"]}
+{"id": "WebQTest-2025", "question": "which ocean does the zambezi river flow into", "labels": ["one_hop"]}
+{"id": "WebQTest-2027", "question": "what team did david beckham play for before la galaxy", "labels": ["two_hop"]}
+{"id": "WebQTest-2028", "question": "who is the current leader of france 2010", "labels": ["two_hop"]}
+{"id": "WebQTest-2029", "question": "where was the palace of knossos located", "labels": ["one_hop"]}
+{"id": "WebQTest-2030", "question": "where is roswell area 51", "labels": ["one_hop"]}
+{"id": "WebQTest-2031", "question": "when was father chris riley born", "labels": ["one_hop", "literal"]}
