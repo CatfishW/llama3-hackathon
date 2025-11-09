@@ -167,7 +167,8 @@ class UnifiedLLMService:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        use_tools: bool = True
+        use_tools: bool = True,
+        use_history: bool = True
     ) -> str:
         """
         Process a session-based message (SSE mode only).
@@ -180,6 +181,7 @@ class UnifiedLLMService:
             top_p: Top-p sampling
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
+            use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
             
         Returns:
             Generated response
@@ -204,7 +206,8 @@ class UnifiedLLMService:
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            use_tools=use_tools
+            use_tools=use_tools,
+            use_history=use_history
         )
     
     def process_message_stream(

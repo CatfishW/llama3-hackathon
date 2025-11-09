@@ -534,7 +534,8 @@ class SessionManager:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        use_tools: bool = True
+        use_tools: bool = True,
+        use_history: bool = True
     ) -> str:
         """
         Process a user message and generate a response.
@@ -547,28 +548,37 @@ class SessionManager:
             top_p: Top-p sampling
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
+            use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
             
         Returns:
             Generated response (may include function calls)
         """
-        # Get or create session
-        session = self.get_or_create_session(session_id, system_prompt)
-        session_lock = self.session_locks.get(session_id, threading.RLock())
-        
-        # Build the prompt first (with minimal locking)
-        with session_lock:
-            # Add user message to dialog
-            session["dialog"].append({"role": "user", "content": user_message})
-            session["message_count"] += 1
+        if use_history:
+            # Get or create session with history
+            session = self.get_or_create_session(session_id, system_prompt)
+            session_lock = self.session_locks.get(session_id, threading.RLock())
             
-            # Simple trimming: keep only last N messages
-            max_messages = 20
-            if len(session["dialog"]) > max_messages:
-                # Keep system message and last N-1 messages
-                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
-            
-            # Prepare messages for API call
-            messages = session["dialog"].copy()
+            # Build the prompt first (with minimal locking)
+            with session_lock:
+                # Add user message to dialog
+                session["dialog"].append({"role": "user", "content": user_message})
+                session["message_count"] += 1
+                
+                # Simple trimming: keep only last N messages
+                max_messages = 20
+                if len(session["dialog"]) > max_messages:
+                    # Keep system message and last N-1 messages
+                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                
+                # Prepare messages for API call
+                messages = session["dialog"].copy()
+        else:
+            # Stateless mode: just system + user message (no history)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            session_lock = None
         
         # Now do inference WITHOUT holding session lock!
         try:
@@ -584,9 +594,10 @@ class SessionManager:
                 tool_choice="auto" if tools else None
             )
             
-            # Add assistant response to history (lock again briefly)
-            with session_lock:
-                session["dialog"].append({"role": "assistant", "content": response})
+            # Add assistant response to history (only if using history)
+            if use_history and session_lock:
+                with session_lock:
+                    session["dialog"].append({"role": "assistant", "content": response})
             
             return response
                 
