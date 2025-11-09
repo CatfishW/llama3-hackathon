@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Iterable, List, Mapping, Sequence
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from kg_llm_new.logging_utils import get_logger
 
@@ -60,6 +59,14 @@ class QuestionClassifier:
         thresholds: Mapping[QuestionType, float] | None = None,
         max_active_labels: int = 3,
     ) -> None:
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError(
+                "sentence-transformers is required for the default classifier. "
+                "Install it via `pip install sentence-transformers` or use --no-classifier."
+            ) from exc
+
         self.model = SentenceTransformer(model_name)
         self.thresholds = thresholds or {
             QuestionType.ONE_HOP: 0.35,
@@ -69,6 +76,7 @@ class QuestionClassifier:
         }
         self.max_active_labels = max_active_labels
         self.classifier_head = None  # Placeholder for learned head weights
+        self.is_fallback = False
 
     def load_head(self, weights_path: Path) -> None:
         """Load lightweight classifier head weights."""

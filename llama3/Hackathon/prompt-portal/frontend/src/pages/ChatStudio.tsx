@@ -378,7 +378,7 @@ export default function ChatStudio() {
       system_prompt: normalizedSystemPrompt || (presets[0]?.system_prompt || ''),
       temperature: selectedSession.temperature ?? 0.6,
       top_p: selectedSession.top_p ?? 0.9,
-      max_tokens: selectedSession.max_tokens ?? 512,
+  max_tokens: selectedSession.max_tokens ?? 2048,
       template_id: selectedSession.template_id ?? null,
       preset_key: matchedPreset?.key ?? null,
       prompt_source: promptSource,

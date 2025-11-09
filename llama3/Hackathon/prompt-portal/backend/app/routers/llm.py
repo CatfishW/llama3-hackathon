@@ -74,7 +74,7 @@ def chat_completion(
         
         # Convert messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-        
+   
         # Generate response
         response = llm_client.generate(
             messages=messages,

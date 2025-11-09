@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Mapping, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 from kg_llm_new.logging_utils import get_logger
 
@@ -65,4 +65,35 @@ class PromptBuilder:
             system_prompt=self.system_prompt,
             messages=messages,
             evidence_tokens=len(evidence_text.split()),
+        )
+
+    def build_simple(
+        self,
+        question: str,
+        label_probabilities: Optional[Mapping[QuestionType, float]] = None,
+    ) -> PromptBundle:
+        """Construct a direct prompt when no KG context is available."""
+
+        probability_text = None
+        if label_probabilities:
+            probability_text = " ".join(
+                f"{qt.name.lower()}={label_probabilities.get(qt, 0.0):.2f}" for qt in QuestionType
+            )
+
+        user_lines = [
+            "Answer the question accurately. If you do not know, state that explicitly.",
+            f"Question: {question}",
+        ]
+        if probability_text:
+            user_lines.append(f"Reasoning cues: {probability_text}")
+
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": "\n".join(user_lines)},
+        ]
+
+        return PromptBundle(
+            system_prompt=self.system_prompt,
+            messages=messages,
+            evidence_tokens=0,
         )
