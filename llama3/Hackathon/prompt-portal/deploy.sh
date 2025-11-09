@@ -19,13 +19,6 @@ NC='\033[0m' # No Color
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
-# LLM Communication Mode: 'mqtt' or 'sse'
-LLM_COMM_MODE="mqtt"
-LLM_SERVER_URL="http://localhost:8080"
-
-# Backend output mode: 'visible' or 'background'
-BACKEND_OUTPUT_MODE="visible"
-
 # Domain configuration - Set these before running if you want automatic domain setup
 USE_DOMAIN=false
 DOMAIN_NAME=""
@@ -111,62 +104,6 @@ else
     fi
 fi
 
-# Ask about backend output mode if not set via environment
-if [ -z "$DEPLOY_BACKEND_MODE" ]; then
-    echo ""
-    echo -e "${BLUE}=== Backend Output Mode ===${NC}"
-    echo "Choose how you want to run the backend:"
-    echo "  1) Visible  - Show backend logs in terminal (requires screen/tmux or keeping terminal open)"
-    echo "  2) Background - Run backend silently in background with nohup"
-    echo ""
-    read -p "Select mode (1 for Visible, 2 for Background) [1]: " backend_mode_choice
-    
-    if [ "$backend_mode_choice" = "2" ]; then
-        BACKEND_OUTPUT_MODE="background"
-        echo -e "${GREEN}✓ Backend will run in background (nohup)${NC}"
-    else
-        BACKEND_OUTPUT_MODE="visible"
-        echo -e "${GREEN}✓ Backend will show visible logs${NC}"
-        echo -e "${YELLOW}ℹ  Use Ctrl+A+D to detach from screen (if using screen)${NC}"
-    fi
-else
-    BACKEND_OUTPUT_MODE="$DEPLOY_BACKEND_MODE"
-fi
-
-# Ask about LLM communication mode if not set via environment
-if [ -z "$DEPLOY_LLM_MODE" ]; then
-    echo ""
-    echo -e "${BLUE}=== LLM Communication Mode ===${NC}"
-    echo "Choose how the backend will communicate with the LLM:"
-    echo "  1) MQTT - Traditional mode using MQTT broker (requires broker at 47.89.252.2)"
-    echo "  2) SSE  - Direct HTTP/SSE mode (simplified, no broker needed)"
-    echo ""
-    read -p "Select mode (1 for MQTT, 2 for SSE) [1]: " llm_mode_choice
-    
-    if [ "$llm_mode_choice" = "2" ]; then
-        LLM_COMM_MODE="sse"
-        echo -e "${GREEN}✓ Using SSE (Direct HTTP) mode${NC}"
-        
-        # Ask for LLM server URL
-        read -p "Enter LLM server URL [http://localhost:8080]: " llm_url_input
-        if [ -n "$llm_url_input" ]; then
-            LLM_SERVER_URL="$llm_url_input"
-        fi
-        echo -e "${GREEN}✓ LLM Server: $LLM_SERVER_URL${NC}"
-        echo -e "${YELLOW}ℹ  Note: For remote LLM, use reverse SSH tunnel:${NC}"
-        echo -e "${YELLOW}   ssh -R 8080:localhost:8080 user@your-server${NC}"
-    else
-        LLM_COMM_MODE="mqtt"
-        echo -e "${GREEN}✓ Using MQTT mode${NC}"
-        echo -e "${YELLOW}ℹ  MQTT Broker: 47.89.252.2:1883${NC}"
-    fi
-else
-    LLM_COMM_MODE="$DEPLOY_LLM_MODE"
-    if [ -n "$DEPLOY_LLM_SERVER_URL" ]; then
-        LLM_SERVER_URL="$DEPLOY_LLM_SERVER_URL"
-    fi
-fi
-
 echo ""
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
 if [ "$USE_DOMAIN" = true ]; then
@@ -176,11 +113,6 @@ if [ "$USE_DOMAIN" = true ]; then
     fi
 fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
-echo -e "${GREEN}Backend Output Mode: ${BACKEND_OUTPUT_MODE^^}${NC}"
-echo -e "${GREEN}LLM Communication Mode: ${LLM_COMM_MODE^^}${NC}"
-if [ "$LLM_COMM_MODE" = "sse" ]; then
-    echo -e "${GREEN}LLM Server URL: $LLM_SERVER_URL${NC}"
-fi
 
 # Function to print colored output
 print_step() {
@@ -280,28 +212,8 @@ else
     echo "CORS_ORIGINS=${CORS_LIST}" >> .env
 fi
 
-# Update LLM communication mode in .env
-if grep -q "LLM_COMM_MODE" .env; then
-    sed -i "s|LLM_COMM_MODE=.*|LLM_COMM_MODE=${LLM_COMM_MODE}|" .env
-else
-    echo "LLM_COMM_MODE=${LLM_COMM_MODE}" >> .env
-fi
-
-# Update LLM server URL if in SSE mode
-if [ "$LLM_COMM_MODE" = "sse" ]; then
-    if grep -q "LLM_SERVER_URL" .env; then
-        sed -i "s|LLM_SERVER_URL=.*|LLM_SERVER_URL=${LLM_SERVER_URL}|" .env
-    else
-        echo "LLM_SERVER_URL=${LLM_SERVER_URL}" >> .env
-    fi
-fi
-
 echo -e "${GREEN}✓ Backend CORS configured${NC}"
 echo -e "${BLUE}   CORS origins: ${CORS_LIST}${NC}"
-echo -e "${GREEN}✓ LLM communication mode: ${LLM_COMM_MODE^^}${NC}"
-if [ "$LLM_COMM_MODE" = "sse" ]; then
-    echo -e "${BLUE}   LLM Server URL: ${LLM_SERVER_URL}${NC}"
-fi
 
 # Check and preserve existing database
 print_step "Checking database status..."
@@ -492,7 +404,42 @@ stop_backend
 stop_frontend
 sleep 1
 
-# Start frontend in background (silent) first
+# Start backend in background (no logs)
+cd ../backend
+print_step "Starting backend on port $BACKEND_PORT..."
+nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+BACKEND_PID=$!
+echo $BACKEND_PID > backend.pid
+
+# Wait for backend port to be ready (up to ~10s)
+for i in $(seq 1 20); do
+    if curl -s --max-time 1 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
+    print_warning "Backend process exited unexpectedly. Attempting one restart..."
+    stop_backend
+    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > /dev/null 2>&1 &
+    BACKEND_PID=$!
+    echo $BACKEND_PID > backend.pid
+    sleep 2
+fi
+
+# Fail fast if backend is not running/healthy
+if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
+    print_error "Backend failed to start. Check if port $BACKEND_PORT is available."
+    exit 1
+fi
+
+if ! curl -s --max-time 2 "http://127.0.0.1:$BACKEND_PORT/docs" > /dev/null; then
+    print_error "Backend health check failed at http://127.0.0.1:$BACKEND_PORT/docs."
+    exit 1
+fi
+
+# Start frontend in background (silent)
 cd ../frontend
 print_step "Starting frontend on port $FRONTEND_PORT..."
 nohup npm run preview -- --host 0.0.0.0 --port $FRONTEND_PORT > /dev/null 2>&1 &
@@ -501,10 +448,6 @@ echo $FRONTEND_PID > frontend.pid
 
 # Give frontend time to start
 sleep 3
-
-if ! ps -p $FRONTEND_PID > /dev/null 2>&1; then
-    print_warning "Frontend failed to start, but continuing..."
-fi
 
 print_step "Skipping monitoring and backup scripts setup..."
 
@@ -668,13 +611,15 @@ EOF
     fi
 fi
 
+BACKEND_OK=0
 FRONTEND_OK=0
+if ps -p $BACKEND_PID > /dev/null 2>&1; then BACKEND_OK=1; fi
 if ps -p $FRONTEND_PID > /dev/null 2>&1; then FRONTEND_OK=1; fi
 
-if [ "$FRONTEND_OK" -eq 1 ]; then
-    print_step "Frontend started successfully! 🎉"
+if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
+    print_step "Deployment completed successfully! 🎉"
 else
-    print_warning "Frontend failed to start. Check the status below."
+    print_warning "Deployment completed with issues. See status below."
 fi
 
 echo ""
@@ -752,7 +697,13 @@ echo "4. Test the MQTT functionality"
 
 # Show service status
 echo ""
-print_step "Checking frontend status:"
+print_step "Checking service status:"
+if ps -p $BACKEND_PID > /dev/null 2>&1; then
+    echo -e "${GREEN}Backend is running (PID: $BACKEND_PID)${NC}"
+else
+    echo -e "${RED}Backend failed to start${NC}"
+fi
+
 if ps -p $FRONTEND_PID > /dev/null 2>&1; then
     echo -e "${GREEN}Frontend is running (PID: $FRONTEND_PID)${NC}"
 else
@@ -760,40 +711,9 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}=== FRONTEND SETUP COMPLETE ===${NC}"
-echo ""
-
-# Start backend based on output mode
-cd "$BACKEND_DIR"
-if [ "$BACKEND_OUTPUT_MODE" = "background" ]; then
-    print_step "Starting backend in background (nohup)..."
-    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
-    BACKEND_PID=$!
-    echo $BACKEND_PID > backend.pid
-    
-    # Give backend time to start
-    sleep 3
-    
-    if ps -p $BACKEND_PID > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ Backend started successfully (PID: $BACKEND_PID)${NC}"
-        echo -e "${BLUE}Backend logs: $BACKEND_DIR/backend.log${NC}"
-        echo -e "${BLUE}To view logs: tail -f $BACKEND_DIR/backend.log${NC}"
-        echo -e "${BLUE}To stop backend: kill \$(cat $BACKEND_DIR/backend.pid)${NC}"
-    else
-        echo -e "${RED}✗ Backend failed to start${NC}"
-        echo -e "${YELLOW}Check logs: cat $BACKEND_DIR/backend.log${NC}"
-    fi
-    
-    echo ""
-    echo -e "${GREEN}=== DEPLOYMENT COMPLETE ===${NC}"
-    echo "Both frontend and backend are running in background."
+if [ "$BACKEND_OK" -eq 1 ] && [ "$FRONTEND_OK" -eq 1 ]; then
+    echo -e "${GREEN}Deployment completed! Your Prompt Portal is now running.${NC}"
 else
-    echo -e "${YELLOW}Now starting backend with visible logs...${NC}"
-    echo -e "${BLUE}Use Ctrl+C to stop, or Ctrl+A+D to detach if using screen.${NC}"
-    echo ""
-    echo "Press Enter to start the backend..."
-    read
-    
-    print_step "Starting backend on port $BACKEND_PORT..."
-    exec uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+    echo -e "${YELLOW}Deployment finished but not all services are healthy.${NC}"
+    echo -e "${YELLOW}Check process status and try restarting.${NC}"
 fi
