@@ -743,6 +743,6 @@ echo "Press Enter to start the backend..."
 read
 
 # Start backend with logs visible (for screen session)
-cd ../backend
+cd "$BACKEND_DIR"
 print_step "Starting backend on port $BACKEND_PORT..."
 exec uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
