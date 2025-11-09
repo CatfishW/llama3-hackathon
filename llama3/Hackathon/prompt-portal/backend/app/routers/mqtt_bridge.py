@@ -43,14 +43,15 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint for navigating the maze."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=True")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False")
             
-            # Generate hint with function calling enabled for maze actions
+            # Generate hint WITHOUT function calling (llama.cpp doesn't support tools without --jinja flag)
+            # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
-                use_tools=True  # Enable maze game function calling
+                use_tools=False  # Disable OpenAI tools API - use prompt-based guidance instead
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100] if hint_response else 'None'}...")
             
@@ -168,14 +169,15 @@ async def request_hint_endpoint(
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=True")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False")
             
-            # Generate hint with function calling enabled for maze actions
+            # Generate hint WITHOUT OpenAI tools API (llama.cpp requires --jinja flag for tools)
+            # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
-                use_tools=True  # Enable maze game function calling
+                use_tools=False  # Disable OpenAI tools API - use prompt-based guidance instead
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
             
