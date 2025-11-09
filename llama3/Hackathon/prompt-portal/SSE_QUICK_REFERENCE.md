@@ -76,21 +76,48 @@ kill $(cat frontend/frontend.pid)
 
 ### Test Connection
 
+**On Machine A (test local LLM):**
 ```bash
-# Local LLM (Machine A)
 curl http://localhost:8080/health
+```
 
-# Tunnel endpoint (Machine B)
+**On Machine B (test via tunnel):**
+```bash
+# 1. Test health endpoint
 curl http://localhost:8080/health
+# Should return: {"status":"ok","slots_idle":8,"slots_processing":0}
 
-# Backend LLM connection (Machine B)
+# 2. Test simple inference
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "default",
+    "messages": [{"role": "user", "content": "Say hello!"}],
+    "max_tokens": 50
+  }'
+
+# 3. Test streaming response
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "default",
+    "messages": [{"role": "user", "content": "Count to 3"}],
+    "max_tokens": 50,
+    "stream": true
+  }'
+
+# 4. Test backend LLM connection
 curl http://localhost:3000/api/llm/health
 
-# Full API test (Machine B)
+# 5. Full API test (requires auth token)
 curl -X POST http://localhost:3000/api/llm/chat \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TOKEN" \
-  -d '{"messages":[{"role":"user","content":"Hi"}]}'
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hi"}
+    ]
+  }'
 ```
 
 ## 🔧 Configuration Files

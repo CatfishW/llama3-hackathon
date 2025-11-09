@@ -24,8 +24,15 @@ def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depend
             "user_id": user.id,
         }
     })
-    publish_state(state)
-    return {"ok": True}
+    
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # In SSE mode, we just acknowledge receipt
+        # The actual hint generation happens in /request_hint
+        return {"ok": True, "mode": "sse", "message": "State received, use /request_hint to get hints"}
+    else:
+        # MQTT mode: Publish to MQTT broker
+        publish_state(state)
+        return {"ok": True, "mode": "mqtt"}
 
 @router.get("/last_hint")
 def get_last_hint(session_id: str = Query(..., min_length=1)):
@@ -44,41 +51,87 @@ async def request_hint_endpoint(
     db: Session = Depends(get_db), 
     user=Depends(get_current_user)
 ):
-    """Request a hint for the maze game - returns immediately, hint arrives via polling /last_hint"""
+    """Request a hint for the maze game - works in both MQTT and SSE modes"""
     session_id = payload.get("session_id")
     if not session_id:
         raise HTTPException(400, "session_id is required")
     
     # Optional: verify template ownership if template_id provided
     template_id = payload.get("template_id")
+    template = None
     if template_id:
-        t = db.query(models.PromptTemplate).filter(
+        template = db.query(models.PromptTemplate).filter(
             models.PromptTemplate.id == template_id, 
             models.PromptTemplate.user_id == user.id
         ).first()
-        if not t:
+        if not template:
             raise HTTPException(404, "Template not found or not owned by you")
     
-    # Publish state to MQTT (LAM will process and send hint back)
     state = payload.get("state", {})
     state["sessionId"] = session_id
     
     # Add template info if provided
-    if template_id:
-        t = db.query(models.PromptTemplate).filter(
-            models.PromptTemplate.id == template_id, 
-            models.PromptTemplate.user_id == user.id
-        ).first()
-        if t:
-            state["prompt_template"] = {
-                "title": t.title,
-                "content": t.content,
-                "version": t.version,
-                "user_id": user.id,
-            }
+    if template:
+        state["prompt_template"] = {
+            "title": template.title,
+            "content": template.content,
+            "version": template.version,
+            "user_id": user.id,
+        }
     
-    publish_state(state)
-    return {"ok": True, "session_id": session_id, "message": "Hint request published"}
+    # Handle based on communication mode
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # SSE mode: Generate hint directly and store it
+        try:
+            from ..services.llm_service import get_llm_service
+            import json
+            
+            llm_service = get_llm_service()
+            
+            # Build system prompt from template or default
+            system_prompt = template.content if template else (
+                "You are a Large Action Model (LAM) guiding players through a maze game.\n"
+                "You provide strategic hints and pathfinding advice. Be concise and helpful.\n"
+                'Always respond in JSON format with keys: "hint" (string), "suggestion" (string).'
+            )
+            
+            # Build user message from game state
+            user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
+            
+            # Generate hint with function calling enabled for maze actions
+            hint_response = llm_service.process_message(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                use_tools=True  # Enable maze game function calling
+            )
+            
+            # Store the hint so it can be retrieved via /last_hint
+            import time
+            LAST_HINTS[session_id] = {
+                "hint": hint_response,
+                "timestamp": time.time()
+            }
+            
+            # Also broadcast to WebSocket subscribers if any
+            if session_id in SUBSCRIBERS:
+                import asyncio
+                disconnected = set()
+                for ws in SUBSCRIBERS[session_id]:
+                    try:
+                        await ws.send_json({"hint": hint_response, "session_id": session_id})
+                    except Exception:
+                        disconnected.add(ws)
+                SUBSCRIBERS[session_id] -= disconnected
+            
+            return {"ok": True, "session_id": session_id, "hint": hint_response, "mode": "sse"}
+            
+        except Exception as e:
+            raise HTTPException(500, f"Failed to generate hint: {str(e)}")
+    else:
+        # MQTT mode: Publish state and hint will arrive via MQTT
+        publish_state(state)
+        return {"ok": True, "session_id": session_id, "message": "Hint request published", "mode": "mqtt"}
 
 # WebSocket to stream hints in real time
 async def _subscribe_ws(session_id: str, websocket: WebSocket):
@@ -111,7 +164,7 @@ def publish_template_endpoint(
     reset: bool = Query(default=True, description="Reset dialog for the target(s)"),
     db: Session = Depends(get_db), user=Depends(get_current_user)
 ):
-    """Publish the selected or custom template to LAM over MQTT.
+    """Publish the selected or custom template - works in both MQTT and SSE modes.
     If session_id is provided, it overrides globally for that session; otherwise updates global template.
     """
     # payload may contain either a raw template string or a template_id to load from DB
@@ -142,5 +195,11 @@ def publish_template_endpoint(
             "max_breaks": payload.get("max_breaks")
         }
 
-    publish_template(body, session_id=session_id)
-    return {"ok": True}
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # In SSE mode, templates are applied per-request in /request_hint
+        # We can store it in a cache or just acknowledge
+        return {"ok": True, "mode": "sse", "message": "Template will be used in subsequent hint requests"}
+    else:
+        # MQTT mode: Publish to MQTT broker
+        publish_template(body, session_id=session_id)
+        return {"ok": True, "mode": "mqtt"}

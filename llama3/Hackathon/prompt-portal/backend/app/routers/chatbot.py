@@ -210,9 +210,12 @@ async def update_session(
 
     session.updated_at = datetime.utcnow()
     
-    # If system_prompt changed, publish update to MQTT so llama.cpp deployment uses new prompt
-    if payload.system_prompt is not None and (session.system_prompt or "") != (payload.system_prompt or ""):
-        publish_template_update(session.session_key, payload.system_prompt)
+    # If system_prompt changed, publish update (MQTT mode only)
+    from ..config import settings
+    if settings.LLM_COMM_MODE.lower() == "mqtt":
+        if payload.system_prompt is not None and (session.system_prompt or "") != (payload.system_prompt or ""):
+            publish_template_update(session.session_key, payload.system_prompt)
+    # Note: In SSE mode, system prompt is stored in session and used on next message
     
     db.commit()
     db.refresh(session)
@@ -296,13 +299,17 @@ async def send_message(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> schemas.ChatMessageSendResponse:
-    # Check MQTT connection health before processing
-    from ..mqtt import mqtt_client
-    if not mqtt_client or not mqtt_client.is_connected():
-        raise HTTPException(
-            status_code=503,
-            detail="LLM backend connection unavailable. Please try again in a moment."
-        )
+    # Check communication mode and connection health
+    from ..config import settings
+    
+    # Only check MQTT connection in MQTT mode
+    if settings.LLM_COMM_MODE.lower() == "mqtt":
+        from ..mqtt import mqtt_client
+        if not mqtt_client or not mqtt_client.is_connected():
+            raise HTTPException(
+                status_code=503,
+                detail="LLM backend connection unavailable. Please try again in a moment."
+            )
     
     session = (
         db.query(ChatSession)
@@ -347,39 +354,78 @@ async def send_message(
     db.refresh(user_message)
     db.refresh(session)
 
-    mqtt_payload = {
-        "sessionId": session.session_key,
-        "message": payload.content,
-    }
-    if session.system_prompt:
-        mqtt_payload["systemPrompt"] = session.system_prompt
-    if effective_temperature is not None:
-        mqtt_payload["temperature"] = effective_temperature
-    if effective_top_p is not None:
-        mqtt_payload["topP"] = effective_top_p
-    if effective_max_tokens is not None:
-        mqtt_payload["maxTokens"] = effective_max_tokens
-
-    try:
-        # Increased timeout to 90 seconds for LLM responses
-        response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail="The AI model is taking longer than usual to respond. Please try again."
-        )
-    except RuntimeError as exc:
-        if "MQTT connection" in str(exc):
+    # Handle message sending based on communication mode
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # SSE/Direct HTTP mode
+        try:
+            from ..services.llm_service import get_llm_service
+            llm_service = get_llm_service()
+            
+            # Use session manager to process message
+            assistant_content = llm_service.process_message(
+                session_id=session.session_key,
+                system_prompt=session.system_prompt or _default_prompt(),
+                user_message=payload.content,
+                temperature=effective_temperature,
+                top_p=effective_top_p,
+                max_tokens=effective_max_tokens,
+                use_tools=False  # Disable function calling for chatbot
+            )
+            
+            # Create response payload in MQTT-compatible format for consistency
+            response_payload = {
+                "content": assistant_content,
+                "request_id": f"sse-{uuid.uuid4().hex[:8]}",
+                "assistant_message": {
+                    "content": assistant_content
+                }
+            }
+            
+        except RuntimeError as exc:
             raise HTTPException(
                 status_code=503,
-                detail="LLM backend connection lost. Reconnecting... Please try again in a moment."
+                detail=f"LLM service error: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to contact LLM backend: {str(exc)}"
+            ) from exc
+    else:
+        # MQTT mode (original behavior)
+        mqtt_payload = {
+            "sessionId": session.session_key,
+            "message": payload.content,
+        }
+        if session.system_prompt:
+            mqtt_payload["systemPrompt"] = session.system_prompt
+        if effective_temperature is not None:
+            mqtt_payload["temperature"] = effective_temperature
+        if effective_top_p is not None:
+            mqtt_payload["topP"] = effective_top_p
+        if effective_max_tokens is not None:
+            mqtt_payload["maxTokens"] = effective_max_tokens
+
+        try:
+            # Increased timeout to 90 seconds for LLM responses
+            response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="The AI model is taking longer than usual to respond. Please try again."
             )
-        raise HTTPException(status_code=502, detail=f"Backend error: {str(exc)}") from exc
-    except Exception as exc:  # pragma: no cover - surface error to client
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to contact LLM backend. Please try again. Error: {str(exc)}"
-        ) from exc
+        except RuntimeError as exc:
+            if "MQTT connection" in str(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail="LLM backend connection lost. Reconnecting... Please try again in a moment."
+                )
+            raise HTTPException(status_code=502, detail=f"Backend error: {str(exc)}") from exc
+        except Exception as exc:  # pragma: no cover - surface error to client
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to contact LLM backend. Please try again. Error: {str(exc)}"
+            ) from exc
 
     # Reload session to pick up assistant message count update
     db.refresh(session)
