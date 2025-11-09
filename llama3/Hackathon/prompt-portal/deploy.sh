@@ -23,6 +23,9 @@ FRONTEND_PORT=3001
 LLM_COMM_MODE="mqtt"
 LLM_SERVER_URL="http://localhost:8080"
 
+# Backend output mode: 'visible' or 'background'
+BACKEND_OUTPUT_MODE="visible"
+
 # Domain configuration - Set these before running if you want automatic domain setup
 USE_DOMAIN=false
 DOMAIN_NAME=""
@@ -108,6 +111,28 @@ else
     fi
 fi
 
+# Ask about backend output mode if not set via environment
+if [ -z "$DEPLOY_BACKEND_MODE" ]; then
+    echo ""
+    echo -e "${BLUE}=== Backend Output Mode ===${NC}"
+    echo "Choose how you want to run the backend:"
+    echo "  1) Visible  - Show backend logs in terminal (requires screen/tmux or keeping terminal open)"
+    echo "  2) Background - Run backend silently in background with nohup"
+    echo ""
+    read -p "Select mode (1 for Visible, 2 for Background) [1]: " backend_mode_choice
+    
+    if [ "$backend_mode_choice" = "2" ]; then
+        BACKEND_OUTPUT_MODE="background"
+        echo -e "${GREEN}✓ Backend will run in background (nohup)${NC}"
+    else
+        BACKEND_OUTPUT_MODE="visible"
+        echo -e "${GREEN}✓ Backend will show visible logs${NC}"
+        echo -e "${YELLOW}ℹ  Use Ctrl+A+D to detach from screen (if using screen)${NC}"
+    fi
+else
+    BACKEND_OUTPUT_MODE="$DEPLOY_BACKEND_MODE"
+fi
+
 # Ask about LLM communication mode if not set via environment
 if [ -z "$DEPLOY_LLM_MODE" ]; then
     echo ""
@@ -151,6 +176,7 @@ if [ "$USE_DOMAIN" = true ]; then
     fi
 fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
+echo -e "${GREEN}Backend Output Mode: ${BACKEND_OUTPUT_MODE^^}${NC}"
 echo -e "${GREEN}LLM Communication Mode: ${LLM_COMM_MODE^^}${NC}"
 if [ "$LLM_COMM_MODE" = "sse" ]; then
     echo -e "${GREEN}LLM Server URL: $LLM_SERVER_URL${NC}"
@@ -736,13 +762,38 @@ fi
 echo ""
 echo -e "${GREEN}=== FRONTEND SETUP COMPLETE ===${NC}"
 echo ""
-echo -e "${YELLOW}Now starting backend with visible logs...${NC}"
-echo -e "${BLUE}You are using screen - use Ctrl+A+D to detach and keep backend running.${NC}"
-echo ""
-echo "Press Enter to start the backend..."
-read
 
-# Start backend with logs visible (for screen session)
+# Start backend based on output mode
 cd "$BACKEND_DIR"
-print_step "Starting backend on port $BACKEND_PORT..."
-exec uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+if [ "$BACKEND_OUTPUT_MODE" = "background" ]; then
+    print_step "Starting backend in background (nohup)..."
+    nohup uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT > backend.log 2>&1 &
+    BACKEND_PID=$!
+    echo $BACKEND_PID > backend.pid
+    
+    # Give backend time to start
+    sleep 3
+    
+    if ps -p $BACKEND_PID > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Backend started successfully (PID: $BACKEND_PID)${NC}"
+        echo -e "${BLUE}Backend logs: $BACKEND_DIR/backend.log${NC}"
+        echo -e "${BLUE}To view logs: tail -f $BACKEND_DIR/backend.log${NC}"
+        echo -e "${BLUE}To stop backend: kill \$(cat $BACKEND_DIR/backend.pid)${NC}"
+    else
+        echo -e "${RED}✗ Backend failed to start${NC}"
+        echo -e "${YELLOW}Check logs: cat $BACKEND_DIR/backend.log${NC}"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}=== DEPLOYMENT COMPLETE ===${NC}"
+    echo "Both frontend and backend are running in background."
+else
+    echo -e "${YELLOW}Now starting backend with visible logs...${NC}"
+    echo -e "${BLUE}Use Ctrl+C to stop, or Ctrl+A+D to detach if using screen.${NC}"
+    echo ""
+    echo "Press Enter to start the backend..."
+    read
+    
+    print_step "Starting backend on port $BACKEND_PORT..."
+    exec uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+fi
