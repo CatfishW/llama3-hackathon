@@ -653,67 +653,115 @@ export default function ChatStudio() {
     setInputValue('')
 
     try {
-      const res = await chatbotAPI.sendMessage({
-        session_id: selectedSession.id,
-        content,
-        temperature: sessionDraft.temperature,
-        top_p: sessionDraft.top_p,
-        max_tokens: sessionDraft.max_tokens,
-        system_prompt: sessionDraft.system_prompt,
-        template_id: sessionDraft.template_id
-      })
-      const data = res.data
-      replaceOptimisticMessage(optimisticId, data.user_message as ChatMessage)
+      // Use streaming API
+      let streamedContent = ''
+      let assistantMessageId: number | null = null
+      let tempAssistantId = -Date.now() // Temporary negative ID for streaming message
       
-      // Create placeholder for assistant message before streaming
-      const assistantMsg = data.assistant_message as ChatMessage
-      setMessages(prev => [...prev, assistantMsg])
-      
-      // Simulate streaming the response
-      setTimeout(() => {
-        simulateStreamingMessage(assistantMsg.id, assistantMsg.content)
-      }, 100)
-      
-      // Check for consensus if in Driving Game mode
-      if (drivingGameMode && drivingGameStartTime) {
-        // Increment message count for this exchange (user message + assistant response)
-        const newMessageCount = drivingGameMessageCount + 1
-        setDrivingGameMessageCount(newMessageCount)
-        
-        const { hasConsensus, playerOp, agentOp } = detectConsensus(assistantMsg.content)
-        
-        if (hasConsensus) {
-          // Calculate score using the updated count
-          const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
-          const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
+      await chatbotAPI.sendMessageStream(
+        {
+          session_id: selectedSession.id,
+          content,
+          temperature: sessionDraft.temperature,
+          top_p: sessionDraft.top_p,
+          max_tokens: sessionDraft.max_tokens,
+          system_prompt: sessionDraft.system_prompt,
+          template_id: sessionDraft.template_id
+        },
+        // onMetadata
+        (metadata) => {
+          // Replace optimistic user message with real one
+          replaceOptimisticMessage(optimisticId, {
+            id: -1, // Will be updated
+            session_id: metadata.session_id,
+            role: 'user',
+            content,
+            created_at: new Date().toISOString()
+          } as ChatMessage)
           
-          // Save options, score, and message count for modal display
-          setLastPlayerOption(playerOp)
-          setLastAgentOption(agentOp)
-          setConsensusScore(score)
-          setConsensusMessageCount(newMessageCount)
-          
-          // Submit score to leaderboard
-          try {
-            await submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
-            console.log('[DRIVING GAME] Score submitted successfully, showing modal')
-          } catch (e) {
-            console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
-            // Continue to show modal even if submission failed (user still completed the game)
+          // Create placeholder for assistant message
+          const placeholderAssistant: ChatMessage = {
+            id: tempAssistantId,
+            session_id: metadata.session_id,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString()
           }
+          setMessages(prev => [...prev, placeholderAssistant])
+          setStreamingMessageId(tempAssistantId)
+        },
+        // onChunk
+        (chunk) => {
+          streamedContent += chunk
+          setMessages(prev => prev.map(msg => 
+            msg.id === tempAssistantId 
+              ? { ...msg, content: streamedContent }
+              : msg
+          ))
+        },
+        // onComplete
+        async (fullContent, realAssistantId) => {
+          assistantMessageId = realAssistantId
+          // Update with final content and real ID
+          setMessages(prev => prev.map(msg => 
+            msg.id === tempAssistantId 
+              ? { ...msg, id: realAssistantId, content: fullContent }
+              : msg
+          ))
+          setStreamingMessageId(null)
           
-          // Show modal
-          setShowConsensusModal(true)
-          
-          // Reset driving game mode
-          setDrivingGameMode(false)
-          setDrivingGameStartTime(null)
-          setDrivingGameMessageCount(0)
+          // Check for consensus if in Driving Game mode
+          if (drivingGameMode && drivingGameStartTime && assistantMessageId) {
+            // Increment message count for this exchange
+            const newMessageCount = drivingGameMessageCount + 1
+            setDrivingGameMessageCount(newMessageCount)
+            
+            const { hasConsensus, playerOp, agentOp } = detectConsensus(fullContent)
+            
+            if (hasConsensus) {
+              // Calculate score using the updated count
+              const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
+              const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
+              
+              // Save options, score, and message count for modal display
+              setLastPlayerOption(playerOp)
+              setLastAgentOption(agentOp)
+              setConsensusScore(score)
+              setConsensusMessageCount(newMessageCount)
+              
+              // Submit score to leaderboard
+              try {
+                await submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
+                console.log('[DRIVING GAME] Score submitted successfully, showing modal')
+              } catch (e) {
+                console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
+              }
+              
+              // Show modal
+              setShowConsensusModal(true)
+              
+              // Reset driving game mode
+              setDrivingGameMode(false)
+              setDrivingGameStartTime(null)
+              setDrivingGameMessageCount(0)
+            }
+          }
+        },
+        // onError
+        (error) => {
+          console.error('Streaming error:', error)
+          setErrorMessage(`Failed to send message: ${error.message}`)
+          setMessages(prev => prev.filter(msg => msg.id !== optimisticId && msg.id !== tempAssistantId))
+          setStreamingMessageId(null)
         }
-      }
+      )
       
-      setSessions(prev => prev.map(s => s.id === selectedSession.id ? data.session as ChatSession : s))
+      // Fetch updated session info
+      const sessionsRes = await chatbotAPI.listSessions()
+      setSessions(sessionsRes.data)
+      
     } catch (e) {
+      console.error('Send message error:', e)
       setMessages(prev => prev.filter(msg => msg.id !== optimisticId))
       setErrorMessage('Failed to send message.')
     } finally {

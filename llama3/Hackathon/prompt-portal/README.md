@@ -280,6 +280,36 @@ If you have a GPU server without public IP and a separate web server:
 
 ---
 
+## 📚 Documentation
+
+### Quick References
+- **[DUAL_MODE_QUICK_REFERENCE.md](./DUAL_MODE_QUICK_REFERENCE.md)** - 📋 Quick reference card for both modes
+- **[SSE_QUICK_REFERENCE.md](./SSE_QUICK_REFERENCE.md)** - ⚡ Command cheat sheet for SSE mode
+
+### Setup Guides
+- **[TWO_MACHINE_SETUP.md](./TWO_MACHINE_SETUP.md)** - 🖥️ Complete guide for 2-machine deployment
+- **[SSE_MODE_DEPLOYMENT.md](./SSE_MODE_DEPLOYMENT.md)** - 🚀 Detailed SSE mode deployment guide
+- **[DOMAIN_SETUP.md](./DOMAIN_SETUP.md)** - 🌐 Custom domain configuration guide
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - 📦 General deployment instructions
+
+### Implementation Details
+- **[COMPLETE_SSE_IMPLEMENTATION.md](./COMPLETE_SSE_IMPLEMENTATION.md)** - ✅ Complete implementation summary
+- **[SSE_IMPLEMENTATION_SUMMARY.md](./SSE_IMPLEMENTATION_SUMMARY.md)** - 🔧 Technical overview of SSE changes
+- **[SSE_CHATBOT_FIX.md](./SSE_CHATBOT_FIX.md)** - 💬 Chatbot dual-mode implementation
+- **[MAZE_GAME_SSE_SUPPORT.md](./MAZE_GAME_SSE_SUPPORT.md)** - 🎮 Maze game dual-mode implementation
+- **[STREAMING_MODE_GUIDE.md](./STREAMING_MODE_GUIDE.md)** - 📡 Real-time streaming implementation
+
+### Feature-Specific Guides
+- **[DEBUG_LOGGING_GUIDE.md](./docs/DEBUG_LOGGING_GUIDE.md)** - 🐛 Debugging and logging
+- **[CUSTOM_SYSTEM_PROMPT_GUIDE.md](./docs/CUSTOM_SYSTEM_PROMPT_GUIDE.md)** - 📝 Custom prompts
+- **[CONCURRENCY_FIX_GUIDE.md](./docs/CONCURRENCY_FIX_GUIDE.md)** - ⚙️ Concurrent processing
+
+### Architecture & Design
+- **[LAM_ARCHITECTURE_DIAGRAMS.md](./LAM_ARCHITECTURE_DIAGRAMS.md)** - 📊 System architecture diagrams
+- **[MERMAID_DIAGRAMS_LAM_MAZE.md](./MERMAID_DIAGRAMS_LAM_MAZE.md)** - 🎨 Visual system diagrams
+
+---
+
 ## License
 
 For hackathon/demo use. Replace as needed.

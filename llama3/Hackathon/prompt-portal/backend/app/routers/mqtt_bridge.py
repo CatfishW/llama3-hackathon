@@ -106,12 +106,24 @@ async def request_hint_endpoint(
                 use_tools=True  # Enable maze game function calling
             )
             
+            # Parse response if it's JSON (happens when function calling is used)
+            hint_data = hint_response
+            try:
+                parsed = json.loads(hint_response)
+                if isinstance(parsed, dict):
+                    hint_data = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Response is plain text, use as-is
+                hint_data = {"hint": hint_response}
+            
+            # Ensure hint_data is a dict
+            if not isinstance(hint_data, dict):
+                hint_data = {"hint": str(hint_data)}
+            
             # Store the hint so it can be retrieved via /last_hint
             import time
-            LAST_HINTS[session_id] = {
-                "hint": hint_response,
-                "timestamp": time.time()
-            }
+            hint_data["timestamp"] = time.time()
+            LAST_HINTS[session_id] = hint_data
             
             # Also broadcast to WebSocket subscribers if any
             if session_id in SUBSCRIBERS:
@@ -119,12 +131,12 @@ async def request_hint_endpoint(
                 disconnected = set()
                 for ws in SUBSCRIBERS[session_id]:
                     try:
-                        await ws.send_json({"hint": hint_response, "session_id": session_id})
+                        await ws.send_json({"hint": hint_data, "session_id": session_id})
                     except Exception:
                         disconnected.add(ws)
                 SUBSCRIBERS[session_id] -= disconnected
             
-            return {"ok": True, "session_id": session_id, "hint": hint_response, "mode": "sse"}
+            return {"ok": True, "session_id": session_id, "hint": hint_data, "mode": "sse"}
             
         except Exception as e:
             raise HTTPException(500, f"Failed to generate hint: {str(e)}")

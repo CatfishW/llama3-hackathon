@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import schemas
@@ -506,4 +507,180 @@ async def send_message(
         user_message=_serialize_message(user_message),
         assistant_message=_serialize_message(assistant_message),
         raw_response=raw_response,
+    )
+
+
+@router.post("/messages/stream")
+async def send_message_stream(
+    payload: schemas.ChatMessageSendRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Send a message and stream the response.
+    Works in both SSE and MQTT modes:
+    - SSE mode: Real streaming from llama.cpp
+    - MQTT mode: Simulated streaming (chunks full response)
+    """
+    from ..config import settings
+    
+    # Only check MQTT connection in MQTT mode
+    if settings.LLM_COMM_MODE.lower() == "mqtt":
+        from ..mqtt import mqtt_client
+        if not mqtt_client or not mqtt_client.is_connected():
+            raise HTTPException(
+                status_code=503,
+                detail="LLM backend connection unavailable. Please try again in a moment."
+            )
+    
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    template = _load_template(db, user.id, payload.template_id)
+
+    if template and session.template_id != template.id:
+        session.template_id = template.id
+        if not payload.system_prompt:
+            session.system_prompt = template.content
+        if not payload.content.strip():
+            raise HTTPException(status_code=400, detail="Message content cannot be empty")
+
+    if payload.system_prompt is not None:
+        session.system_prompt = payload.system_prompt
+
+    effective_temperature = payload.temperature if payload.temperature is not None else session.temperature
+    effective_top_p = payload.top_p if payload.top_p is not None else session.top_p
+    effective_max_tokens = payload.max_tokens if payload.max_tokens is not None else session.max_tokens
+
+    now = datetime.utcnow()
+    session.updated_at = now
+    session.last_used_at = now
+
+    user_message = ChatMessage(
+        session_id=session.id,
+        role="user",
+        content=payload.content,
+        metadata_json=None,
+        request_id=None,
+        created_at=now,
+    )
+    session.message_count = (session.message_count or 0) + 1
+
+    db.add(user_message)
+    db.commit()
+    db.refresh(user_message)
+    db.refresh(session)
+
+    # Create a generator that streams the response
+    async def stream_generator():
+        try:
+            # Send metadata first (session and user message info)
+            metadata = {
+                "type": "metadata",
+                "session_id": session.id,
+                "user_message_id": user_message.id,
+                "session_key": session.session_key
+            }
+            yield f"data: {json.dumps(metadata)}\n\n"
+            
+            full_content = ""
+            
+            if settings.LLM_COMM_MODE.lower() == "sse":
+                # SSE mode: Real streaming from llama.cpp
+                from ..services.llm_service import get_llm_service
+                llm_service = get_llm_service()
+                
+                for chunk in llm_service.process_message_stream(
+                    session_id=session.session_key,
+                    system_prompt=session.system_prompt or _default_prompt(),
+                    user_message=payload.content,
+                    temperature=effective_temperature,
+                    top_p=effective_top_p,
+                    max_tokens=effective_max_tokens,
+                    use_tools=False
+                ):
+                    full_content += chunk
+                    chunk_data = {"type": "chunk", "content": chunk}
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                    await asyncio.sleep(0)  # Allow other tasks to run
+                    
+            else:
+                # MQTT mode: Get full response, then simulate streaming
+                mqtt_payload = {
+                    "sessionId": session.session_key,
+                    "message": payload.content,
+                }
+                if session.system_prompt:
+                    mqtt_payload["systemPrompt"] = session.system_prompt
+                if effective_temperature is not None:
+                    mqtt_payload["temperature"] = effective_temperature
+                if effective_top_p is not None:
+                    mqtt_payload["topP"] = effective_top_p
+                if effective_max_tokens is not None:
+                    mqtt_payload["maxTokens"] = effective_max_tokens
+
+                try:
+                    response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
+                    full_content = response_payload.get("content", "")
+                    
+                    # Simulate streaming by chunking the response
+                    chunk_size = 10  # Characters per chunk
+                    for i in range(0, len(full_content), chunk_size):
+                        chunk = full_content[i:i+chunk_size]
+                        chunk_data = {"type": "chunk", "content": chunk}
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        await asyncio.sleep(0.01)  # Small delay to simulate streaming
+                        
+                except asyncio.TimeoutError:
+                    error_data = {"type": "error", "message": "The AI model is taking longer than usual to respond."}
+                    yield f"data: {json.dumps(error_data)}\n\n"
+                    return
+                except Exception as e:
+                    error_data = {"type": "error", "message": str(e)}
+                    yield f"data: {json.dumps(error_data)}\n\n"
+                    return
+            
+            # Save assistant message to database
+            request_id = f"stream-{uuid.uuid4().hex[:8]}"
+            now_assistant = datetime.utcnow()
+            assistant_message = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=full_content,
+                metadata_json=None,
+                request_id=request_id,
+                created_at=now_assistant,
+            )
+            session.message_count = (session.message_count or 0) + 1
+            session.updated_at = now_assistant
+            session.last_used_at = now_assistant
+            db.add(assistant_message)
+            db.commit()
+            db.refresh(assistant_message)
+            db.refresh(session)
+            
+            # Send completion with assistant message ID
+            completion_data = {
+                "type": "done",
+                "assistant_message_id": assistant_message.id,
+                "full_content": full_content
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
+            
+        except Exception as e:
+            error_data = {"type": "error", "message": f"Streaming error: {str(e)}"}
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
     )
