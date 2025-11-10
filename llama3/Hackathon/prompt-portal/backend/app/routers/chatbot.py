@@ -621,7 +621,6 @@ async def send_message_stream(
 
                 if settings.LLM_VISION_ENABLED and payload.image_urls:
                     # Vision streaming: build multi-part messages and stream via generate_stream
-                    system_prompt_value = system_prompt_value
                     user_parts = [{"type": "text", "text": payload.content}]
                     for url in payload.image_urls:
                         user_parts.append({"type": "image_url", "image_url": {"url": url}})
