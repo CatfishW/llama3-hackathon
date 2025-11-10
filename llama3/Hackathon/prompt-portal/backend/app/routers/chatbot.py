@@ -361,19 +361,38 @@ async def send_message(
         try:
             from ..services.llm_service import get_llm_service
             llm_service = get_llm_service()
-            
-            # Use session manager to process message
-            assistant_content = llm_service.process_message(
-                session_id=session.session_key,
-                system_prompt=session.system_prompt or _default_prompt(),
-                user_message=payload.content,
-                temperature=effective_temperature,
-                top_p=effective_top_p,
-                max_tokens=effective_max_tokens,
-                use_tools=False  # Disable function calling for chatbot
-            )
-            
-            # Create response payload in MQTT-compatible format for consistency
+
+            # Vision path: if vision enabled and images provided, send multi-part user message
+            if settings.LLM_VISION_ENABLED and payload.image_urls:
+                # Construct messages list manually to include image parts
+                system_prompt_value = session.system_prompt or _default_prompt()
+                user_parts = [{"type": "text", "text": payload.content}]
+                for url in payload.image_urls:
+                    user_parts.append({"type": "image_url", "image_url": {"url": url}})
+                messages = [
+                    {"role": "system", "content": system_prompt_value},
+                    {"role": "user", "content": user_parts},
+                ]
+                assistant_content = llm_service.generate(
+                    messages=messages,
+                    temperature=effective_temperature,
+                    top_p=effective_top_p,
+                    max_tokens=effective_max_tokens,
+                    tools=None,
+                    tool_choice="none"
+                )
+            else:
+                # Standard text-only processing (history enabled)
+                assistant_content = llm_service.process_message(
+                    session_id=session.session_key,
+                    system_prompt=session.system_prompt or _default_prompt(),
+                    user_message=payload.content,
+                    temperature=effective_temperature,
+                    top_p=effective_top_p,
+                    max_tokens=effective_max_tokens,
+                    use_tools=False  # Disable function calling for chatbot
+                )
+
             response_payload = {
                 "content": assistant_content,
                 "request_id": f"sse-{uuid.uuid4().hex[:8]}",
@@ -381,7 +400,7 @@ async def send_message(
                     "content": assistant_content
                 }
             }
-            
+
         except RuntimeError as exc:
             raise HTTPException(
                 status_code=503,
@@ -597,23 +616,46 @@ async def send_message_stream(
             full_content = ""
             
             if settings.LLM_COMM_MODE.lower() == "sse":
-                # SSE mode: Real streaming from llama.cpp
                 from ..services.llm_service import get_llm_service
                 llm_service = get_llm_service()
-                
-                for chunk in llm_service.process_message_stream(
-                    session_id=session_key_value,
-                    system_prompt=system_prompt_value,
-                    user_message=payload.content,
-                    temperature=effective_temperature,
-                    top_p=effective_top_p,
-                    max_tokens=effective_max_tokens,
-                    use_tools=False
-                ):
-                    full_content += chunk
-                    chunk_data = {"type": "chunk", "content": chunk}
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                    await asyncio.sleep(0)  # Allow other tasks to run
+
+                if settings.LLM_VISION_ENABLED and payload.image_urls:
+                    # Vision streaming: build multi-part messages and stream via generate_stream
+                    system_prompt_value = system_prompt_value
+                    user_parts = [{"type": "text", "text": payload.content}]
+                    for url in payload.image_urls:
+                        user_parts.append({"type": "image_url", "image_url": {"url": url}})
+                    messages = [
+                        {"role": "system", "content": system_prompt_value},
+                        {"role": "user", "content": user_parts},
+                    ]
+                    for chunk in llm_service.generate_stream(
+                        messages=messages,
+                        temperature=effective_temperature,
+                        top_p=effective_top_p,
+                        max_tokens=effective_max_tokens,
+                        tools=None,
+                        tool_choice="none"
+                    ):
+                        full_content += chunk
+                        chunk_data = {"type": "chunk", "content": chunk}
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        await asyncio.sleep(0)
+                else:
+                    # Text-only streaming with history
+                    for chunk in llm_service.process_message_stream(
+                        session_id=session_key_value,
+                        system_prompt=system_prompt_value,
+                        user_message=payload.content,
+                        temperature=effective_temperature,
+                        top_p=effective_top_p,
+                        max_tokens=effective_max_tokens,
+                        use_tools=False
+                    ):
+                        full_content += chunk
+                        chunk_data = {"type": "chunk", "content": chunk}
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        await asyncio.sleep(0)  # Allow other tasks to run
                     
             else:
                 # MQTT mode: Get full response, then simulate streaming
@@ -768,3 +810,95 @@ async def upload_document(
         # Clean up temporary file
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+
+@router.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Upload an image and (optionally) extract text using OCR.
+
+    Returns:
+        {
+          "filename": original filename,
+          "stored_filename": name stored on server,
+          "url": accessible URL under /uploads/,
+          "ocr_text": extracted text (may be empty),
+          "ocr_length": length of extracted text,
+          "has_text": bool indicating if OCR produced non-empty text
+        }
+
+    Notes:
+        - OCR uses pytesseract + Pillow if available; otherwise returns empty text.
+        - For security, the image is re-saved via Pillow to ensure it's a valid image and strip any embedded metadata.
+        - Supported formats: png, jpg, jpeg, webp, gif (gif: first frame only for OCR).
+    """
+    import os
+    import uuid as _uuid
+    import tempfile
+
+    # Validate content type / extension
+    filename = file.filename or "uploaded_image"
+    ext = filename.split(".")[-1].lower() if "." in filename else ""
+    allowed = {"png", "jpg", "jpeg", "webp", "gif"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported image type. Use PNG/JPG/JPEG/WEBP/GIF.")
+
+    # Read file content to temp
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    ocr_text = ""
+    stored_filename = f"img_{_uuid.uuid4().hex}.{ext}"
+    uploads_dir = "uploads"  # Must match mount in main.py
+    os.makedirs(uploads_dir, exist_ok=True)
+    final_path = os.path.join(uploads_dir, stored_filename)
+
+    try:
+        try:
+            from PIL import Image
+            # Open & normalize image, convert to RGB (avoid issues with GIF/P modes)
+            img = Image.open(tmp_path)
+            if img.format == "GIF":
+                try:
+                    img.seek(0)  # First frame for OCR
+                except Exception:  # pragma: no cover
+                    pass
+            # Convert to RGB to standardize
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGB")
+            img.save(final_path, optimize=True)
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Image processing requires Pillow. Please install pillow.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid image: {exc}")
+
+        # Attempt OCR (optional)
+        try:
+            import pytesseract
+            from PIL import Image as _Img
+            ocr_text = pytesseract.image_to_string(_Img.open(final_path)) or ""
+        except ImportError:
+            # OCR optional; just skip if not installed
+            ocr_text = ""
+        except Exception:
+            # Any OCR runtime errors should not block upload
+            ocr_text = ""
+
+        ocr_text = ocr_text.strip()
+
+        return {
+            "filename": filename,
+            "stored_filename": stored_filename,
+            "url": f"/uploads/{stored_filename}",
+            "ocr_text": ocr_text,
+            "ocr_length": len(ocr_text),
+            "has_text": bool(ocr_text),
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)

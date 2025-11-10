@@ -210,7 +210,97 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
   
   const renderInlineFormatting = (text: string) => {
-    // Handle inline code
+    // First, render markdown images and image URLs
+    const elements: (string | JSX.Element)[] = []
+
+    // Helper to push text with inline code formatting later
+    const pushFormattedText = (segment: string) => {
+      // Handle inline code
+      const inlineCodeRegex = /`([^`]+)`/g
+      const parts: (string | JSX.Element)[] = []
+      let lastIndex = 0
+      let match
+      while ((match = inlineCodeRegex.exec(segment)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(segment.substring(lastIndex, match.index))
+        }
+        parts.push(
+          <code
+            key={`inline-${lastIndex}`}
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85em',
+              border: '1px solid rgba(148,163,184,0.2)'
+            }}
+          >
+            {match[1]}
+          </code>
+        )
+        lastIndex = match.index + match[0].length
+      }
+      if (lastIndex < segment.length) parts.push(segment.substring(lastIndex))
+      elements.push(...parts)
+    }
+
+    // Regex for markdown images: ![alt](url)
+    const imgMd = /!\[([^\]]*)\]\(([^)]+)\)/g
+    // Regex for bare image URLs (including local /uploads paths)
+    const imgUrl = /(https?:\/\/[^\s)]+\.(?:png|jpe?g|gif|webp|svg)|\/uploads\/[^\s)]+\.(?:png|jpe?g|gif|webp|svg))/ig
+
+    let last = 0
+    let mdMatch
+    // First split by markdown image tags
+    while ((mdMatch = imgMd.exec(text)) !== null) {
+      if (mdMatch.index > last) {
+        const before = text.substring(last, mdMatch.index)
+        // Within this segment, also render bare image URLs
+        let urlLast = 0
+        let urlMatch
+        while ((urlMatch = imgUrl.exec(before)) !== null) {
+          if (urlMatch.index > urlLast) pushFormattedText(before.substring(urlLast, urlMatch.index))
+          const url = urlMatch[0]
+          elements.push(
+            <div key={`imgurl-${mdMatch.index}-${urlLast}`} style={{ margin: '6px 0' }}>
+              <img src={url} alt="image" style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(148,163,184,0.25)' }} />
+            </div>
+          )
+          urlLast = urlMatch.index + urlMatch[0].length
+        }
+        if (urlLast < before.length) pushFormattedText(before.substring(urlLast))
+      }
+      const alt = mdMatch[1] || 'image'
+      const url = mdMatch[2]
+      elements.push(
+        <div key={`imgmd-${mdMatch.index}`} style={{ margin: '6px 0' }}>
+          <img src={url} alt={alt} style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(148,163,184,0.25)' }} />
+        </div>
+      )
+      last = mdMatch.index + mdMatch[0].length
+    }
+    if (last < text.length) {
+      const tail = text.substring(last)
+      // Handle bare image URLs in tail
+      let urlLast = 0
+      let urlMatch
+      while ((urlMatch = imgUrl.exec(tail)) !== null) {
+        if (urlMatch.index > urlLast) pushFormattedText(tail.substring(urlLast, urlMatch.index))
+        const url = urlMatch[0]
+        elements.push(
+          <div key={`imgtail-${last}-${urlLast}`} style={{ margin: '6px 0' }}>
+            <img src={url} alt="image" style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(148,163,184,0.25)' }} />
+          </div>
+        )
+        urlLast = urlMatch.index + urlMatch[0].length
+      }
+      if (urlLast < tail.length) pushFormattedText(tail.substring(urlLast))
+    }
+
+    if (elements.length) return elements
+
+    // Fallback to original simple inline code formatting
     const inlineCodeRegex = /`([^`]+)`/g
     const boldRegex = /\*\*(.+?)\*\*/g
     const italicRegex = /\*(.+?)\*/g
@@ -390,7 +480,7 @@ export default function ChatStudio() {
   const [savingPrompt, setSavingPrompt] = useState<boolean>(false)
   const [streamingMessageId, setStreamingMessageId] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(!isMobile)
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string }>>([])
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; content?: string; imageUrl?: string }>>([])
   const [uploading, setUploading] = useState<boolean>(false)
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -745,7 +835,20 @@ export default function ChatStudio() {
 
   const handleSendMessage = async (text?: string) => {
     if (!selectedSession || !sessionDraft) return
-    const content = (text ?? inputValue).trim()
+    const base = (text ?? inputValue).trim()
+    // Append attachments to the outgoing content (documents as text, images as markdown)
+    const attachmentChunks: string[] = []
+    for (const f of uploadedFiles) {
+      if (f.imageUrl) {
+        attachmentChunks.push(`![${f.name}](${f.imageUrl})`)
+        if (f.content) {
+          attachmentChunks.push(`(OCR)\n${f.content}`)
+        }
+      } else if (f.content) {
+        attachmentChunks.push(`[File: ${f.name}]\n${f.content}`)
+      }
+    }
+    const content = [base, ...attachmentChunks].filter(Boolean).join('\n\n')
     if (!content) return
     if (sending) return
 
@@ -753,8 +856,9 @@ export default function ChatStudio() {
     setErrorMessage(null)
     const optimisticId = appendOptimisticMessage(content)
     
-    // Clear input immediately after sending
-    setInputValue('')
+  // Clear input and attachments immediately after sending
+  setInputValue('')
+  setUploadedFiles([])
 
     try {
       // Use streaming API
@@ -766,6 +870,8 @@ export default function ChatStudio() {
         {
           session_id: selectedSession.id,
           content,
+          // If backend supports vision, also send image URLs; backend will fall back to text if disabled
+          image_urls: uploadedFiles.filter(f => !!f.imageUrl).map(f => f.imageUrl!) || undefined,
           temperature: sessionDraft.temperature,
           top_p: sessionDraft.top_p,
           max_tokens: sessionDraft.max_tokens,
@@ -917,18 +1023,20 @@ export default function ChatStudio() {
 
     try {
       for (const file of Array.from(files)) {
-        // Check file type
-        const fileExtension = file.name.split('.').pop()?.toLowerCase()
-        if (!['pdf', 'doc', 'docx'].includes(fileExtension || '')) {
-          setErrorMessage(`Unsupported file type: ${file.name}. Only PDF and Word documents are supported.`)
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || ''
+        const isDocument = ['pdf', 'doc', 'docx'].includes(fileExtension)
+        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension)
+
+        if (!isDocument && !isImage) {
+          setErrorMessage(`Unsupported file type: ${file.name}. Allowed: PDF, DOC, DOCX, PNG, JPG, JPEG, GIF, WEBP.`)
           continue
         }
 
         const formData = new FormData()
         formData.append('file', file)
 
-        // Upload to backend
-        const response = await fetch('/api/chatbot/upload-document', {
+        const endpoint = isDocument ? '/api/chatbot/upload-document' : '/api/chatbot/upload-image'
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -937,19 +1045,23 @@ export default function ChatStudio() {
         })
 
         if (!response.ok) {
-          throw new Error(`Failed to upload ${file.name}`)
+          const errText = await response.text()
+          throw new Error(`Failed to upload ${file.name}: ${errText}`)
         }
 
         const data = await response.json()
-        
-        // Add extracted text to uploaded files
-        setUploadedFiles(prev => [...prev, { name: file.name, content: data.text }])
-        
-        // Optionally, append to input
-        setInputValue(prev => {
-          const fileInfo = `\n\n[File: ${file.name}]\n${data.text}\n`
-          return prev + fileInfo
-        })
+
+        if (isDocument) {
+          setUploadedFiles(prev => [...prev, { name: file.name, content: data.text }])
+          setInputValue(prev => prev + `\n\n[File: ${file.name}]\n${data.text}\n`)
+        } else if (isImage) {
+          setUploadedFiles(prev => [...prev, { name: file.name, content: data.ocr_text, imageUrl: data.url }])
+          if (data.ocr_text) {
+            setInputValue(prev => prev + `\n\n[Image: ${file.name}] (OCR Extracted)\n${data.ocr_text}\n`)
+          } else {
+            setInputValue(prev => prev + `\n\n[Image: ${file.name}] Uploaded. (No OCR text)\n`)
+          }
+        }
       }
     } catch (e: any) {
       setErrorMessage(`File upload failed: ${e.message}`)
@@ -1300,39 +1412,70 @@ export default function ChatStudio() {
             <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px' }}>
               {/* File attachments display */}
               {uploadedFiles.length > 0 && (
-                <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {uploadedFiles.map((file, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        background: 'rgba(129,140,248,0.15)',
-                        border: '1px solid rgba(129,140,248,0.35)',
-                        borderRadius: '8px',
-                        padding: '6px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '0.8rem',
-                        color: '#e2e8f0'
-                      }}
-                    >
-                      <i className="fas fa-file-alt" style={{ color: '#818cf8' }}></i>
-                      <span>{file.name}</span>
-                      <button
-                        onClick={() => handleRemoveUploadedFile(index)}
+                <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {uploadedFiles.map((file, index) => {
+                    const isImage = !!file.imageUrl
+                    return (
+                      <div
+                        key={index}
                         style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#f87171',
-                          cursor: 'pointer',
-                          padding: '0 4px',
-                          fontSize: '1rem'
+                          background: isImage ? 'rgba(94,234,212,0.12)' : 'rgba(129,140,248,0.15)',
+                          border: isImage ? '1px solid rgba(94,234,212,0.35)' : '1px solid rgba(129,140,248,0.35)',
+                          borderRadius: '10px',
+                          padding: '8px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          fontSize: '0.8rem',
+                          color: '#e2e8f0',
+                          position: 'relative',
+                          maxWidth: '240px'
                         }}
                       >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                        {isImage ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ width: '42px', height: '42px', overflow: 'hidden', borderRadius: '6px', border: '1px solid rgba(94,234,212,0.3)' }}>
+                              <img
+                                src={file.imageUrl}
+                                alt={file.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, wordBreak: 'break-word' }}>{file.name}</span>
+                              {file.content && (
+                                <span style={{ fontSize: '0.65rem', color: 'rgba(148,163,184,0.9)', maxHeight: '32px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  OCR: {file.content.slice(0, 40)}{file.content.length > 40 ? '…' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <i className="fas fa-file-alt" style={{ color: '#818cf8' }}></i>
+                            <span style={{ fontWeight: 600, wordBreak: 'break-word' }}>{file.name}</span>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleRemoveUploadedFile(index)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#f87171',
+                            cursor: 'pointer',
+                            padding: '0 6px',
+                            fontSize: '1rem',
+                            position: 'absolute',
+                            top: '4px',
+                            right: '4px'
+                          }}
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
               
@@ -1368,7 +1511,7 @@ export default function ChatStudio() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp"
                     multiple
                     onChange={handleFileUpload}
                     style={{ display: 'none' }}
