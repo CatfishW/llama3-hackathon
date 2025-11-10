@@ -33,8 +33,19 @@ class Settings(BaseSettings):
     LLM_SKIP_THINKING: bool = True
     LLM_MAX_HISTORY_TOKENS: int = 10000
 
+    # Vision configuration
+    LLM_VISION_ENABLED: bool = True  # When True, attempt to send images to VLM
+    LLM_VISION_MODE: str = "auto"    # e.g., "auto", "openai-compatible" (for chat.completions with images)
+
     class Config:
         env_file = ".env"
 
 settings = Settings()
 ALLOWED_ORIGINS: List[str] = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+'''
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+   apt-get update
+'''

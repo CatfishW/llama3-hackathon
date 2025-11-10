@@ -175,7 +175,76 @@ export const chatbotAPI = {
   resetSession: (id: number) => api.post(`/api/chatbot/sessions/${id}/reset`),
   deleteSession: (id: number) => api.delete(`/api/chatbot/sessions/${id}`),
   getMessages: (id: number, limit = 200) => api.get(`/api/chatbot/sessions/${id}/messages?limit=${limit}`),
-  sendMessage: (data: any) => api.post('/api/chatbot/messages', data)
+  sendMessage: (data: any) => api.post('/api/chatbot/messages', data),
+  
+  // Streaming chat - works in both MQTT and SSE modes
+  sendMessageStream: async (
+    data: any,
+    onMetadata: (metadata: any) => void,
+    onChunk: (chunk: string) => void,
+    onComplete: (fullContent: string, assistantMessageId: number) => void,
+    onError: (error: any) => void
+  ) => {
+    const token = localStorage.getItem('token')
+    const url = API_BASE ? `${API_BASE}/api/chatbot/messages/stream` : '/api/chatbot/messages/stream'
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify(data)
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('Response body is not readable')
+      }
+
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        
+        // Keep last incomplete line in buffer
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.type === 'metadata') {
+                onMetadata(data)
+              } else if (data.type === 'chunk') {
+                onChunk(data.content)
+              } else if (data.type === 'done') {
+                onComplete(data.full_content, data.assistant_message_id)
+              } else if (data.type === 'error') {
+                onError(new Error(data.message))
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', line, e)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError(error)
+    }
+  }
 }
 
 // LLM API (Direct inference endpoints)

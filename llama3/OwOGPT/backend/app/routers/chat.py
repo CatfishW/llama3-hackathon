@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -251,11 +251,37 @@ async def send_message(
     session.updated_at = now
     session.last_used_at = now
 
+    # Validate presence of either text or images
+    if (not payload.content or not payload.content.strip()) and not payload.images:
+        raise HTTPException(status_code=400, detail="Either 'content' text or at least one image must be provided")
+
+    metadata_dict: Dict[str, Any] | None = None
+    if payload.images:
+        # Basic validation & size limits (approximate: length of base64 string)
+        MAX_IMAGE_COUNT = 4
+        MAX_IMAGE_SIZE = 4_000_000  # ~4MB base64 length per image (rough approximation)
+        MAX_TOTAL_SIZE = 10_000_000  # ~10MB combined
+        if len(payload.images) > MAX_IMAGE_COUNT:
+            raise HTTPException(status_code=400, detail=f"Too many images (max {MAX_IMAGE_COUNT})")
+        total_len = 0
+        for i, img in enumerate(payload.images):
+            if not isinstance(img, str) or len(img) < 50:
+                raise HTTPException(status_code=400, detail=f"Image {i+1} invalid or too small")
+            if not (img.startswith("data:image") or all(c.isalnum() or c in '+/=\n\r' for c in img[:100])):
+                raise HTTPException(status_code=400, detail=f"Image {i+1} must be base64 or data URL")
+            if len(img) > MAX_IMAGE_SIZE:
+                raise HTTPException(status_code=400, detail=f"Image {i+1} exceeds size limit")
+            total_len += len(img)
+        if total_len > MAX_TOTAL_SIZE:
+            raise HTTPException(status_code=400, detail="Total image payload too large")
+        # Store lightweight metadata referencing number of images (actual base64 omitted to save DB size)
+        metadata_dict = {"image_count": len(payload.images)}
+
     user_message = ChatMessage(
         session_id=session.id,
         role="user",
-        content=payload.content,
-        metadata_json=None,
+        content=payload.content or "(image-only message)",
+        metadata_json=json.dumps(metadata_dict) if metadata_dict else None,
         request_id=None,
         created_at=now,
     )
@@ -269,13 +295,15 @@ async def send_message(
     provider = get_provider()
 
     try:
+        # Extend provider interface to optionally include images list
         resp = await provider.chat(
             session_key=session.session_key,
-            message=payload.content,
+            message=payload.content or "",
             system_prompt=session.system_prompt,
             temperature=effective_temperature,
             top_p=effective_top_p,
             max_tokens=effective_max_tokens,
+            images=payload.images or None,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Timed out waiting for model response")

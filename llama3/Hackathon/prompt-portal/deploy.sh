@@ -19,15 +19,14 @@ NC='\033[0m' # No Color
 BACKEND_PORT=3000
 FRONTEND_PORT=3001
 
-# LLM Communication Mode: 'mqtt' or 'sse'
-LLM_COMM_MODE="mqtt"
-LLM_SERVER_URL="http://localhost:8080"
-
 # Domain configuration - Set these before running if you want automatic domain setup
 USE_DOMAIN=false
 DOMAIN_NAME=""
 SETUP_NGINX=false
 USE_HTTPS=false
+
+# LLM Communication Mode - mqtt or sse
+LLM_COMM_MODE="mqtt"
 
 # Directories
 ROOT_DIR=$(pwd)
@@ -42,6 +41,23 @@ if [ -n "$DEPLOY_DOMAIN" ]; then
     DOMAIN_NAME="$DEPLOY_DOMAIN"
     USE_DOMAIN=true
     echo -e "${GREEN}Using domain from environment: $DOMAIN_NAME${NC}"
+fi
+
+# Ask about LLM Communication Mode
+echo ""
+echo -e "${BLUE}LLM Communication Mode Configuration${NC}"
+echo "Choose how the backend communicates with the LLM:"
+echo "  1) MQTT - Use MQTT broker for communication (traditional mode)"
+echo "  2) SSE  - Use direct HTTP/SSE with llama.cpp server (simplified mode)"
+echo ""
+read -p "Select mode (1 or 2) [default: 1]: " -n 1 -r
+echo
+if [[ $REPLY =~ ^[2]$ ]]; then
+    LLM_COMM_MODE="sse"
+    echo -e "${GREEN}✓ Using SSE mode (direct HTTP/SSE communication)${NC}"
+else
+    LLM_COMM_MODE="mqtt"
+    echo -e "${GREEN}✓ Using MQTT mode (MQTT broker communication)${NC}"
 fi
 
 # Ask about domain name if not set
@@ -108,40 +124,6 @@ else
     fi
 fi
 
-# Ask about LLM communication mode if not set via environment
-if [ -z "$DEPLOY_LLM_MODE" ]; then
-    echo ""
-    echo -e "${BLUE}=== LLM Communication Mode ===${NC}"
-    echo "Choose how the backend will communicate with the LLM:"
-    echo "  1) MQTT - Traditional mode using MQTT broker (requires broker at 47.89.252.2)"
-    echo "  2) SSE  - Direct HTTP/SSE mode (simplified, no broker needed)"
-    echo ""
-    read -p "Select mode (1 for MQTT, 2 for SSE) [1]: " llm_mode_choice
-    
-    if [ "$llm_mode_choice" = "2" ]; then
-        LLM_COMM_MODE="sse"
-        echo -e "${GREEN}✓ Using SSE (Direct HTTP) mode${NC}"
-        
-        # Ask for LLM server URL
-        read -p "Enter LLM server URL [http://localhost:8080]: " llm_url_input
-        if [ -n "$llm_url_input" ]; then
-            LLM_SERVER_URL="$llm_url_input"
-        fi
-        echo -e "${GREEN}✓ LLM Server: $LLM_SERVER_URL${NC}"
-        echo -e "${YELLOW}ℹ  Note: For remote LLM, use reverse SSH tunnel:${NC}"
-        echo -e "${YELLOW}   ssh -R 8080:localhost:8080 user@your-server${NC}"
-    else
-        LLM_COMM_MODE="mqtt"
-        echo -e "${GREEN}✓ Using MQTT mode${NC}"
-        echo -e "${YELLOW}ℹ  MQTT Broker: 47.89.252.2:1883${NC}"
-    fi
-else
-    LLM_COMM_MODE="$DEPLOY_LLM_MODE"
-    if [ -n "$DEPLOY_LLM_SERVER_URL" ]; then
-        LLM_SERVER_URL="$DEPLOY_LLM_SERVER_URL"
-    fi
-fi
-
 echo ""
 echo -e "${GREEN}Detected server IP: $SERVER_IP${NC}"
 if [ "$USE_DOMAIN" = true ]; then
@@ -151,10 +133,6 @@ if [ "$USE_DOMAIN" = true ]; then
     fi
 fi
 echo -e "${GREEN}Using Backend Port: $BACKEND_PORT, Frontend Port: $FRONTEND_PORT${NC}"
-echo -e "${GREEN}LLM Communication Mode: ${LLM_COMM_MODE^^}${NC}"
-if [ "$LLM_COMM_MODE" = "sse" ]; then
-    echo -e "${GREEN}LLM Server URL: $LLM_SERVER_URL${NC}"
-fi
 
 # Function to print colored output
 print_step() {
@@ -254,27 +232,23 @@ else
     echo "CORS_ORIGINS=${CORS_LIST}" >> .env
 fi
 
-# Update LLM communication mode in .env
+# Configure LLM Communication Mode
 if grep -q "LLM_COMM_MODE" .env; then
     sed -i "s|LLM_COMM_MODE=.*|LLM_COMM_MODE=${LLM_COMM_MODE}|" .env
 else
     echo "LLM_COMM_MODE=${LLM_COMM_MODE}" >> .env
 fi
 
-# Update LLM server URL if in SSE mode
-if [ "$LLM_COMM_MODE" = "sse" ]; then
-    if grep -q "LLM_SERVER_URL" .env; then
-        sed -i "s|LLM_SERVER_URL=.*|LLM_SERVER_URL=${LLM_SERVER_URL}|" .env
-    else
-        echo "LLM_SERVER_URL=${LLM_SERVER_URL}" >> .env
-    fi
-fi
-
 echo -e "${GREEN}✓ Backend CORS configured${NC}"
 echo -e "${BLUE}   CORS origins: ${CORS_LIST}${NC}"
-echo -e "${GREEN}✓ LLM communication mode: ${LLM_COMM_MODE^^}${NC}"
+echo -e "${GREEN}✓ LLM Communication Mode: ${LLM_COMM_MODE}${NC}"
+
 if [ "$LLM_COMM_MODE" = "sse" ]; then
-    echo -e "${BLUE}   LLM Server URL: ${LLM_SERVER_URL}${NC}"
+    echo -e "${YELLOW}⚠ SSE mode selected - Make sure your llama.cpp server is running!${NC}"
+    echo -e "${YELLOW}  Default LLM server: http://localhost:8080${NC}"
+    echo -e "${YELLOW}  You can change this in backend/.env (LLM_SERVER_URL)${NC}"
+else
+    echo -e "${BLUE}   MQTT mode - Using MQTT broker for communication${NC}"
 fi
 
 # Check and preserve existing database
@@ -688,6 +662,7 @@ echo ""
 echo "=================================="
 echo -e "${GREEN}DEPLOYMENT SUMMARY${NC}"
 echo "=================================="
+echo -e "📡 LLM Mode: ${GREEN}${LLM_COMM_MODE^^}${NC}"
 
 if [ "$USE_DOMAIN" = true ] && [ "$SETUP_NGINX" = true ]; then
     echo -e "🌐 Domain: ${GREEN}$DOMAIN_NAME${NC}"
@@ -729,6 +704,14 @@ echo "  # or use built-in cleanup in this script on re-run"
 echo "  ./stop_services.sh               # Stop all services"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
+echo "- LLM Communication Mode: $LLM_COMM_MODE"
+if [ "$LLM_COMM_MODE" = "sse" ]; then
+    echo "  → Ensure llama.cpp server is running at http://localhost:8080"
+    echo "  → Configure LLM_SERVER_URL in backend/.env if using a different address"
+else
+    echo "  → Using MQTT broker for LLM communication"
+    echo "  → Check MQTT_* settings in backend/.env if needed"
+fi
 echo "- Firewall configuration has been skipped"
 echo "- Backend secret key has been generated automatically"
 echo "- Existing database is preserved (no data loss)"

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 class LLMProvider:
@@ -11,6 +11,7 @@ class LLMProvider:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         raise NotImplementedError
 

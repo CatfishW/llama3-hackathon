@@ -354,6 +354,8 @@ class ChatMessageSendRequest(BaseModel):
     max_tokens: Optional[int] = None
     system_prompt: Optional[str] = None
     template_id: Optional[int] = None
+    # Optional image URLs for vision models that support image inputs
+    image_urls: Optional[List[str]] = None
 
 
 class ChatMessageSendResponse(BaseModel):

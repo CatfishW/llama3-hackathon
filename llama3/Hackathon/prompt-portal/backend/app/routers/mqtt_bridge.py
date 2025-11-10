@@ -9,7 +9,7 @@ from ..config import settings
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
 
 @router.post("/publish_state")
-def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Fetch the template content to embed into state, so LAM can use it.
     t = db.query(models.PromptTemplate).filter(models.PromptTemplate.id == payload.template_id, models.PromptTemplate.user_id == user.id).first()
     if not t:
@@ -24,8 +24,85 @@ def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = Depend
             "user_id": user.id,
         }
     })
-    publish_state(state)
-    return {"ok": True}
+    
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # In SSE mode, automatically generate and store hint (like MQTT mode does)
+        try:
+            from ..services.llm_service import get_llm_service
+            import json
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            session_id = payload.session_id
+            logger.info(f"[SSE MODE] Auto-generating hint for publish_state, session: {session_id}")
+            
+            llm_service = get_llm_service()
+            
+            # Build system prompt from template
+            system_prompt = t.content
+            
+            # Build user message from game state
+            user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint for navigating the maze."
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            
+            # Generate hint WITHOUT function calling and WITHOUT history
+            # - use_tools=False: llama.cpp doesn't support tools without --jinja flag
+            # - use_history=False: maze game publishes state every 3 seconds, history fills context quickly
+            # The template should contain instructions for JSON response format instead
+            hint_response = llm_service.process_message(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
+                use_history=False  # Disable history - maze game is stateless, state is in each request
+            )
+            logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100] if hint_response else 'None'}...")
+            
+            # Parse response if it's JSON (happens when function calling is used)
+            hint_data = hint_response
+            try:
+                parsed = json.loads(hint_response)
+                if isinstance(parsed, dict):
+                    hint_data = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Response is plain text, use as-is
+                hint_data = {"hint": hint_response}
+            
+            # Ensure hint_data is a dict
+            if not isinstance(hint_data, dict):
+                hint_data = {"hint": str(hint_data)}
+            
+            # Store the hint so it can be retrieved via /last_hint
+            import time
+            hint_data["timestamp"] = time.time()
+            LAST_HINTS[session_id] = hint_data
+            
+            # Also broadcast to WebSocket subscribers if any
+            if session_id in SUBSCRIBERS:
+                import asyncio
+                disconnected = set()
+                for ws in SUBSCRIBERS[session_id]:
+                    try:
+                        await ws.send_json({"hint": hint_data, "session_id": session_id})
+                    except Exception:
+                        disconnected.add(ws)
+                SUBSCRIBERS[session_id] -= disconnected
+            
+            logger.info(f"[SSE MODE] Successfully generated and stored hint for session {session_id}")
+            return {"ok": True, "mode": "sse", "hint_generated": True}
+            
+        except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[SSE MODE] Failed to generate hint in publish_state: {str(e)}")
+            logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
+            # Still return OK so the game doesn't break, but log the error
+            return {"ok": True, "mode": "sse", "hint_generated": False, "error": str(e)}
+    else:
+        # MQTT mode: Publish to MQTT broker
+        publish_state(state)
+        return {"ok": True, "mode": "mqtt"}
 
 @router.get("/last_hint")
 def get_last_hint(session_id: str = Query(..., min_length=1)):
@@ -44,41 +121,114 @@ async def request_hint_endpoint(
     db: Session = Depends(get_db), 
     user=Depends(get_current_user)
 ):
-    """Request a hint for the maze game - returns immediately, hint arrives via polling /last_hint"""
+    """Request a hint for the maze game - works in both MQTT and SSE modes"""
     session_id = payload.get("session_id")
     if not session_id:
         raise HTTPException(400, "session_id is required")
     
     # Optional: verify template ownership if template_id provided
     template_id = payload.get("template_id")
+    template = None
     if template_id:
-        t = db.query(models.PromptTemplate).filter(
+        template = db.query(models.PromptTemplate).filter(
             models.PromptTemplate.id == template_id, 
             models.PromptTemplate.user_id == user.id
         ).first()
-        if not t:
+        if not template:
             raise HTTPException(404, "Template not found or not owned by you")
     
-    # Publish state to MQTT (LAM will process and send hint back)
     state = payload.get("state", {})
     state["sessionId"] = session_id
     
     # Add template info if provided
-    if template_id:
-        t = db.query(models.PromptTemplate).filter(
-            models.PromptTemplate.id == template_id, 
-            models.PromptTemplate.user_id == user.id
-        ).first()
-        if t:
-            state["prompt_template"] = {
-                "title": t.title,
-                "content": t.content,
-                "version": t.version,
-                "user_id": user.id,
-            }
+    if template:
+        state["prompt_template"] = {
+            "title": template.title,
+            "content": template.content,
+            "version": template.version,
+            "user_id": user.id,
+        }
     
-    publish_state(state)
-    return {"ok": True, "session_id": session_id, "message": "Hint request published"}
+    # Handle based on communication mode
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # SSE mode: Generate hint directly and store it
+        try:
+            from ..services.llm_service import get_llm_service
+            import json
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            logger.info(f"[SSE MODE] Processing hint request for session: {session_id}")
+            
+            llm_service = get_llm_service()
+            logger.info("[SSE MODE] LLM service obtained")
+            
+            # Build system prompt from template or default
+            system_prompt = template.content if template else (
+                "You are a Large Action Model (LAM) guiding players through a maze game.\n"
+                "You provide strategic hints and pathfinding advice. Be concise and helpful.\n"
+                'Always respond in JSON format with keys: "hint" (string), "suggestion" (string).'
+            )
+            
+            # Build user message from game state
+            user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            
+            # Generate hint WITHOUT OpenAI tools API and WITHOUT history
+            # - use_tools=False: llama.cpp requires --jinja flag for tools
+            # - use_history=False: maze game is stateless, each request contains full state
+            # The template should contain instructions for JSON response format instead
+            hint_response = llm_service.process_message(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
+                use_history=False  # Disable history - maze game is stateless
+            )
+            logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
+            
+            # Parse response if it's JSON (happens when function calling is used)
+            hint_data = hint_response
+            try:
+                parsed = json.loads(hint_response)
+                if isinstance(parsed, dict):
+                    hint_data = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Response is plain text, use as-is
+                hint_data = {"hint": hint_response}
+            
+            # Ensure hint_data is a dict
+            if not isinstance(hint_data, dict):
+                hint_data = {"hint": str(hint_data)}
+            
+            # Store the hint so it can be retrieved via /last_hint
+            import time
+            hint_data["timestamp"] = time.time()
+            LAST_HINTS[session_id] = hint_data
+            
+            # Also broadcast to WebSocket subscribers if any
+            if session_id in SUBSCRIBERS:
+                import asyncio
+                disconnected = set()
+                for ws in SUBSCRIBERS[session_id]:
+                    try:
+                        await ws.send_json({"hint": hint_data, "session_id": session_id})
+                    except Exception:
+                        disconnected.add(ws)
+                SUBSCRIBERS[session_id] -= disconnected
+            
+            logger.info(f"[SSE MODE] Successfully processed hint, returning response")
+            return {"ok": True, "session_id": session_id, "hint": hint_data, "mode": "sse"}
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"[SSE MODE] Failed to generate hint: {str(e)}")
+            logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
+            raise HTTPException(500, f"Failed to generate hint: {str(e)}")
+    else:
+        # MQTT mode: Publish state and hint will arrive via MQTT
+        publish_state(state)
+        return {"ok": True, "session_id": session_id, "message": "Hint request published", "mode": "mqtt"}
 
 # WebSocket to stream hints in real time
 async def _subscribe_ws(session_id: str, websocket: WebSocket):
@@ -111,7 +261,7 @@ def publish_template_endpoint(
     reset: bool = Query(default=True, description="Reset dialog for the target(s)"),
     db: Session = Depends(get_db), user=Depends(get_current_user)
 ):
-    """Publish the selected or custom template to LAM over MQTT.
+    """Publish the selected or custom template - works in both MQTT and SSE modes.
     If session_id is provided, it overrides globally for that session; otherwise updates global template.
     """
     # payload may contain either a raw template string or a template_id to load from DB
@@ -142,5 +292,11 @@ def publish_template_endpoint(
             "max_breaks": payload.get("max_breaks")
         }
 
-    publish_template(body, session_id=session_id)
-    return {"ok": True}
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # In SSE mode, templates are applied per-request in /request_hint
+        # We can store it in a cache or just acknowledge
+        return {"ok": True, "mode": "sse", "message": "Template will be used in subsequent hint requests"}
+    else:
+        # MQTT mode: Publish to MQTT broker
+        publish_template(body, session_id=session_id)
+        return {"ok": True, "mode": "mqtt"}

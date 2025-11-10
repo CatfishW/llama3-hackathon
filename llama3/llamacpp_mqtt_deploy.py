@@ -2188,5 +2188,26 @@ def main(
 if __name__ == "__main__":
     fire.Fire(main)
 '''
-llama-server -m qwen3-30b-a3b-instruct-2507-Q4_K_M.gguft --host 0.0.0.0 --port 8080 -c 28192 -ngl 35 -t 8 --parallel 8
+llama-server -m qwen3-30b-a3b-instruct-2507-Q4_K_M.gguft --host 0.0.0.0 --port 8080 -c 28192 -ngl 35 -t 8 --parallel 2
+
+SDK_VERSION=1.4.328.1
+cp /VulkanSDK/$SDK_VERSION/Bin/glslc.exe $W64DEVKIT_HOME/bin/
+cp /VulkanSDK/$SDK_VERSION/Lib/vulkan-1.lib $W64DEVKIT_HOME/x86_64-w64-mingw32/lib/
+cp -r /VulkanSDK/$SDK_VERSION/Include/* $W64DEVKIT_HOME/x86_64-w64-mingw32/include/
+cat > $W64DEVKIT_HOME/x86_64-w64-mingw32/lib/pkgconfig/vulkan.pc <<EOF
+Name: Vulkan-Loader
+Description: Vulkan Loader
+Version: $SDK_VERSION
+Libs: -lvulkan-1
+EOF
+cmake -B build -G "Visual Studio 17 2022" -A x64 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_FLAGS_RELEASE="-O1" \
+  -DCMAKE_CXX_FLAGS_RELEASE="-O1" \
+  -DLLAMA_BUILD_TOOLS=ON \
+  -DLLAMA_BUILD_EXAMPLES=OFF \
+  -DLLAMA_BUILD_TESTS=OFF \
+  -DGGML_CUDA=ON \
+  -DLLAMA_BUILD_SERVER=ON \
+  -DLLAMA_CURL=OFF
 '''
