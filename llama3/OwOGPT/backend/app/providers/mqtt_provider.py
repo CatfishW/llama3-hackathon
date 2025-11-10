@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from ..mqtt_client import publish_chat, publish_template_update, publish_session_delete
 from .base import LLMProvider
@@ -14,6 +14,7 @@ class MQTTProvider(LLMProvider):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "sessionId": session_key,
@@ -28,6 +29,9 @@ class MQTTProvider(LLMProvider):
         if max_tokens is not None:
             payload["maxTokens"] = max_tokens
 
+        if images:
+            # Include images in payload as list (raw base64 or data URLs) - downstream subscriber must handle
+            payload["images"] = images
         response = await publish_chat(payload)
         return response
 

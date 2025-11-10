@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Flex, HStack, IconButton, Input, Menu, MenuButton, MenuItem, MenuList, Spinner, Text, VStack } from '@chakra-ui/react'
 import { ArrowUpIcon, AddIcon, DeleteIcon, ChevronDownIcon } from '@chakra-ui/icons'
-import { ChatMessage, ChatSession, createSession, getMessages, listSessions, sendMessage, deleteSession } from '../api'
+import { api, ChatMessage, ChatSession, createSession, getMessages, listSessions, sendMessage, deleteSession } from '../api'
+import { Button, Image } from '@chakra-ui/react'
 
 export default function Chat() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -9,6 +10,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
 
   // SSE optional: not used for content right now; REST returns final message reliably.
 
@@ -76,19 +78,42 @@ export default function Chat() {
 
 
   async function handleSend() {
-    if (!current || !input.trim()) return
-    const content = input
+    if (!current) return
+    const trimmed = input.trim()
+    if (!trimmed && selectedImages.length === 0) return
+    const content = trimmed
     setInput('')
-    append('user', content)
+    const images = selectedImages
+    setSelectedImages([])
+    append('user', content || '(image-only message)')
     setLoading(true)
     try {
-      const resp = await sendMessage(current.id, content)
-      // resp contains session, user_message, assistant_message
-      const assistant = resp?.assistant_message
+      const resp = await sendMessage(current.id, content, images)
+      const assistant = (resp as any)?.assistant_message
       if (assistant?.content) append('assistant', assistant.content)
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleImageFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const arr: string[] = []
+    Array.from(files).forEach(f => {
+      if (!/^image\//.test(f.type)) return
+      const reader = new FileReader()
+      reader.onload = e => {
+        const result = e.target?.result
+        if (typeof result === 'string') {
+          arr.push(result)
+          // When all readers done, update state
+          if (arr.length === Array.from(files).filter(ff => /^image\//.test(ff.type)).length) {
+            setSelectedImages(prev => [...prev, ...arr])
+          }
+        }
+      }
+      reader.readAsDataURL(f)
+    })
   }
 
   async function handleNewSession() {
@@ -144,10 +169,22 @@ export default function Chat() {
             ))}
           </VStack>
         </Box>
-        <HStack p={3} borderTop="1px" borderColor="whiteAlpha.200">
-          <Input placeholder="Send a message" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }} />
-          <IconButton aria-label="send" icon={loading ? <Spinner size="sm" /> : <ArrowUpIcon />} onClick={handleSend} isDisabled={loading || !input.trim()} />
-        </HStack>
+        <VStack align="stretch" p={3} borderTop="1px" borderColor="whiteAlpha.200" spacing={2}>
+          {selectedImages.length > 0 && (
+            <HStack spacing={2} overflowX="auto">
+              {selectedImages.map((src, idx) => (
+                <Box key={idx} position="relative">
+                  <Image src={src} alt={`upload-${idx}`} boxSize="60px" objectFit="cover" borderRadius="md" />
+                </Box>
+              ))}
+            </HStack>
+          )}
+          <HStack>
+            <Input type="file" multiple accept="image/*" onChange={e => handleImageFiles(e.target.files)} />
+            <Input placeholder="Send a message" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }} />
+            <IconButton aria-label="send" icon={loading ? <Spinner size="sm" /> : <ArrowUpIcon />} onClick={handleSend} isDisabled={loading || (!input.trim() && selectedImages.length === 0)} />
+          </HStack>
+        </VStack>
       </Flex>
     </Flex>
   )

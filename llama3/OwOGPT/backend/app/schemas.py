@@ -88,12 +88,13 @@ class ChatMessageOut(BaseModel):
 
 class ChatMessageSendRequest(BaseModel):
     session_id: int
-    content: str = Field(..., min_length=1)
+    content: Optional[str] = None
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
     system_prompt: Optional[str] = None
     template_id: Optional[int] = None
+    images: Optional[List[str]] = None  # List of base64 data URLs or raw base64-encoded image strings
 
 
 class ChatMessageSendResponse(BaseModel):

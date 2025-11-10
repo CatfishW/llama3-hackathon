@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import asyncio
 from openai import OpenAI
 from ..config import settings
@@ -18,11 +18,28 @@ class OpenAIProvider(LLMProvider):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        messages = []
+        messages: List[Dict[str, Any]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": message})
+
+        if images:
+            # Build multi-modal content array for user message
+            content_parts: List[Dict[str, Any]] = []
+            if message:
+                content_parts.append({"type": "text", "text": message})
+            for img in images:
+                # Support raw base64 or data URL; normalize to data URL if not already
+                if img.startswith("data:image"):
+                    data_url = img
+                else:
+                    # assume png if unknown; could attempt mime sniff but keep simple
+                    data_url = f"data:image/png;base64,{img}".strip()
+                content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+            messages.append({"role": "user", "content": content_parts})
+        else:
+            messages.append({"role": "user", "content": message})
 
         resp = await asyncio.to_thread(
             self.client.chat.completions.create,

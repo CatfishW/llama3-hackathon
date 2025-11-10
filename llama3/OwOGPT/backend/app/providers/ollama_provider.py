@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import aiohttp
 from ..config import settings
 from .base import LLMProvider
@@ -14,6 +14,7 @@ class OllamaProvider(LLMProvider):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         url = f"{settings.OLLAMA_HOST}/api/chat"
         body: Dict[str, Any] = {
@@ -23,7 +24,11 @@ class OllamaProvider(LLMProvider):
         }
         if system_prompt:
             body["messages"].append({"role": "system", "content": system_prompt})
-        body["messages"].append({"role": "user", "content": message})
+        user_message: Dict[str, Any] = {"role": "user", "content": message}
+        if images:
+            # Ollama expects base64 images list
+            user_message["images"] = [img.split(",",1)[1] if img.startswith("data:image") else img for img in images]
+        body["messages"].append(user_message)
         if temperature is not None:
             body["options"] = {"temperature": temperature}
 

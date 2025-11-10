@@ -50,8 +50,10 @@ export async function getMessages(sessionId: number) {
   return data
 }
 
-export async function sendMessage(sessionId: number, content: string) {
-  const { data } = await api.post('/chat/messages', { session_id: sessionId, content })
+export async function sendMessage(sessionId: number, content: string, images?: string[]) {
+  const payload: any = { session_id: sessionId, content }
+  if (images && images.length > 0) payload.images = images
+  const { data } = await api.post('/chat/messages', payload)
   return data
 }
 
