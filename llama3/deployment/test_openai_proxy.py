@@ -23,14 +23,14 @@ def test_chat():
 
 def test_stream():
     print("Streaming:")
-    with client.chat.completions.stream(
+    stream = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": "Write 1 short sentence about proxies"}],
         stream=True,
-    ) as stream:
-        for event in stream:
-            if event.type == "content.delta":
-                print(event.delta, end="", flush=True)
+    )
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end="", flush=True)
     print()
 
 if __name__ == "__main__":

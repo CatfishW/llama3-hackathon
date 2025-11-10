@@ -7,4 +7,4 @@ param(
 )
 
 $env:PYTHONUNBUFFERED = "1"
-uvicorn deployment.openai_compat_server:app --host $BindHost --port $Port
+C:\Users\Tang_\AppData\Roaming\Python\Python310\Scripts\uvicorn.exe deployment.openai_compat_server:app --host $BindHost --port $Port
