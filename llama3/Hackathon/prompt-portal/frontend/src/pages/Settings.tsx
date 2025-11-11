@@ -53,6 +53,22 @@ export default function Settings() {
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
   const [loadingModels, setLoadingModels] = useState(true)
   const [selectingModel, setSelectingModel] = useState(false)
+  
+  // Model management state
+  const [showModelDialog, setShowModelDialog] = useState(false)
+  const [editingModel, setEditingModel] = useState<ModelInfo | null>(null)
+  const [modelForm, setModelForm] = useState({
+    name: '',
+    provider: 'openai',
+    model: '',
+    apiBase: '',
+    apiKey: '',
+    description: '',
+    features: '',
+    maxTokens: 8192,
+    supportsFunctions: true,
+    supportsVision: false
+  })
 
   useEffect(() => {
     loadSettings()
@@ -116,6 +132,88 @@ export default function Settings() {
       setErr(e?.response?.data?.detail || 'Failed to select model')
     } finally {
       setSelectingModel(false)
+    }
+  }
+
+  async function openAddModelDialog() {
+    setEditingModel(null)
+    setModelForm({
+      name: '',
+      provider: 'openai',
+      model: '',
+      apiBase: '',
+      apiKey: '',
+      description: '',
+      features: '',
+      maxTokens: 8192,
+      supportsFunctions: true,
+      supportsVision: false
+    })
+    setShowModelDialog(true)
+  }
+
+  async function openEditModelDialog(model: ModelInfo) {
+    try {
+      // Fetch full config including API key
+      const res = await modelsAPI.getModelConfig(model.name)
+      setEditingModel(model)
+      setModelForm({
+        name: model.name,
+        provider: res.data.provider,
+        model: res.data.model,
+        apiBase: res.data.apiBase,
+        apiKey: res.data.apiKey,
+        description: res.data.description || '',
+        features: (res.data.features || []).join(', '),
+        maxTokens: res.data.maxTokens || 8192,
+        supportsFunctions: res.data.supportsFunctions !== false,
+        supportsVision: res.data.supportsVision === true
+      })
+      setShowModelDialog(true)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Failed to load model config')
+    }
+  }
+
+  async function saveModel() {
+    try {
+      const modelData = {
+        ...modelForm,
+        features: modelForm.features.split(',').map(f => f.trim()).filter(f => f)
+      }
+
+      if (editingModel) {
+        // Update existing model
+        await modelsAPI.updateModel(editingModel.name, modelData)
+        setSuccess(`Successfully updated ${editingModel.name}!`)
+      } else {
+        // Add new model
+        await modelsAPI.addModel(modelData)
+        setSuccess(`Successfully added ${modelForm.name}!`)
+      }
+
+      setShowModelDialog(false)
+      setErr(null)
+      await loadModels()
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Failed to save model')
+    }
+  }
+
+  async function deleteModelHandler(modelName: string) {
+    if (!confirm(`Are you sure you want to delete "${modelName}"? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      await modelsAPI.deleteModel(modelName)
+      setSuccess(`Successfully deleted ${modelName}!`)
+      setErr(null)
+      await loadModels()
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Failed to delete model')
     }
   }
 
@@ -319,7 +417,22 @@ export default function Settings() {
             <p style={{ marginTop: '10px', opacity: '0.7' }}>Loading models...</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+          <>
+            <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={openAddModelDialog}
+                style={{
+                  ...buttonStyle('primary'),
+                  padding: '10px 20px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <i className="fas fa-plus" style={{ marginRight: '8px' }}></i>
+                Add Custom Model
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
             {availableModels.map((model) => {
               const isSelected = selectedModel?.name === model.name
               
@@ -393,7 +506,7 @@ export default function Settings() {
                   )}
 
                   {model.features && model.features.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px', marginBottom: '12px' }}>
                       {model.features.slice(0, 4).map((feature, idx) => (
                         <span
                           key={idx}
@@ -411,10 +524,66 @@ export default function Settings() {
                       ))}
                     </div>
                   )}
+
+                  {/* Model management buttons */}
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px' }}
+                    onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => openEditModelDialog(model)}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        color: 'white',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(78, 205, 196, 0.2)'
+                        e.currentTarget.style.borderColor = '#4ecdc4'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
+                      }}
+                    >
+                      <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteModelHandler(model.name)}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255, 107, 107, 0.1)',
+                        border: '1px solid rgba(255, 107, 107, 0.3)',
+                        color: '#ff6b6b',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 107, 107, 0.2)'
+                        e.currentTarget.style.borderColor = '#ff6b6b'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
+                        e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
+                      }}
+                    >
+                      <i className="fas fa-trash" style={{ marginRight: '6px' }}></i>
+                      Delete
+                    </button>
+                  </div>
                 </div>
               )
             })}
           </div>
+          </>
         )}
       </div>
 
@@ -681,6 +850,223 @@ export default function Settings() {
           Delete Account
         </button>
       </div>
+
+      {/* Model Configuration Dialog */}
+      {showModelDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px',
+        }}>
+          <div style={{
+            ...cardStyle,
+            maxWidth: '600px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            position: 'relative',
+          }}>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <i className={editingModel ? "fas fa-edit" : "fas fa-plus-circle"}></i>
+              {editingModel ? 'Edit Model' : 'Add Custom Model'}
+            </h3>
+
+            <div style={{ display: 'grid', gap: '20px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Model Name *
+                </label>
+                <input
+                  type="text"
+                  value={modelForm.name}
+                  onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
+                  placeholder="e.g., GPT-4 Turbo"
+                  style={inputStyle}
+                  disabled={editingModel !== null}
+                />
+                {editingModel && (
+                  <small style={{ color: '#888', fontSize: '0.85rem' }}>Model name cannot be changed</small>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Provider *
+                </label>
+                <input
+                  type="text"
+                  value={modelForm.provider}
+                  onChange={(e) => setModelForm({ ...modelForm, provider: e.target.value })}
+                  placeholder="e.g., OpenAI, OpenRouter"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Model ID *
+                </label>
+                <input
+                  type="text"
+                  value={modelForm.model}
+                  onChange={(e) => setModelForm({ ...modelForm, model: e.target.value })}
+                  placeholder="e.g., gpt-4-turbo-preview"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  API Base URL *
+                </label>
+                <input
+                  type="url"
+                  value={modelForm.apiBase}
+                  onChange={(e) => setModelForm({ ...modelForm, apiBase: e.target.value })}
+                  placeholder="e.g., https://api.openai.com/v1"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  API Key *
+                </label>
+                <input
+                  type="password"
+                  value={modelForm.apiKey}
+                  onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
+                  placeholder="Enter API key"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Description
+                </label>
+                <textarea
+                  value={modelForm.description}
+                  onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })}
+                  placeholder="Brief description of this model"
+                  rows={3}
+                  style={{
+                    ...inputStyle,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Features (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={modelForm.features}
+                  onChange={(e) => setModelForm({ ...modelForm, features: e.target.value })}
+                  placeholder="e.g., Fast responses, Code generation"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                    Max Tokens
+                  </label>
+                  <input
+                    type="number"
+                    value={modelForm.maxTokens}
+                    onChange={(e) => setModelForm({ ...modelForm, maxTokens: parseInt(e.target.value) || 0 })}
+                    placeholder="e.g., 4096"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                    Capabilities
+                  </label>
+                  <div style={{ display: 'flex', gap: '15px', marginTop: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={modelForm.supportsFunctions}
+                        onChange={(e) => setModelForm({ ...modelForm, supportsFunctions: e.target.checked })}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      Functions
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={modelForm.supportsVision}
+                        onChange={(e) => setModelForm({ ...modelForm, supportsVision: e.target.checked })}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      Vision
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '15px', marginTop: '30px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowModelDialog(false);
+                  setEditingModel(null);
+                  setModelForm({
+                    name: '',
+                    provider: '',
+                    model: '',
+                    apiBase: '',
+                    apiKey: '',
+                    description: '',
+                    features: '',
+                    maxTokens: 4096,
+                    supportsFunctions: false,
+                    supportsVision: false,
+                  });
+                }}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveModel}
+                disabled={!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey}
+                style={{
+                  ...buttonStyle('primary'),
+                  opacity: (!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey) ? 0.5 : 1,
+                }}
+              >
+                <i className="fas fa-save" style={{ marginRight: '8px' }}></i>
+                {editingModel ? 'Update Model' : 'Add Model'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
