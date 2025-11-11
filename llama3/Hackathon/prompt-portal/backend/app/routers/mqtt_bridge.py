@@ -13,18 +13,19 @@ logger = logging.getLogger(__name__)
 
 # Track player positions to detect if stuck
 _player_position_history = {}
+_emergency_hint_cooldown = {}  # Track when last emergency hint was sent
 
-def is_player_stuck(session_id: str, current_pos: list, stuck_threshold: int = 3) -> bool:
+def is_player_stuck(session_id: str, current_pos: list, stuck_threshold: int = 8) -> bool:
     """
     Detect if player is stuck (same position for N consecutive updates).
     
     Args:
         session_id: Game session ID
         current_pos: Current player position [x, y]
-        stuck_threshold: Number of updates before considering stuck
+        stuck_threshold: Number of updates before considering stuck (increased to 8)
         
     Returns:
-        True if player appears stuck
+        True if player appears stuck AND not in cooldown
     """
     if session_id not in _player_position_history:
         _player_position_history[session_id] = []
@@ -32,8 +33,8 @@ def is_player_stuck(session_id: str, current_pos: list, stuck_threshold: int = 3
     history = _player_position_history[session_id]
     history.append(current_pos)
     
-    # Keep only last 10 positions
-    if len(history) > 10:
+    # Keep only last 15 positions
+    if len(history) > 15:
         history.pop(0)
     
     # Check if last N positions are all the same
@@ -41,22 +42,31 @@ def is_player_stuck(session_id: str, current_pos: list, stuck_threshold: int = 3
         last_positions = history[-stuck_threshold:]
         is_stuck = all(pos == last_positions[0] for pos in last_positions)
         if is_stuck:
+            # Check cooldown - only trigger emergency once per 30 seconds
+            now = time.time()
+            last_emergency = _emergency_hint_cooldown.get(session_id, 0)
+            if now - last_emergency < 30:
+                logger.info(f"[STUCK DETECTION] Player stuck at {current_pos} but in cooldown")
+                return False
+            
             logger.warning(f"[STUCK DETECTION] Player stuck at {current_pos} for {stuck_threshold} updates")
-        return is_stuck
+            _emergency_hint_cooldown[session_id] = now
+            return True
     
     return False
 
-def get_aggressive_hint(state: dict) -> str:
+def get_aggressive_hint(state: dict) -> dict:
     """
-    Generate an aggressive hint when player is stuck.
+    Generate an aggressive hint with a simple path when player is stuck.
     Bypasses normal hint generation to provide immediate help.
+    Returns a dict with hint text and a simple path.
     """
     try:
         player_pos = state.get("playerPosition", state.get("player_pos"))
         exit_pos = state.get("exitPosition", state.get("exit_pos"))
         
         if not player_pos or not exit_pos:
-            return "Try moving in any direction to escape the area."
+            return {"hint": "Try moving in any direction to escape the area.", "path": []}
         
         # Calculate direction to exit
         dx = exit_pos[0] - player_pos[0]
@@ -73,14 +83,33 @@ def get_aggressive_hint(state: dict) -> str:
         elif dy < 0:
             directions.append("UP")
         
+        # Generate a simple one-step path in the right direction
+        simple_path = []
+        next_x, next_y = player_pos[0], player_pos[1]
+        
+        # Try to move one step toward exit
+        if dx != 0:
+            next_x = player_pos[0] + (1 if dx > 0 else -1)
+        elif dy != 0:
+            next_y = player_pos[1] + (1 if dy > 0 else -1)
+        
+        simple_path = [[player_pos[0], player_pos[1]], [next_x, next_y]]
+        
         if directions:
             direction_str = " and ".join(directions)
-            return f"🆘 EMERGENCY: Move {direction_str} to reach the exit at {exit_pos}!"
+            hint_text = f"🆘 EMERGENCY: Move {direction_str} to reach the exit at {exit_pos}!"
         else:
-            return "🎯 You are at the exit! Move any direction to try to find it!"
+            hint_text = "🎯 You are at the exit! Move any direction to try to find it!"
+        
+        return {
+            "hint": hint_text,
+            "path": simple_path,
+            "show_path": True,
+            "emergency": True
+        }
     except Exception as e:
         logger.error(f"Error generating aggressive hint: {e}")
-        return "Try moving to find the exit."
+        return {"hint": "Try moving to find the exit.", "path": []}
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
 
@@ -113,11 +142,9 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
             player_pos = state.get("playerPosition", state.get("player_pos"))
             if player_pos and is_player_stuck(session_id, player_pos):
                 logger.warning(f"[STUCK DETECTION] Providing emergency help for session {session_id}")
-                # Provide emergency hint when stuck
-                emergency_hint = get_aggressive_hint(state)
-                hint_data = {"hint": emergency_hint}
+                # Provide emergency hint when stuck (now returns a dict with path)
+                hint_data = get_aggressive_hint(state)
                 hint_data["timestamp"] = time.time()
-                hint_data["emergency"] = True
                 LAST_HINTS[session_id] = hint_data
                 
                 # Broadcast to WebSocket subscribers
@@ -258,11 +285,9 @@ async def request_hint_endpoint(
             player_pos = state.get("playerPosition", state.get("player_pos"))
             if player_pos and is_player_stuck(session_id, player_pos):
                 logger.warning(f"[STUCK DETECTION] Providing emergency help for session {session_id}")
-                # Provide emergency hint when stuck
-                emergency_hint = get_aggressive_hint(state)
-                hint_data = {"hint": emergency_hint}
+                # Provide emergency hint when stuck (now returns a dict with path)
+                hint_data = get_aggressive_hint(state)
                 hint_data["timestamp"] = time.time()
-                hint_data["emergency"] = True
                 LAST_HINTS[session_id] = hint_data
                 
                 # Broadcast to WebSocket subscribers
