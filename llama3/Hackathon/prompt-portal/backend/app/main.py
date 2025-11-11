@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ALLOWED_ORIGINS, settings
 from .database import Base, engine
 from . import models
-from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings as settings_router, users, chatbot, announcements, driving, llm, health
+from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings as settings_router, users, chatbot, announcements, driving, llm, health, models as models_router
 from .mqtt import start_mqtt, stop_mqtt
 from .websocket import websocket_endpoint
 from .services.llm_client import init_llm_service
@@ -47,6 +47,7 @@ app.include_router(settings_router.router)
 app.include_router(chatbot.router)
 app.include_router(announcements.router)
 app.include_router(llm.router)
+app.include_router(models_router.router)
 app.include_router(health.router)
 
 # WebSocket endpoint

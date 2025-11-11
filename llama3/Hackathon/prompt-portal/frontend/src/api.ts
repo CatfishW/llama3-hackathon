@@ -406,3 +406,10 @@ export const announcementsAPI = {
   delete: (id: number) => api.delete(`/api/announcements/${id}`),
   toggle: (id: number) => api.put(`/api/announcements/${id}/toggle`)
 }
+
+// Models API (Multi-model support)
+export const modelsAPI = {
+  getAvailable: () => api.get('/api/models/available'),
+  getSelected: () => api.get('/api/models/selected'),
+  selectModel: (modelName: string) => api.put('/api/models/select', { model_name: modelName })
+}

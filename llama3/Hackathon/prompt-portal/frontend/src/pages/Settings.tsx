@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { api } from '../api'
+import { api, modelsAPI } from '../api'
 
 type UserSettings = {
   email_notifications: boolean
@@ -11,6 +11,17 @@ type UserSettings = {
   theme: 'dark' | 'light' | 'auto'
   language: string
   timezone: string
+}
+
+type ModelInfo = {
+  name: string
+  provider: string
+  model: string
+  description?: string
+  features: string[]
+  maxTokens?: number
+  supportsFunctions: boolean
+  supportsVision: boolean
 }
 
 export default function Settings() {
@@ -36,9 +47,16 @@ export default function Settings() {
   const [err, setErr] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  
+  // Model selection state
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
+  const [loadingModels, setLoadingModels] = useState(true)
+  const [selectingModel, setSelectingModel] = useState(false)
 
   useEffect(() => {
     loadSettings()
+    loadModels()
   }, [])
 
   useEffect(()=>{ 
@@ -61,6 +79,43 @@ export default function Settings() {
       setErr('Failed to load settings')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadModels() {
+    try {
+      setLoadingModels(true)
+      const [availableRes, selectedRes] = await Promise.all([
+        modelsAPI.getAvailable(),
+        modelsAPI.getSelected()
+      ])
+      setAvailableModels(availableRes.data)
+      setSelectedModel(selectedRes.data)
+    } catch (e) {
+      console.error('Failed to load models:', e)
+    } finally {
+      setLoadingModels(false)
+    }
+  }
+
+  async function selectModelHandler(modelName: string) {
+    try {
+      setSelectingModel(true)
+      await modelsAPI.selectModel(modelName)
+      
+      // Update selected model locally
+      const model = availableModels.find(m => m.name === modelName)
+      if (model) {
+        setSelectedModel(model)
+      }
+      
+      setSuccess(`Successfully switched to ${modelName}!`)
+      setErr(null)
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Failed to select model')
+    } finally {
+      setSelectingModel(false)
     }
   }
 
@@ -247,6 +302,121 @@ export default function Settings() {
           {err || success}
         </div>
       )}
+
+      {/* AI Model Selection */}
+      <div style={cardStyle}>
+        <h3 style={{ fontSize: '1.5rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <i className="fas fa-robot"></i>
+          AI Model Selection
+        </h3>
+        <p style={{ fontSize: '0.95rem', opacity: '0.8', marginBottom: '25px' }}>
+          Choose the AI model that powers your conversations and interactions
+        </p>
+
+        {loadingModels ? (
+          <div style={{ textAlign: 'center', padding: '30px' }}>
+            <i className="fas fa-spinner fa-spin" style={{ fontSize: '1.5rem', opacity: '0.6' }}></i>
+            <p style={{ marginTop: '10px', opacity: '0.7' }}>Loading models...</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+            {availableModels.map((model) => {
+              const isSelected = selectedModel?.name === model.name
+              
+              return (
+                <div
+                  key={model.name}
+                  onClick={() => !selectingModel && selectModelHandler(model.name)}
+                  style={{
+                    background: isSelected ? 'linear-gradient(135deg, rgba(78, 205, 196, 0.2), rgba(68, 160, 141, 0.2))' : 'rgba(255, 255, 255, 0.05)',
+                    border: isSelected ? '2px solid #4ecdc4' : '2px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    cursor: selectingModel ? 'wait' : 'pointer',
+                    transition: 'all 0.3s ease',
+                    position: 'relative' as const,
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!selectingModel && !isSelected) {
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.borderColor = 'rgba(78, 205, 196, 0.5)'
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+                    }
+                  }}
+                >
+                  {isSelected && (
+                    <div style={{
+                      position: 'absolute' as const,
+                      top: '10px',
+                      right: '10px',
+                      background: '#4ecdc4',
+                      borderRadius: '50%',
+                      width: '30px',
+                      height: '30px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 8px rgba(78, 205, 196, 0.4)'
+                    }}>
+                      <i className="fas fa-check" style={{ fontSize: '0.9rem', color: 'white' }}></i>
+                    </div>
+                  )}
+                  
+                  <div style={{ marginBottom: '12px' }}>
+                    <h4 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '5px' }}>
+                      {model.name}
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', opacity: '0.7' }}>
+                      <i className="fas fa-server" style={{ fontSize: '0.75rem' }}></i>
+                      <span>{model.provider}</span>
+                      {model.supportsVision && (
+                        <>
+                          <span>•</span>
+                          <i className="fas fa-eye" title="Vision Support"></i>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {model.description && (
+                    <p style={{ fontSize: '0.9rem', opacity: '0.8', marginBottom: '12px', lineHeight: '1.4' }}>
+                      {model.description}
+                    </p>
+                  )}
+
+                  {model.features && model.features.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                      {model.features.slice(0, 4).map((feature, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            background: 'rgba(78, 205, 196, 0.2)',
+                            color: '#4ecdc4',
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '500'
+                          }}
+                        >
+                          {feature}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Privacy Settings */}
       <div style={cardStyle}>

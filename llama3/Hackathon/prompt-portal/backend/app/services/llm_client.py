@@ -202,6 +202,7 @@ class LLMClient:
     """
     HTTP client for LLM inference using OpenAI-compatible API.
     Supports llama.cpp server, vLLM, and other OpenAI-compatible endpoints.
+    Now supports multi-model configuration with dynamic API switching.
     """
     
     def __init__(
@@ -211,7 +212,8 @@ class LLMClient:
         default_temperature: float = 0.6,
         default_top_p: float = 0.9,
         default_max_tokens: int = 512,
-        skip_thinking: bool = True
+        skip_thinking: bool = True,
+        api_key: str = "not-needed"
     ):
         """
         Initialize LLM client.
@@ -223,6 +225,7 @@ class LLMClient:
             default_top_p: Default top-p sampling
             default_max_tokens: Default max tokens to generate
             skip_thinking: Disable thinking mode (adds /no_think directive)
+            api_key: API key for authentication (default: "not-needed")
         """
         self.server_url = server_url.rstrip('/')
         self.timeout = timeout
@@ -230,15 +233,16 @@ class LLMClient:
         self.default_top_p = default_top_p
         self.default_max_tokens = default_max_tokens
         self.skip_thinking = skip_thinking
+        self.api_key = api_key
         
         logger.info(f"Initializing LLM client: {self.server_url}")
         
         # Initialize OpenAI client with LLM server as base URL when available
         if _OPENAI_AVAILABLE and OpenAI is not None:
-            # Note: api_key is required by OpenAI client but not used by llama.cpp
+            # Note: api_key is required by OpenAI client
             self.client = OpenAI(
                 base_url=self.server_url,
-                api_key="not-needed",
+                api_key=self.api_key,
                 timeout=self.timeout
             )
         else:
@@ -253,6 +257,27 @@ class LLMClient:
             )
         else:
             logger.info("LLM client initialized successfully")
+    
+    def update_config(self, server_url: str, api_key: str):
+        """
+        Update client configuration for a different model.
+        
+        Args:
+            server_url: New API base URL
+            api_key: New API key
+        """
+        self.server_url = server_url.rstrip('/')
+        self.api_key = api_key
+        
+        if _OPENAI_AVAILABLE and OpenAI is not None:
+            self.client = OpenAI(
+                base_url=self.server_url,
+                api_key=self.api_key,
+                timeout=self.timeout
+            )
+            logger.info(f"Updated LLM client configuration: {self.server_url}")
+        else:
+            logger.warning("OpenAI package not available, cannot update client")
     
     def _test_connection(self) -> bool:
         """Test connection to LLM server."""
@@ -777,6 +802,47 @@ def get_llm_client() -> LLMClient:
     if _llm_client is None:
         raise RuntimeError("LLM service not initialized. Call init_llm_service first.")
     return _llm_client
+
+
+def get_llm_client_for_user(user_model_name: Optional[str] = None) -> LLMClient:
+    """
+    Get an LLM client configured for a specific user's selected model.
+    
+    Args:
+        user_model_name: Name of the model selected by the user. If None, uses default.
+        
+    Returns:
+        LLM client configured with the user's selected model
+    """
+    from ..models_config import get_models_manager
+    
+    models_manager = get_models_manager()
+    
+    # Get the model configuration
+    if user_model_name:
+        model_config = models_manager.get_model_by_name(user_model_name)
+        if not model_config:
+            logger.warning(f"Model '{user_model_name}' not found, using default")
+            model_config = models_manager.get_all_models()[0]
+    else:
+        # Use first available model as default
+        models = models_manager.get_all_models()
+        if not models:
+            raise RuntimeError("No models configured")
+        model_config = models[0]
+    
+    # Create a new client with the model's configuration
+    client = LLMClient(
+        server_url=model_config.apiBase,
+        api_key=model_config.apiKey,
+        timeout=300,
+        default_temperature=0.6,
+        default_top_p=0.9,
+        default_max_tokens=512,
+        skip_thinking=True
+    )
+    
+    return client
 
 
 def get_session_manager() -> SessionManager:

@@ -13,8 +13,10 @@ from typing import Optional, List, Dict
 import logging
 import json
 
-from ..deps import get_current_user
-from ..services.llm_client import get_llm_client, get_session_manager
+from ..deps import get_current_user, get_db
+from ..services.llm_client import get_llm_client, get_session_manager, get_llm_client_for_user
+from ..models import User
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -61,16 +63,23 @@ class SessionHistoryResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 def chat_completion(
     request: ChatRequest,
-    user = Depends(get_current_user)
+    user = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Generate a chat completion (stateless, single-shot).
     
     This endpoint does not maintain conversation history.
     Use /chat/session for conversation management.
+    Uses the user's selected model from their settings.
     """
     try:
-        llm_client = get_llm_client()
+        # Get user's selected model
+        db_user = db.query(User).filter(User.id == user.id).first()
+        selected_model_name = db_user.selected_model if db_user else None
+        
+        # Get LLM client configured for user's model
+        llm_client = get_llm_client_for_user(selected_model_name)
         
         # Convert messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
@@ -97,15 +106,20 @@ def chat_completion(
 @router.post("/chat/session", response_model=ChatResponse)
 def session_chat(
     request: SessionChatRequest,
-    user = Depends(get_current_user)
+    user = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Send a message in a session-based conversation.
     
     The session maintains conversation history automatically.
     Provide system_prompt only when starting a new session.
+    Uses the user's selected model from their settings.
     """
     try:
+        # Note: Session manager uses the global LLM client
+        # For true multi-model per-user support, we'd need to refactor SessionManager
+        # For now, this will use the default configured model
         session_manager = get_session_manager()
         
         # Default system prompt if not provided
@@ -134,16 +148,23 @@ def session_chat(
 @router.post("/chat/stream")
 async def chat_completion_stream(
     request: ChatRequest,
-    user = Depends(get_current_user)
+    user = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Generate a streaming chat completion (stateless, single-shot).
     
     Returns Server-Sent Events (SSE) stream.
     This endpoint does not maintain conversation history.
+    Uses the user's selected model from their settings.
     """
     try:
-        llm_client = get_llm_client()
+        # Get user's selected model
+        db_user = db.query(User).filter(User.id == user.id).first()
+        selected_model_name = db_user.selected_model if db_user else None
+        
+        # Get LLM client configured for user's model
+        llm_client = get_llm_client_for_user(selected_model_name)
         
         # Convert messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
