@@ -308,6 +308,9 @@ async def completions(req: CompletionRequest, _: Any = Depends(verify_auth)):
                 "X-Accel-Buffering": "no",
             },
         )
+    
+    
+    
 
     # non-streaming
     try:

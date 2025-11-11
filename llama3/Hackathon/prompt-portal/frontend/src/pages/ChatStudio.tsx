@@ -85,9 +85,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   const isMobile = useIsMobile()
   const style = bubbleStyles[message.role] || bubbleStyles.assistant
   const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [copiedIndex, setCopiedIndex] = useState<number | string | null>(null)
 
-  const copyToClipboard = async (text: string, index: number) => {
+  const copyToClipboard = async (text: string, index: number | string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedIndex(index)
@@ -102,14 +102,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     
     // Detect and render code blocks with syntax highlighting
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-    const inlineCodeRegex = /`([^`]+)`/g
     
     const parts: JSX.Element[] = []
     let lastIndex = 0
     let match
     
     // Process code blocks first
-    const matches: Array<{ type: 'code' | 'inline', start: number, end: number, language?: string, content: string }> = []
+    const matches: Array<{ type: 'code', start: number, end: number, language?: string, content: string }> = []
     
     while ((match = codeBlockRegex.exec(content)) !== null) {
       matches.push({
@@ -124,15 +123,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     // Sort matches by start position
     matches.sort((a, b) => a.start - b.start)
     
-    // Build the content with code blocks
+    // Build the content with code blocks and markdown text
     matches.forEach((match, idx) => {
-      // Add text before code block
+      // Add text before code block with markdown rendering
       if (match.start > lastIndex) {
         const textSegment = content.substring(lastIndex, match.start)
         parts.push(
-          <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {renderInlineFormatting(textSegment)}
-          </span>
+          <div key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {renderMarkdown(textSegment)}
+          </div>
         )
       }
       
@@ -197,63 +196,225 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       lastIndex = match.end
     })
     
-    // Add remaining text
+    // Add remaining text with markdown rendering
     if (lastIndex < content.length) {
       const textSegment = content.substring(lastIndex)
       parts.push(
-        <span key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {renderInlineFormatting(textSegment)}
-        </span>
+        <div key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {renderMarkdown(textSegment)}
+        </div>
       )
     }
     
-    return parts.length > 0 ? parts : renderInlineFormatting(content)
+    return parts.length > 0 ? parts : renderMarkdown(content)
+  }
+
+  const renderMarkdown = (text: string) => {
+    const lines = text.split('\n')
+    const elements: JSX.Element[] = []
+
+    lines.forEach((line, lineIdx) => {
+      if (!line.trim()) {
+        // Empty line
+        elements.push(
+          <div key={`empty-${lineIdx}`} style={{ height: '0.5em' }}>
+            &nbsp;
+          </div>
+        )
+        return
+      }
+
+      // Check for heading (## or ### etc.)
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+      if (headingMatch) {
+        const level = headingMatch[1].length
+        const text = headingMatch[2]
+        const headingSizes: Record<number, number> = { 1: 1.5, 2: 1.3, 3: 1.1, 4: 1, 5: 0.95, 6: 0.9 }
+        elements.push(
+          <div
+            key={`heading-${lineIdx}`}
+            style={{
+              fontSize: `${headingSizes[level]}rem`,
+              fontWeight: 700,
+              marginTop: '12px',
+              marginBottom: '8px',
+              color: '#f1f5f9'
+            }}
+          >
+            {renderInlineFormatting(text)}
+          </div>
+        )
+        return
+      }
+
+      // Check for bullet list items
+      const bulletMatch = line.match(/^[\s]*[-*]\s+(.+)$/)
+      if (bulletMatch) {
+        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
+        elements.push(
+          <div
+            key={`bullet-${lineIdx}`}
+            style={{
+              marginLeft: `${indent * 0.5 + 8}px`,
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '4px'
+            }}
+          >
+            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '16px' }}>•</span>
+            <span>{renderInlineFormatting(bulletMatch[1])}</span>
+          </div>
+        )
+        return
+      }
+
+      // Check for numbered list items
+      const numberedMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/)
+      if (numberedMatch) {
+        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
+        elements.push(
+          <div
+            key={`numbered-${lineIdx}`}
+            style={{
+              marginLeft: `${indent * 0.5 + 8}px`,
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '4px'
+            }}
+          >
+            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '24px' }}>
+              {numberedMatch[1]}.
+            </span>
+            <span>{renderInlineFormatting(numberedMatch[2])}</span>
+          </div>
+        )
+        return
+      }
+
+      // Check for blockquote
+      const quoteMatch = line.match(/^>\s+(.+)$/)
+      if (quoteMatch) {
+        elements.push(
+          <div
+            key={`quote-${lineIdx}`}
+            style={{
+              borderLeft: '3px solid rgba(94,234,212,0.5)',
+              paddingLeft: '12px',
+              marginLeft: '4px',
+              marginBottom: '8px',
+              color: 'rgba(226,232,240,0.8)',
+              fontStyle: 'italic'
+            }}
+          >
+            {renderInlineFormatting(quoteMatch[1])}
+          </div>
+        )
+        return
+      }
+
+      // Regular paragraph with copy button
+      elements.push(
+        <div
+          key={`paragraph-${lineIdx}`}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+            marginBottom: '4px',
+            paddingRight: '8px'
+          }}
+          className="copy-line-container"
+        >
+          <div style={{ flex: 1 }}>
+            {renderInlineFormatting(line)}
+          </div>
+          <button
+            onClick={() => copyToClipboard(line, `line-${lineIdx}`)}
+            title="Copy this line"
+            style={{
+              background: copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.05)',
+              border: `1px solid ${copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.15)'}`,
+              borderRadius: '4px',
+              padding: '2px 6px',
+              fontSize: '0.6rem',
+              color: copiedIndex === `line-${lineIdx}` ? '#86efac' : 'rgba(226,232,240,0.6)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              marginTop: '2px',
+              opacity: 0,
+              transition: 'all 0.2s'
+            }}
+            className="copy-line-btn"
+          >
+            {copiedIndex === `line-${lineIdx}` ? '✓' : '📋'}
+          </button>
+        </div>
+      )
+    })
+
+    return elements
   }
   
   const renderInlineFormatting = (text: string) => {
-    // Handle inline code
-    const inlineCodeRegex = /`([^`]+)`/g
-    const boldRegex = /\*\*(.+?)\*\*/g
-    const italicRegex = /\*(.+?)\*/g
-    const listItemRegex = /^[\s]*[-*]\s(.+)$/gm
-    const numberedListRegex = /^[\s]*\d+\.\s(.+)$/gm
-    
+    // Handle bold, italic, and inline code
     const parts: (string | JSX.Element)[] = []
+    
+    // Pattern to match **bold**, *italic*, and `code` in order of precedence
+    const pattern = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)/g
+    
     let lastIndex = 0
     let match
     
-    // Find all inline code matches
-    const inlineMatches: Array<{ start: number, end: number, content: string }> = []
-    while ((match = inlineCodeRegex.exec(text)) !== null) {
-      inlineMatches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        content: match[1]
-      })
+    while ((match = pattern.exec(text)) !== null) {
+      // Add text before match
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index))
+      }
+      
+      if (match[1]) {
+        // Bold
+        parts.push(
+          <strong
+            key={`bold-${match.index}`}
+            style={{ fontWeight: 700, color: '#f1f5f9' }}
+          >
+            {match[2]}
+          </strong>
+        )
+      } else if (match[3]) {
+        // Italic
+        parts.push(
+          <em
+            key={`italic-${match.index}`}
+            style={{ fontStyle: 'italic', color: 'rgba(226,232,240,0.95)' }}
+          >
+            {match[4]}
+          </em>
+        )
+      } else if (match[5]) {
+        // Inline code
+        parts.push(
+          <code
+            key={`inline-${match.index}`}
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85em',
+              border: '1px solid rgba(148,163,184,0.2)',
+              color: '#a1e8ff'
+            }}
+          >
+            {match[6]}
+          </code>
+        )
+      }
+      
+      lastIndex = match.index + match[0].length
     }
     
-    inlineMatches.forEach((m, idx) => {
-      if (m.start > lastIndex) {
-        parts.push(text.substring(lastIndex, m.start))
-      }
-      parts.push(
-        <code
-          key={`inline-${idx}`}
-          style={{
-            background: 'rgba(0,0,0,0.3)',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-            fontSize: '0.85em',
-            border: '1px solid rgba(148,163,184,0.2)'
-          }}
-        >
-          {m.content}
-        </code>
-      )
-      lastIndex = m.end
-    })
-    
+    // Add remaining text
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex))
     }
@@ -1533,7 +1694,7 @@ const selectStyle: CSSProperties = {
   color: '#e2e8f0'
 }
 
-// Add pulse animation for saving indicator
+// Add pulse animation and copy button styles for saving indicator
 if (typeof document !== 'undefined' && !document.querySelector('#pulse-animation')) {
   const style = document.createElement('style')
   style.id = 'pulse-animation'
@@ -1545,6 +1706,10 @@ if (typeof document !== 'undefined' && !document.querySelector('#pulse-animation
       50% {
         opacity: 0.4;
       }
+    }
+    
+    .copy-line-container:hover .copy-line-btn {
+      opacity: 1 !important;
     }
   `
   document.head.appendChild(style)
