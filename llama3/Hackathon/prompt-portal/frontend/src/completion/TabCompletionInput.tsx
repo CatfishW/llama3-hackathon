@@ -112,18 +112,16 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
       top: '100%',
       left: 0,
       right: 0,
-      backgroundColor: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderTop: 'none',
-      borderRadius: '0 0 6px 6px',
-      padding: '10px 12px',
-      fontSize: '13px',
-      color: '#374151',
+      backgroundColor: 'transparent',
+      border: 'none',
+      padding: '6px 0px',
+      fontSize: '12px',
+      color: '#10b981',
       cursor: 'pointer',
       zIndex: 1000,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-      backdropFilter: 'blur(10px)',
+      boxShadow: 'none',
       transition: 'all 0.2s ease',
+      fontWeight: '500',
       ...suggestionStyle
     }
 
@@ -153,35 +151,33 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
             onClick={handleSuggestionClick}
             onMouseDown={(e) => e.preventDefault()} // Prevent input blur
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
-                {loading ? '⏳' : '✨'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
+                {loading ? '⟳' : '→'}
               </span>
-              <span style={{ flex: 1, fontFamily: 'system-ui' }}>{suggestion}</span>
-              <span style={{ color: '#9ca3af', fontSize: '11px' }}>Tab</span>
+              <span style={{ flex: 1, fontFamily: 'system-ui', color: '#10b981' }}>{suggestion}</span>
+              <span style={{ color: '#10b981', fontSize: '11px', opacity: '0.7' }}>Tab</span>
             </div>
           </div>
         )}
         
-        {error && (
+        {error && !error.includes('404') && (
           <div style={{
             position: 'absolute',
             top: '100%',
             left: 0,
             right: 0,
-            backgroundColor: '#fee2e2',
-            border: '1px solid #fecaca',
+            backgroundColor: 'transparent',
+            border: 'none',
             borderRadius: '0 0 6px 6px',
-            padding: '10px 12px',
-            fontSize: '12px',
-            color: '#991b1b',
+            padding: '4px 0px',
+            fontSize: '11px',
+            color: '#ef4444',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '6px'
           }}>
-            <span>⚠️</span>
-            <span>{error}</span>
           </div>
         )}
       </div>
@@ -295,18 +291,16 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
       top: '100%',
       left: 0,
       right: 0,
-      backgroundColor: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderTop: 'none',
-      borderRadius: '0 0 6px 6px',
-      padding: '10px 12px',
-      fontSize: '13px',
-      color: '#374151',
+      backgroundColor: 'transparent',
+      border: 'none',
+      padding: '6px 0px',
+      fontSize: '12px',
+      color: '#10b981',
       cursor: 'pointer',
       zIndex: 1000,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-      backdropFilter: 'blur(10px)',
+      boxShadow: 'none',
       transition: 'all 0.2s ease',
+      fontWeight: '500',
       ...suggestionStyle
     }
 
@@ -337,35 +331,33 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
             onClick={handleSuggestionClick}
             onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
-                {loading ? '⏳' : '✨'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
+                {loading ? '⟳' : '→'}
               </span>
-              <span style={{ flex: 1, fontFamily: 'system-ui' }}>{suggestion}</span>
-              <span style={{ color: '#9ca3af', fontSize: '11px' }}>Tab</span>
+              <span style={{ flex: 1, fontFamily: 'system-ui', color: '#10b981' }}>{suggestion}</span>
+              <span style={{ color: '#10b981', fontSize: '11px', opacity: '0.7' }}>Tab</span>
             </div>
           </div>
         )}
         
-        {error && (
+        {error && !error.includes('404') && (
           <div style={{
             position: 'absolute',
             top: '100%',
             left: 0,
             right: 0,
-            backgroundColor: '#fee2e2',
-            border: '1px solid #fecaca',
+            backgroundColor: 'transparent',
+            border: 'none',
             borderRadius: '0 0 6px 6px',
-            padding: '10px 12px',
-            fontSize: '12px',
-            color: '#991b1b',
+            padding: '4px 0px',
+            fontSize: '11px',
+            color: '#ef4444',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '6px'
           }}>
-            <span>⚠️</span>
-            <span>{error}</span>
           </div>
         )}
       </div>
