@@ -1,12 +1,12 @@
 /**
  * Completion Provider Component
  * 
- * This component initializes the MQTT completion client when the app starts
+ * This component initializes the SSE-based completion client when the app starts
  * and provides completion functionality to all child components.
  */
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { initializeCompletionClient, getCompletionClient, CompletionClient } from './CompletionClient'
+import { CompletionClient } from './CompletionClient'
 
 interface CompletionContextType {
   client: CompletionClient | null
@@ -24,18 +24,12 @@ export const useCompletionContext = () => useContext(CompletionContext)
 
 interface CompletionProviderProps {
   children: React.ReactNode
-  broker?: string
-  port?: number
-  username?: string
-  password?: string
+  apiBase?: string
 }
 
 export const CompletionProvider: React.FC<CompletionProviderProps> = ({
   children,
-  broker = '47.89.252.2',
-  port = 1883,
-  username = 'TangClinic',
-  password = 'Tang123'
+  apiBase = ''
 }) => {
   const [client, setClient] = useState<CompletionClient | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -44,13 +38,9 @@ export const CompletionProvider: React.FC<CompletionProviderProps> = ({
   useEffect(() => {
     const initClient = async () => {
       try {
-        console.log('Initializing completion client...')
-        const completionClient = await initializeCompletionClient({
-          broker,
-          port,
-          username,
-          password
-        })
+        console.log('Initializing completion client (SSE mode)...')
+        const completionClient = new CompletionClient({ apiBase, timeout: 30000 })
+        await completionClient.connect()
         
         setClient(completionClient)
         setIsConnected(completionClient.isConnected())
@@ -72,20 +62,7 @@ export const CompletionProvider: React.FC<CompletionProviderProps> = ({
         client.disconnect()
       }
     }
-  }, [broker, port, username, password])
-
-  // Monitor connection status
-  useEffect(() => {
-    if (!client) return
-
-    const checkConnection = () => {
-      setIsConnected(client.isConnected())
-    }
-
-    const interval = setInterval(checkConnection, 5000) // Check every 5 seconds
-
-    return () => clearInterval(interval)
-  }, [client])
+  }, [apiBase])
 
   const contextValue: CompletionContextType = {
     client,

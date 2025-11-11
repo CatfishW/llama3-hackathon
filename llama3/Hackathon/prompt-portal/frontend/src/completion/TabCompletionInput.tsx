@@ -2,11 +2,12 @@
  * TAB Completion Input Component
  * 
  * A React component that provides intelligent TAB completion for input fields
- * using the local LLM via MQTT.
+ * using SSE for real-time completion suggestions.
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react'
 import { useTabCompletion } from './CompletionClient'
+import { useCompletionContext } from './CompletionProvider'
 
 export interface TabCompletionInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   completionType?: 'general' | 'code' | 'prompt' | 'message' | 'search' | 'email' | 'description'
@@ -40,6 +41,7 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
   }, ref) => {
     const inputRef = useRef<HTMLInputElement>(null)
     const [isFocused, setIsFocused] = useState(false)
+    const { client } = useCompletionContext()
     
     const {
       handleKeyDown,
@@ -53,7 +55,8 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
       completionType,
       temperature,
       top_p,
-      max_tokens
+      max_tokens,
+      client: client || undefined
     })
 
     useImperativeHandle(ref, () => ({
@@ -109,16 +112,18 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
       top: '100%',
       left: 0,
       right: 0,
-      backgroundColor: '#f8f9fa',
-      border: '1px solid #dee2e6',
+      backgroundColor: '#ffffff',
+      border: '1px solid #e5e7eb',
       borderTop: 'none',
-      borderRadius: '0 0 4px 4px',
-      padding: '8px 12px',
-      fontSize: '14px',
-      color: '#6c757d',
+      borderRadius: '0 0 6px 6px',
+      padding: '10px 12px',
+      fontSize: '13px',
+      color: '#374151',
       cursor: 'pointer',
       zIndex: 1000,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+      backdropFilter: 'blur(10px)',
+      transition: 'all 0.2s ease',
       ...suggestionStyle
     }
 
@@ -134,7 +139,7 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
           {...props}
           style={{
             width: '100%',
-            ...props.style
+            ...(props as any).style
           }}
           onKeyDown={handleKeyDownWithCompletion}
           onChange={handleInputWithCompletion}
@@ -148,15 +153,12 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
             onClick={handleSuggestionClick}
             onMouseDown={(e) => e.preventDefault()} // Prevent input blur
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ color: '#6c757d', fontSize: '12px' }}>💡</span>
-              <span style={{ flex: 1 }}>{suggestion}</span>
-              {loading && (
-                <span style={{ color: '#6c757d', fontSize: '12px' }}>⏳</span>
-              )}
-            </div>
-            <div style={{ fontSize: '11px', color: '#adb5bd', marginTop: '4px' }}>
-              Press Tab to accept or click to insert
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                {loading ? '⏳' : '✨'}
+              </span>
+              <span style={{ flex: 1, fontFamily: 'system-ui' }}>{suggestion}</span>
+              <span style={{ color: '#9ca3af', fontSize: '11px' }}>Tab</span>
             </div>
           </div>
         )}
@@ -167,15 +169,19 @@ export const TabCompletionInput = forwardRef<TabCompletionInputRef, TabCompletio
             top: '100%',
             left: 0,
             right: 0,
-            backgroundColor: '#f8d7da',
-            border: '1px solid #f5c6cb',
-            borderRadius: '0 0 4px 4px',
-            padding: '8px 12px',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fecaca',
+            borderRadius: '0 0 6px 6px',
+            padding: '10px 12px',
             fontSize: '12px',
-            color: '#721c24',
-            zIndex: 1000
+            color: '#991b1b',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}>
-            Completion error: {error}
+            <span>⚠️</span>
+            <span>{error}</span>
           </div>
         )}
       </div>
@@ -218,6 +224,7 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
   }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const [isFocused, setIsFocused] = useState(false)
+    const { client } = useCompletionContext()
     
     const {
       handleKeyDown,
@@ -231,7 +238,8 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
       completionType,
       temperature,
       top_p,
-      max_tokens
+      max_tokens,
+      client: client || undefined
     })
 
     useImperativeHandle(ref, () => ({
@@ -287,16 +295,18 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
       top: '100%',
       left: 0,
       right: 0,
-      backgroundColor: '#f8f9fa',
-      border: '1px solid #dee2e6',
+      backgroundColor: '#ffffff',
+      border: '1px solid #e5e7eb',
       borderTop: 'none',
-      borderRadius: '0 0 4px 4px',
-      padding: '8px 12px',
-      fontSize: '14px',
-      color: '#6c757d',
+      borderRadius: '0 0 6px 6px',
+      padding: '10px 12px',
+      fontSize: '13px',
+      color: '#374151',
       cursor: 'pointer',
       zIndex: 1000,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+      backdropFilter: 'blur(10px)',
+      transition: 'all 0.2s ease',
       ...suggestionStyle
     }
 
@@ -313,7 +323,7 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
           style={{
             width: '100%',
             resize: 'vertical',
-            ...props.style
+            ...(props as any).style
           }}
           onKeyDown={handleKeyDownWithCompletion}
           onChange={handleInputWithCompletion}
@@ -327,15 +337,12 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
             onClick={handleSuggestionClick}
             onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ color: '#6c757d', fontSize: '12px' }}>💡</span>
-              <span style={{ flex: 1 }}>{suggestion}</span>
-              {loading && (
-                <span style={{ color: '#6c757d', fontSize: '12px' }}>⏳</span>
-              )}
-            </div>
-            <div style={{ fontSize: '11px', color: '#adb5bd', marginTop: '4px' }}>
-              Press Tab to accept or click to insert
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ color: '#9ca3af', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                {loading ? '⏳' : '✨'}
+              </span>
+              <span style={{ flex: 1, fontFamily: 'system-ui' }}>{suggestion}</span>
+              <span style={{ color: '#9ca3af', fontSize: '11px' }}>Tab</span>
             </div>
           </div>
         )}
@@ -346,15 +353,19 @@ export const TabCompletionTextarea = forwardRef<TabCompletionTextareaRef, TabCom
             top: '100%',
             left: 0,
             right: 0,
-            backgroundColor: '#f8d7da',
-            border: '1px solid #f5c6cb',
-            borderRadius: '0 0 4px 4px',
-            padding: '8px 12px',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fecaca',
+            borderRadius: '0 0 6px 6px',
+            padding: '10px 12px',
             fontSize: '12px',
-            color: '#721c24',
-            zIndex: 1000
+            color: '#991b1b',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}>
-            Completion error: {error}
+            <span>⚠️</span>
+            <span>{error}</span>
           </div>
         )}
       </div>
