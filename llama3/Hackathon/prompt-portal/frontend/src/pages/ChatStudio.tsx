@@ -815,66 +815,134 @@ export default function ChatStudio() {
     setInputValue('')
 
     try {
-      const res = await chatbotAPI.sendMessage({
-        session_id: selectedSession.id,
-        content,
-        temperature: sessionDraft.temperature,
-        top_p: sessionDraft.top_p,
-        max_tokens: sessionDraft.max_tokens,
-        system_prompt: sessionDraft.system_prompt,
-        template_id: sessionDraft.template_id
-      })
-      const data = res.data
-      replaceOptimisticMessage(optimisticId, data.user_message as ChatMessage)
-      
-      // Create placeholder for assistant message before streaming
-      const assistantMsg = data.assistant_message as ChatMessage
-      setMessages(prev => [...prev, assistantMsg])
-      
-      // Simulate streaming the response
-      setTimeout(() => {
-        simulateStreamingMessage(assistantMsg.id, assistantMsg.content)
-      }, 100)
-      
-      // Check for consensus if in Driving Game mode
-      if (drivingGameMode && drivingGameStartTime) {
-        // Increment message count for this exchange (user message + assistant response)
-        const newMessageCount = drivingGameMessageCount + 1
-        setDrivingGameMessageCount(newMessageCount)
-        
-        const { hasConsensus, playerOp, agentOp } = detectConsensus(assistantMsg.content)
-        
-        if (hasConsensus) {
-          // Calculate score using the updated count
-          const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
-          const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
-          
-          // Save options, score, and message count for modal display
-          setLastPlayerOption(playerOp)
-          setLastAgentOption(agentOp)
-          setConsensusScore(score)
-          setConsensusMessageCount(newMessageCount)
-          
-          // Submit score to leaderboard
-          try {
-            await submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
-            console.log('[DRIVING GAME] Score submitted successfully, showing modal')
-          } catch (e) {
-            console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
-            // Continue to show modal even if submission failed (user still completed the game)
+      // Use streaming API instead of non-streaming
+      let assistantMsgId: number | null = null
+      let fullContent = ''
+
+      await chatbotAPI.sendMessageStream(
+        {
+          session_id: selectedSession.id,
+          content,
+          temperature: sessionDraft.temperature,
+          top_p: sessionDraft.top_p,
+          max_tokens: sessionDraft.max_tokens,
+          system_prompt: sessionDraft.system_prompt,
+          template_id: sessionDraft.template_id
+        },
+        // onMetadata
+        (metadata) => {
+          // Metadata about the request
+          console.log('[ChatStudio] Stream metadata:', metadata)
+        },
+        // onChunk
+        (chunk) => {
+          fullContent += chunk
+          // Stream the content into a temporary assistant message
+          if (assistantMsgId === null) {
+            // First chunk - create the assistant message
+            const tempId = -Date.now()
+            const assistantMsg: ChatMessage = {
+              id: tempId,
+              session_id: selectedSession.id,
+              role: 'assistant',
+              content: chunk,
+              created_at: new Date().toISOString()
+            }
+            assistantMsgId = tempId
+            setMessages(prev => [...prev, assistantMsg])
+          } else {
+            // Subsequent chunks - update the assistant message
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === assistantMsgId 
+                  ? { ...msg, content: fullContent }
+                  : msg
+              )
+            )
+          }
+        },
+        // onComplete
+        (responseFullContent, assistantMessageId) => {
+          // Replace temporary message with real message from database
+          if (assistantMsgId && assistantMsgId < 0) {
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === assistantMsgId
+                  ? { ...msg, id: assistantMessageId, content: responseFullContent }
+                  : msg
+              )
+            )
           }
           
-          // Show modal
-          setShowConsensusModal(true)
+          // Replace the user message with the real one from backend response
+          // Get the latest messages to find the real user message
+          chatbotAPI.getMessages(selectedSession.id, 2)
+            .then((messagesRes) => {
+              const allMessages = messagesRes.data as ChatMessage[]
+              const realUserMessage = allMessages.find(m => m.role === 'user' && m.content === content)
+              if (realUserMessage) {
+                replaceOptimisticMessage(optimisticId, realUserMessage)
+              }
+            })
+            .catch((e) => {
+              console.error('Failed to get real user message:', e)
+            })
           
-          // Reset driving game mode
-          setDrivingGameMode(false)
-          setDrivingGameStartTime(null)
-          setDrivingGameMessageCount(0)
+          // Check for consensus if in Driving Game mode
+          if (drivingGameMode && drivingGameStartTime) {
+            // Increment message count for this exchange (user message + assistant response)
+            const newMessageCount = drivingGameMessageCount + 1
+            setDrivingGameMessageCount(newMessageCount)
+            
+            const { hasConsensus, playerOp, agentOp } = detectConsensus(responseFullContent)
+            
+            if (hasConsensus) {
+              // Calculate score using the updated count
+              const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
+              const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
+              
+              // Save options, score, and message count for modal display
+              setLastPlayerOption(playerOp)
+              setLastAgentOption(agentOp)
+              setConsensusScore(score)
+              setConsensusMessageCount(newMessageCount)
+              
+              // Submit score to leaderboard
+              submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
+                .then(() => {
+                  console.log('[DRIVING GAME] Score submitted successfully, showing modal')
+                })
+                .catch((e) => {
+                  console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
+                  // Continue to show modal even if submission failed (user still completed the game)
+                })
+              
+              // Show modal
+              setShowConsensusModal(true)
+              
+              // Reset driving game mode
+              setDrivingGameMode(false)
+              setDrivingGameStartTime(null)
+              setDrivingGameMessageCount(0)
+            }
+          }
+          
+          // Refresh sessions
+          chatbotAPI.listSessions()
+            .then((sessionsRes) => {
+              setSessions(sessionsRes.data as ChatSession[])
+            })
+            .catch((e) => {
+              console.error('Failed to refresh sessions:', e)
+            })
+        },
+        // onError
+        (error) => {
+          setErrorMessage(error.message || 'Failed to send message')
+          // Remove optimistic message on error
+          setMessages(prev => prev.filter(msg => msg.id !== optimisticId && msg.id !== assistantMsgId))
         }
-      }
-      
-      setSessions(prev => prev.map(s => s.id === selectedSession.id ? data.session as ChatSession : s))
+      )
     } catch (e) {
       setMessages(prev => prev.filter(msg => msg.id !== optimisticId))
       setErrorMessage('Failed to send message.')
@@ -1254,7 +1322,14 @@ export default function ChatStudio() {
                 <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={sending ? 'Waiting for model response…' : 'Type your message…'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                    // Shift+Enter allows newline naturally
+                  }}
+                  placeholder={sending ? 'Waiting for model response…' : 'Type your message… (Shift+Enter for newline)'}
                   disabled={sending}
                   rows={isMobile ? 2 : 3}
                   style={{
