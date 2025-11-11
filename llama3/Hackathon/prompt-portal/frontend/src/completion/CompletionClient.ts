@@ -47,54 +47,8 @@ export class CompletionClient {
       throw new Error('Completion client not initialized')
     }
 
-    const requestId = `req-${Math.random().toString(36).substr(2, 9)}`
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), this.options.timeout)
-
-    this.pendingRequests.set(requestId, controller)
-
-    try {
-      const url = `${this.options.apiBase}/api/completion/generate`
-      
-      const requestPayload = {
-        text: request.text,
-        completion_type: request.completion_type || 'general',
-        temperature: request.temperature || 0.7,
-        top_p: request.top_p || 0.9,
-        max_tokens: request.max_tokens || 100
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
-        },
-        body: JSON.stringify(requestPayload),
-        signal: controller.signal
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-
-      const data: CompletionResponse = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
-      return data.completion || ''
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Completion request timeout')
-      }
-      throw error
-    } finally {
-      clearTimeout(timeout)
-      this.pendingRequests.delete(requestId)
-    }
+    // TAB completion is currently disabled - endpoint not implemented
+    throw new Error('TAB completion not available')
   }
 
   disconnect(): void {
