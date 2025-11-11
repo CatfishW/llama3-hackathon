@@ -168,6 +168,19 @@ function extractThinkingProcess(content: string): { thinking: string | null; cle
     return { thinking, cleanContent }
   }
   
+  // Look for pattern: ...<|end|><|start|>assistant<|channel|>final<|message|>ACTUAL_RESPONSE
+  const finalMessageRegex = /<\|end\|><\|start\|>assistant<\|channel\|>final<\|message\|>(.*?)$/s
+  const finalMatch = content.match(finalMessageRegex)
+  
+  if (finalMatch) {
+    // Everything before <|end|> is thinking
+    const thinkingEnd = content.indexOf('<|end|>')
+    const thinking = content.substring(0, thinkingEnd).trim()
+    const cleanContent = finalMatch[1].trim()
+    
+    return { thinking, cleanContent }
+  }
+  
   // Look for <channel>...<analysis>...</analysis>...</channel> patterns
   const channelRegex = /<channel>([\s\S]*?)<analysis>([\s\S]*?)<\/analysis>([\s\S]*?)<\/channel>/
   const channelMatch = content.match(channelRegex)
