@@ -89,7 +89,7 @@ export default function Settings() {
   async function loadSettings() {
     try {
       setLoading(true)
-      const res = await api.get('/api/settings')
+      const res = await api.get('/api/settings/')
       setSettings(res.data)
     } catch (e) {
       setErr('Failed to load settings')
@@ -220,7 +220,7 @@ export default function Settings() {
   async function saveSettings() {
     try {
       setSaving(true)
-      await api.put('/api/settings', settings)
+      await api.put('/api/settings/', settings)
       setSuccess('Settings saved successfully!')
       setErr(null)
       setTimeout(() => setSuccess(null), 3000)
@@ -755,7 +755,7 @@ export default function Settings() {
           Change Password
         </h3>
 
-        <div style={{ display: 'grid', gap: '20px', maxWidth: '400px' }}>
+        <form onSubmit={(e) => { e.preventDefault(); changePassword(); }} style={{ display: 'grid', gap: '20px', maxWidth: '400px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
               Current Password
@@ -766,6 +766,7 @@ export default function Settings() {
               onChange={(e) => setChangePasswordForm({ ...changePasswordForm, current_password: e.target.value })}
               style={inputStyle}
               placeholder="Enter current password"
+              autoComplete="current-password"
             />
           </div>
 
@@ -780,6 +781,7 @@ export default function Settings() {
               style={inputStyle}
               placeholder="Enter new password"
               minLength={6}
+              autoComplete="new-password"
             />
           </div>
 
@@ -793,11 +795,12 @@ export default function Settings() {
               onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirm_password: e.target.value })}
               style={inputStyle}
               placeholder="Confirm new password"
+              autoComplete="new-password"
             />
           </div>
 
           <button
-            onClick={changePassword}
+            type="submit"
             disabled={passwordChanging || !changePasswordForm.current_password || !changePasswordForm.new_password}
             style={{
               ...buttonStyle('primary'),
@@ -816,7 +819,7 @@ export default function Settings() {
               </>
             )}
           </button>
-        </div>
+        </form>
       </div>
 
       {/* Action Buttons */}
@@ -879,7 +882,7 @@ export default function Settings() {
               {editingModel ? 'Edit Model' : 'Add Custom Model'}
             </h3>
 
-            <div style={{ display: 'grid', gap: '20px' }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveModel(); }} style={{ display: 'grid', gap: '20px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
                   Model Name *
@@ -946,6 +949,7 @@ export default function Settings() {
                   onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
                   placeholder="Enter API key"
                   style={inputStyle}
+                  autoComplete="off"
                 />
               </div>
 
@@ -1019,51 +1023,52 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: '15px', marginTop: '30px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowModelDialog(false);
-                  setEditingModel(null);
-                  setModelForm({
-                    name: '',
-                    provider: '',
-                    model: '',
-                    apiBase: '',
-                    apiKey: '',
-                    description: '',
-                    features: '',
-                    maxTokens: 4096,
-                    supportsFunctions: false,
-                    supportsVision: false,
-                  });
-                }}
-                style={{
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontWeight: '500',
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveModel}
-                disabled={!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey}
-                style={{
-                  ...buttonStyle('primary'),
-                  opacity: (!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey) ? 0.5 : 1,
-                }}
-              >
-                <i className="fas fa-save" style={{ marginRight: '8px' }}></i>
-                {editingModel ? 'Update Model' : 'Add Model'}
-              </button>
-            </div>
+              <div style={{ display: 'flex', gap: '15px', marginTop: '30px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModelDialog(false);
+                    setEditingModel(null);
+                    setModelForm({
+                      name: '',
+                      provider: '',
+                      model: '',
+                      apiBase: '',
+                      apiKey: '',
+                      description: '',
+                      features: '',
+                      maxTokens: 4096,
+                      supportsFunctions: false,
+                      supportsVision: false,
+                    });
+                  }}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    transition: 'all 0.3s ease',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey}
+                  style={{
+                    ...buttonStyle('primary'),
+                    opacity: (!modelForm.name || !modelForm.provider || !modelForm.model || !modelForm.apiBase || !modelForm.apiKey) ? 0.5 : 1,
+                  }}
+                >
+                  <i className="fas fa-save" style={{ marginRight: '8px' }}></i>
+                  {editingModel ? 'Update Model' : 'Add Model'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
