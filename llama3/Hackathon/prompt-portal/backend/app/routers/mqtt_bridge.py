@@ -43,18 +43,20 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint for navigating the maze."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=True, max_history_messages=3")
             
-            # Generate hint WITHOUT function calling and WITHOUT history
+            # Generate hint with LLM memory enabled
             # - use_tools=False: llama.cpp doesn't support tools without --jinja flag
-            # - use_history=False: maze game publishes state every 3 seconds, history fills context quickly
+            # - use_history=True: Enable conversation memory to provide contextual hints
+            # - max_history_messages=3: Limit to 3 message pairs to prevent context overflow
             # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
                 use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
-                use_history=False  # Disable history - maze game is stateless, state is in each request
+                use_history=True,  # Enable history for contextual maze guidance
+                max_history_messages=3  # Limit to 3 message pairs (6 total messages + system prompt)
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100] if hint_response else 'None'}...")
             
@@ -172,18 +174,20 @@ async def request_hint_endpoint(
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=True, max_history_messages=3")
             
-            # Generate hint WITHOUT OpenAI tools API and WITHOUT history
+            # Generate hint with LLM memory enabled
             # - use_tools=False: llama.cpp requires --jinja flag for tools
-            # - use_history=False: maze game is stateless, each request contains full state
+            # - use_history=True: Enable conversation memory for contextual guidance
+            # - max_history_messages=3: Limit to 3 message pairs to prevent context overflow
             # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
                 use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
-                use_history=False  # Disable history - maze game is stateless
+                use_history=True,  # Enable history for contextual maze guidance
+                max_history_messages=3  # Limit to 3 message pairs (6 total messages + system prompt)
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
             

@@ -468,21 +468,26 @@ class SessionManager:
     Compatible with the MQTT deployment's session management.
     """
     
-    def __init__(self, llm_client: LLMClient, max_history_tokens: int = 10000):
+    def __init__(self, llm_client: LLMClient, max_history_tokens: int = 10000, max_history_messages: Optional[int] = None):
         """
         Initialize session manager.
         
         Args:
             llm_client: LLM client instance
             max_history_tokens: Maximum tokens to keep in conversation history
+            max_history_messages: Maximum number of messages to keep (excluding system prompt). If set, takes precedence over token-based trimming.
         """
         self.llm_client = llm_client
         self.max_history_tokens = max_history_tokens
+        self.max_history_messages = max_history_messages
         self.sessions: Dict[str, Dict] = {}
         self.session_locks: Dict[str, threading.RLock] = {}
         self.global_lock = threading.RLock()
         
-        logger.info("Session manager initialized")
+        if max_history_messages:
+            logger.info(f"Session manager initialized with max_history_messages={max_history_messages}")
+        else:
+            logger.info("Session manager initialized")
     
     def get_or_create_session(
         self,
@@ -535,7 +540,8 @@ class SessionManager:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         use_tools: bool = True,
-        use_history: bool = True
+        use_history: bool = True,
+        max_history_messages: Optional[int] = None
     ) -> str:
         """
         Process a user message and generate a response.
@@ -549,10 +555,15 @@ class SessionManager:
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
             use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt). 
+                                 If not specified, uses self.max_history_messages.
             
         Returns:
             Generated response (may include function calls)
         """
+        # Determine effective max_history_messages
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
         if use_history:
             # Get or create session with history
             session = self.get_or_create_session(session_id, system_prompt)
@@ -564,11 +575,25 @@ class SessionManager:
                 session["dialog"].append({"role": "user", "content": user_message})
                 session["message_count"] += 1
                 
-                # Simple trimming: keep only last N messages
-                max_messages = 20
-                if len(session["dialog"]) > max_messages:
-                    # Keep system message and last N-1 messages
-                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                # Trim history based on max_history_messages if set
+                if effective_max_history_messages is not None:
+                    # Keep system message + last N user/assistant message pairs
+                    # Calculate how many non-system messages to keep
+                    non_system_messages = session["dialog"][1:]  # Skip system message
+                    
+                    # Keep only the last (max_history_messages * 2) non-system messages
+                    # because each pair is user + assistant response
+                    messages_to_keep = effective_max_history_messages * 2
+                    if len(non_system_messages) > messages_to_keep:
+                        # Keep system message + recent messages
+                        session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+                        logger.debug(f"Trimmed dialog to {len(session['dialog'])} messages (max_history_messages={effective_max_history_messages})")
+                else:
+                    # Simple trimming: keep only last N messages (old behavior)
+                    max_messages = 20
+                    if len(session["dialog"]) > max_messages:
+                        # Keep system message and last N-1 messages
+                        session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
                 
                 # Prepare messages for API call
                 messages = session["dialog"].copy()
@@ -614,7 +639,8 @@ class SessionManager:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        use_tools: bool = False  # Note: streaming with tools is complex, disabled by default
+        use_tools: bool = False,  # Note: streaming with tools is complex, disabled by default
+        max_history_messages: Optional[int] = None
     ):
         """
         Process a user message and generate a streaming response.
@@ -627,10 +653,14 @@ class SessionManager:
             top_p: Top-p sampling
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools (not recommended for streaming)
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
             
         Yields:
             Generated text chunks as they arrive
         """
+        # Determine effective max_history_messages
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
         # Get or create session
         session = self.get_or_create_session(session_id, system_prompt)
         session_lock = self.session_locks.get(session_id, threading.RLock())
@@ -641,11 +671,22 @@ class SessionManager:
             session["dialog"].append({"role": "user", "content": user_message})
             session["message_count"] += 1
             
-            # Simple trimming: keep only last N messages
-            max_messages = 20
-            if len(session["dialog"]) > max_messages:
-                # Keep system message and last N-1 messages
-                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+            # Trim history based on max_history_messages if set
+            if effective_max_history_messages is not None:
+                # Keep system message + last N user/assistant message pairs
+                non_system_messages = session["dialog"][1:]  # Skip system message
+                
+                # Keep only the last (max_history_messages * 2) non-system messages
+                messages_to_keep = effective_max_history_messages * 2
+                if len(non_system_messages) > messages_to_keep:
+                    session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+                    logger.debug(f"Trimmed dialog to {len(session['dialog'])} messages (max_history_messages={effective_max_history_messages})")
+            else:
+                # Simple trimming: keep only last N messages (old behavior)
+                max_messages = 20
+                if len(session["dialog"]) > max_messages:
+                    # Keep system message and last N-1 messages
+                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
             
             # Prepare messages for API call
             messages = session["dialog"].copy()
