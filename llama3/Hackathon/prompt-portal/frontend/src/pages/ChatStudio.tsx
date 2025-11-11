@@ -199,11 +199,77 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     // Add remaining text with markdown rendering
     if (lastIndex < content.length) {
       const textSegment = content.substring(lastIndex)
-      parts.push(
-        <div key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {renderMarkdown(textSegment)}
-        </div>
-      )
+      // Check if the remaining text is JSON-like (starts with { or [ and ends with } or ])
+      const trimmed = textSegment.trim()
+      const isJsonLike = (trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+                         (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      
+      if (isJsonLike) {
+        // Format JSON-like content as code block
+        parts.push(
+          <div
+            key="json-block"
+            style={{
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '8px',
+              padding: '12px',
+              margin: '8px 0',
+              overflowX: 'auto',
+              position: 'relative'
+            }}
+          >
+            <div style={{ 
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '6px'
+            }}>
+              <div style={{ 
+                fontSize: '0.7rem', 
+                color: 'rgba(148,163,184,0.7)', 
+                fontWeight: 600,
+                textTransform: 'uppercase'
+              }}>
+                JSON
+              </div>
+              <button
+                onClick={() => copyToClipboard(trimmed, 'json')}
+                style={{
+                  background: copiedIndex === 'json' ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
+                  border: `1px solid ${copiedIndex === 'json' ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.65rem',
+                  color: copiedIndex === 'json' ? '#86efac' : 'rgba(226,232,240,0.8)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {copiedIndex === 'json' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <pre style={{ 
+              margin: 0, 
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85rem',
+              lineHeight: '1.6',
+              color: '#e2e8f0',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              maxWidth: '100%'
+            }}>
+              {trimmed}
+            </pre>
+          </div>
+        )
+      } else {
+        parts.push(
+          <div key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {renderMarkdown(textSegment)}
+          </div>
+        )
+      }
     }
     
     return parts.length > 0 ? parts : renderMarkdown(content)
@@ -986,6 +1052,56 @@ export default function ChatStudio() {
     URL.revokeObjectURL(url)
   }
 
+  const handleDocumentUpload = async (file: File) => {
+    try {
+      setSending(true)
+      setErrorMessage(null)
+      const result = await chatbotAPI.uploadDocument(file)
+      const extractedText = result.data.text
+      
+      // Insert the extracted text into the input field
+      setInputValue(prev => {
+        const prefix = prev ? prev + '\n\n' : ''
+        return prefix + `[Document: ${result.data.filename}]\n\n${extractedText}`
+      })
+      
+      setErrorMessage(null)
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.detail || e?.message || 'Failed to upload document'
+      setErrorMessage(`Document upload failed: ${errorMsg}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleImageUpload = async (file: File) => {
+    try {
+      setSending(true)
+      setErrorMessage(null)
+      const result = await chatbotAPI.uploadImage(file)
+      
+      // If OCR text was extracted, include it in the message
+      if (result.data.ocr_text) {
+        setInputValue(prev => {
+          const prefix = prev ? prev + '\n\n' : ''
+          return prefix + `[Image: ${result.data.filename}]\n\nExtracted text:\n${result.data.ocr_text}`
+        })
+      } else {
+        setInputValue(prev => {
+          const prefix = prev ? prev + '\n' : ''
+          return prefix + `[Image: ${result.data.url}]`
+        })
+      }
+      
+      setErrorMessage(null)
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.detail || e?.message || 'Failed to upload image'
+      setErrorMessage(`Image upload failed: ${errorMsg}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
   // Driving Game Mode functions
   const toggleDrivingGameMode = () => {
     const newMode = !drivingGameMode
@@ -1344,6 +1460,75 @@ export default function ChatStudio() {
                     fontFamily: 'inherit'
                   }}
                 />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="file"
+                    id="document-upload"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleDocumentUpload(e.target.files[0])
+                        e.target.value = '' // Reset input
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => document.getElementById('document-upload')?.click()}
+                    disabled={sending}
+                    style={{
+                      padding: isMobile ? '6px 10px' : '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      background: 'rgba(30,41,59,0.55)',
+                      color: 'rgba(226,232,240,0.85)',
+                      fontSize: '0.7rem',
+                      cursor: sending ? 'default' : 'pointer',
+                      opacity: sending ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="fas fa-file-pdf"></i>
+                    {isMobile ? 'Doc' : 'Upload Doc'}
+                  </button>
+
+                  <input
+                    type="file"
+                    id="image-upload"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleImageUpload(e.target.files[0])
+                        e.target.value = '' // Reset input
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => document.getElementById('image-upload')?.click()}
+                    disabled={sending}
+                    style={{
+                      padding: isMobile ? '6px 10px' : '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      background: 'rgba(30,41,59,0.55)',
+                      color: 'rgba(226,232,240,0.85)',
+                      fontSize: '0.7rem',
+                      cursor: sending ? 'default' : 'pointer',
+                      opacity: sending ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="fas fa-image"></i>
+                    {isMobile ? 'Img' : 'Upload Image'}
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
                 <button

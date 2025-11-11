@@ -177,6 +177,23 @@ export const chatbotAPI = {
   getMessages: (id: number, limit = 200) => api.get(`/api/chatbot/sessions/${id}/messages?limit=${limit}`),
   sendMessage: (data: any) => api.post('/api/chatbot/messages', data),
   
+  // Document upload support
+  uploadDocument: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/chatbot/upload-document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  
+  uploadImage: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/chatbot/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  
   // Streaming chat - works in both MQTT and SSE modes
   sendMessageStream: async (
     data: any,
