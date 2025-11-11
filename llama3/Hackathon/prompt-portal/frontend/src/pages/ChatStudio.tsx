@@ -604,9 +604,9 @@ export default function ChatStudio() {
     const draft: DraftState = {
       title: selectedSession.title,
       system_prompt: normalizedSystemPrompt || (presets[0]?.system_prompt || ''),
-      temperature: selectedSession.temperature ?? 0.6,
+      temperature: selectedSession.temperature ?? 0.5,
       top_p: selectedSession.top_p ?? 0.9,
-  max_tokens: selectedSession.max_tokens ?? 2048,
+  max_tokens: selectedSession.max_tokens ?? 50000,
       template_id: selectedSession.template_id ?? null,
       preset_key: matchedPreset?.key ?? null,
       prompt_source: promptSource,
