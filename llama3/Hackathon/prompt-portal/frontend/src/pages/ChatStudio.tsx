@@ -46,6 +46,7 @@ type ChatMessage = {
   session_id: number
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  thinking?: string | null
   metadata?: Record<string, any> | null
   request_id?: string | null
   created_at: string
@@ -81,6 +82,105 @@ const bubbleStyles: Record<string, CSSProperties> = {
   }
 }
 
+// Component to display thinking process similar to ChatGPT
+function ThinkingProcess({ thinking }: { thinking: string }) {
+  const [isExpanded, setIsExpanded] = useState<boolean>(false)
+  const isMobile = useIsMobile()
+
+  if (!thinking || !thinking.trim()) return null
+
+  return (
+    <div
+      style={{
+        maxWidth: isMobile ? '90%' : '70%',
+        alignSelf: 'flex-start',
+        marginBottom: '8px',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        border: '1px solid rgba(168, 85, 247, 0.3)',
+        background: 'rgba(168, 85, 247, 0.08)',
+      }}
+    >
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          width: '100%',
+          padding: '10px 14px',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          color: 'rgba(168, 85, 247, 0.9)',
+          fontSize: '0.85rem',
+          fontWeight: 500,
+          transition: 'color 0.2s',
+          justifyContent: 'space-between',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(196, 181, 253, 0.95)'
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(168, 85, 247, 0.9)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '0.9rem' }}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
+          <span>💭 Thinking Process</span>
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div
+          style={{
+            padding: '0 14px 12px 14px',
+            borderTop: '1px solid rgba(168, 85, 247, 0.2)',
+            background: 'rgba(168, 85, 247, 0.04)',
+            fontSize: '0.8rem',
+            lineHeight: '1.6',
+            color: 'rgba(226, 232, 240, 0.85)',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+          }}
+        >
+          {thinking}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Utility function to extract thinking process from content
+function extractThinkingProcess(content: string): { thinking: string | null; cleanContent: string } {
+  // Look for <thinking>...</thinking> tags
+  const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/
+  const thinkingMatch = content.match(thinkingRegex)
+  
+  if (thinkingMatch) {
+    const thinking = thinkingMatch[1].trim()
+    const cleanContent = content.replace(thinkingRegex, '').trim()
+    return { thinking, cleanContent }
+  }
+  
+  // Also look for ## Thinking or similar markdown headers
+  const markdownThinkingRegex = /^#{1,3}\s*(?:Thinking|思考过程)[\s\S]*?(?=^#{1,3}|$)/m
+  const markdownMatch = content.match(markdownThinkingRegex)
+  
+  if (markdownMatch) {
+    const thinking = markdownMatch[0].trim()
+    const cleanContent = content.replace(markdownThinkingRegex, '').trim()
+    return { thinking, cleanContent }
+  }
+
+  return { thinking: null, cleanContent: content }
+}
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isMobile = useIsMobile()
   const style = bubbleStyles[message.role] || bubbleStyles.assistant
@@ -98,7 +198,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   const renderContent = () => {
-    const content = message.content
+    // Extract and remove thinking process from display
+    const { cleanContent } = extractThinkingProcess(message.content)
+    const content = cleanContent
     
     // Detect and render code blocks with syntax highlighting
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
@@ -488,13 +590,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     return parts.length > 0 ? parts : text
   }
 
+  // Extract thinking process if it exists
+  const { thinking, cleanContent } = extractThinkingProcess(message.content)
+
   return (
-    <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
-      <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
-        {renderContent()}
+    <>
+      {thinking && message.role === 'assistant' && <ThinkingProcess thinking={thinking} />}
+      <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
+        <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
+          {renderContent()}
+        </div>
+        <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
       </div>
-      <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
-    </div>
+    </>
   )
 }
 
@@ -1435,6 +1543,16 @@ export default function ChatStudio() {
 
             <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: 1 }}>
+                {/* Display thinking process from latest assistant message if it exists */}
+                {messages.length > 0 && (() => {
+                  const lastAssistantMsg = [...messages].reverse().find(msg => msg.role === 'assistant')
+                  if (lastAssistantMsg) {
+                    const { thinking } = extractThinkingProcess(lastAssistantMsg.content)
+                    return thinking ? <ThinkingProcess thinking={thinking} /> : null
+                  }
+                  return null
+                })()}
+
                 <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
