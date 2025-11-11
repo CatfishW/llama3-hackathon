@@ -168,6 +168,25 @@ function extractThinkingProcess(content: string): { thinking: string | null; cle
     return { thinking, cleanContent }
   }
   
+  // Look for <channel>...<analysis>...</analysis>...</channel> patterns
+  const channelRegex = /<channel>([\s\S]*?)<analysis>([\s\S]*?)<\/analysis>([\s\S]*?)<\/channel>/
+  const channelMatch = content.match(channelRegex)
+  
+  if (channelMatch) {
+    // Extract thinking from the channel wrapper and analysis tags
+    const channelStart = channelMatch[1].trim()
+    const thinkingContent = channelMatch[2].trim()
+    const channelEnd = channelMatch[3].trim()
+    
+    // Find the actual response (usually after </channel>)
+    const afterChannel = content.substring(channelMatch.index! + channelMatch[0].length).trim()
+    
+    const thinking = `${channelStart}\n<analysis>\n${thinkingContent}\n</analysis>\n${channelEnd}`.trim()
+    const cleanContent = afterChannel || content.replace(channelRegex, '').trim()
+    
+    return { thinking, cleanContent }
+  }
+  
   // Also look for ## Thinking or similar markdown headers
   const markdownThinkingRegex = /^#{1,3}\s*(?:Thinking|思考过程)[\s\S]*?(?=^#{1,3}|$)/m
   const markdownMatch = content.match(markdownThinkingRegex)
