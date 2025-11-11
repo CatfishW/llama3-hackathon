@@ -1251,13 +1251,12 @@ export default function ChatStudio() {
 
             <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: 1 }}>
-                <TabCompletionTextarea
+                <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder={sending ? 'Waiting for model response…' : 'Type your message…'}
                   disabled={sending}
                   rows={isMobile ? 2 : 3}
-                  completionType="message"
                   style={{
                     width: '100%',
                     resize: 'vertical',
@@ -1266,7 +1265,8 @@ export default function ChatStudio() {
                     borderRadius: '12px',
                     padding: '14px',
                     color: '#e2e8f0',
-                    fontSize: isMobile ? '0.9rem' : '1rem'
+                    fontSize: isMobile ? '0.9rem' : '1rem',
+                    fontFamily: 'inherit'
                   }}
                 />
               </div>
