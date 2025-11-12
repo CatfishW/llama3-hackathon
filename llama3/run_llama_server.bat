@@ -12,13 +12,16 @@ echo.
 echo ====================================
 
 set "SERVER_PATH=D:/llama.cpp/build/bin/Debug/llama-server"
-set "MODEL_PATH=Qwen3-VL-32B-Instruct-IQ4_XS.gguf"
+set "MODEL_PATH=Qwen3-Coder-30B-A3B-Instruct-1M-UD-Q3_K_XL.gguf"
+@REM set "MODEL_PATH=gpt-oss-20b-F16.gguf"
+@REM set "MODEL_PATH=Qwen3-Coder-30B-A3B-Instruct-1M-UD-TQ1_0.gguf"
 set "HOST=0.0.0.0"
 set "PORT=8080"
-set "CONTEXT_SIZE=16920"
+set "CONTEXT_SIZE=18312"
 set "GPU_LAYERS=80"
 set "THREADS=6"
 set "PARALLEL=2"
+
 
 :restart_loop
 echo.

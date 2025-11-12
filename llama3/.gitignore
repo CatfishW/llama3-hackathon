@@ -1,7 +1,7 @@
 # Debug logs (contain sensitive user data)
 debug_info.log
 debug_info_*.log
-
+assets/
 # Python cache
 __pycache__/
 *.py[cod]
