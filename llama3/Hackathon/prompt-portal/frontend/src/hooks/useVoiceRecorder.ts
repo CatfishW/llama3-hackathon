@@ -9,92 +9,31 @@ interface UseVoiceRecorderProps {
   onTranscription?: (text: string) => void
   onError?: (error: string) => void
   language?: string
+  apiUrl?: string
 }
 
 const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
-  const { onTranscription, onError, language = 'en-US' } = props
+  const { 
+    onTranscription, 
+    onError, 
+    language = 'en',
+    apiUrl = '/api/stt'
+  } = props
   
   const [isRecording, setIsRecording] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [isFinal, setIsFinal] = useState(false)
   const [confidence, setConfidence] = useState(0)
+  const [isTranscribing, setIsTranscribing] = useState(false)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
-  const recognitionRef = useRef<any>(null)
   const chunksRef = useRef<Blob[]>([])
   
-  // Initialize Web Speech API
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    
-    if (!SpeechRecognition) {
-      console.warn('Web Speech API not supported in this browser')
-      return
-    }
-    
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.language = language
-    
-    recognition.onstart = () => {
-      setIsListening(true)
-      setTranscript('')
-      setIsFinal(false)
-      setConfidence(0)
-    }
-    
-    recognition.onresult = (event: any) => {
-      let interimTranscript = ''
-      let finalTranscript = ''
-      let maxConfidence = 0
-      
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        const conf = event.results[i][0].confidence
-        
-        maxConfidence = Math.max(maxConfidence, conf)
-        
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' '
-        } else {
-          interimTranscript += transcript
-        }
-      }
-      
-      setTranscript(finalTranscript || interimTranscript)
-      setIsFinal(!!finalTranscript)
-      setConfidence(maxConfidence)
-      
-      // Callback for final transcription
-      if (finalTranscript && onTranscription) {
-        onTranscription(finalTranscript.trim())
-      }
-    }
-    
-    recognition.onerror = (event: any) => {
-      const errorMessage = `Speech recognition error: ${event.error}`
-      console.error(errorMessage)
-      if (onError) onError(errorMessage)
-      setIsListening(false)
-    }
-    
-    recognition.onend = () => {
-      setIsListening(false)
-    }
-    
-    recognitionRef.current = recognition
-    
-    return () => {
-      recognition.abort()
-    }
-  }, [language, onTranscription, onError])
-  
-  // Initialize audio context for visualization
+  // Initialize audio context for recording
   const initializeAudioContext = useCallback(async () => {
     if (audioContextRef.current) return
     
@@ -109,7 +48,7 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       
       micStreamRef.current = stream
       
-      // Create audio context
+      // Create audio context for visualization
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
       const source = audioContext.createMediaStreamSource(stream)
       const analyser = audioContext.createAnalyser()
@@ -121,10 +60,23 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       audioContextRef.current = audioContext
       analyserRef.current = analyser
       
-      return { audioContext, analyser, stream }
+      // Set up media recorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      })
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data)
+        }
+      }
+      
+      mediaRecorderRef.current = mediaRecorder
+      
+      return { audioContext, analyser, stream, mediaRecorder }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to access microphone'
-      console.error(errorMsg)
+      console.error('[STT] Microphone access error:', errorMsg)
       if (onError) onError(errorMsg)
       throw error
     }
@@ -132,93 +84,190 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
   
   const startRecording = useCallback(async () => {
     try {
-      // Initialize audio context if not already done
+      console.log('[STT] Starting recording...')
+      
+      // Initialize if needed
       if (!audioContextRef.current) {
         await initializeAudioContext()
       }
       
       setIsRecording(true)
+      setIsListening(true)
       setTranscript('')
       setIsFinal(false)
+      setConfidence(0)
       chunksRef.current = []
       
-      // Start speech recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.start()
+      // Start media recorder
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.start()
+        console.log('[STT] MediaRecorder started')
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to start recording'
+      console.error('[STT] Start recording error:', errorMsg)
       setIsRecording(false)
+      setIsListening(false)
       if (onError) onError(errorMsg)
     }
   }, [initializeAudioContext, onError])
   
-  const stopRecording = useCallback((): Promise<string> => {
-    return new Promise((resolve) => {
-      setIsRecording(false)
+  const stopRecording = useCallback(async (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!mediaRecorderRef.current) {
+        console.log('[STT] No media recorder available')
+        setIsRecording(false)
+        setIsListening(false)
+        resolve('')
+        return
+      }
       
-      if (recognitionRef.current) {
-        let hasResolved = false
-        let timeoutId: NodeJS.Timeout | null = null
-        
-        // Stop speech recognition
-        recognitionRef.current.stop()
-        
-        const cleanup = () => {
-          if (timeoutId) clearTimeout(timeoutId)
-          recognitionRef.current?.removeEventListener('result', handleFinalResult)
-          recognitionRef.current?.removeEventListener('end', handleEnd)
-        }
-        
-        const doResolve = (text: string) => {
-          if (!hasResolved) {
-            hasResolved = true
-            cleanup()
-            console.log('[STT] Resolved with transcript:', text)
-            resolve(text)
-          }
-        }
-        
-        // Set up final result handler
-        const handleFinalResult = (event: any) => {
-          if (hasResolved) return
+      console.log('[STT] Stopping recording...')
+      setIsRecording(false)
+      setIsTranscribing(true)
+      
+      const handleStopEvent = async () => {
+        try {
+          // Get audio blob
+          const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          console.log('[STT] Audio blob created, size:', audioBlob.size)
           
+          if (audioBlob.size === 0) {
+            console.warn('[STT] Empty audio blob')
+            setIsListening(false)
+            setIsTranscribing(false)
+            resolve('')
+            return
+          }
+          
+          // Send to backend for transcription
+          console.log('[STT] Sending audio to backend for transcription...')
+          setTranscript('🔄 Transcribing...')
+          
+          const formData = new FormData()
+          formData.append('file', audioBlob, 'audio.webm')
+          formData.append('language', language)
+          
+          const response = await fetch(`${apiUrl}/transcribe`, {
+            method: 'POST',
+            body: formData
+          })
+          
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.detail || `HTTP ${response.status}`)
+          }
+          
+          const result = await response.json()
+          const transcribedText = result.text || ''
+          
+          console.log('[STT] Transcription complete:', transcribedText)
+          setTranscript(transcribedText)
+          setIsFinal(true)
+          setConfidence(result.confidence || 0.95)
+          
+          if (transcribedText && onTranscription) {
+            onTranscription(transcribedText)
+          }
+          
+          setIsListening(false)
+          setIsTranscribing(false)
+          resolve(transcribedText)
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Transcription failed'
+          console.error('[STT] Transcription error:', errorMsg)
+          
+          // Fallback: try to use Web Speech API as backup
+          console.log('[STT] Attempting Web Speech API fallback...')
+          attemptWebSpeechFallback().then(resolve).catch(() => {
+            setIsListening(false)
+            setIsTranscribing(false)
+            if (onError) onError(errorMsg)
+            resolve('')
+          })
+        }
+      }
+      
+      mediaRecorderRef.current.addEventListener('stop', handleStopEvent, { once: true })
+      mediaRecorderRef.current.stop()
+    })
+  }, [language, apiUrl, onTranscription, onError])
+  
+  // Fallback: Web Speech API
+  const attemptWebSpeechFallback = useCallback((): Promise<string> => {
+    return new Promise((resolve) => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      
+      if (!SpeechRecognition) {
+        console.warn('[STT] Web Speech API not available')
+        resolve('')
+        return
+      }
+      
+      try {
+        const recognition = new SpeechRecognition()
+        recognition.continuous = false
+        recognition.interimResults = false
+        recognition.language = language
+        
+        let hasResolved = false
+        
+        recognition.onstart = () => {
+          console.log('[STT] Web Speech API started (fallback)')
+          setTranscript('🎤 Listening...')
+        }
+        
+        recognition.onresult = (event: any) => {
           let finalTranscript = ''
           for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript
             if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript + ' '
+              finalTranscript += transcript + ' '
             }
           }
           
-          if (finalTranscript.trim()) {
-            console.log('[STT] Got final result:', finalTranscript.trim())
-            doResolve(finalTranscript.trim())
+          if (finalTranscript && !hasResolved) {
+            hasResolved = true
+            console.log('[STT] Web Speech fallback result:', finalTranscript.trim())
+            setTranscript(finalTranscript.trim())
+            setIsFinal(true)
+            resolve(finalTranscript.trim())
           }
         }
         
-        const handleEnd = () => {
-          if (hasResolved) return
-          
-          console.log('[STT] Recognition ended')
-          doResolve(transcript.trim())
-        }
-        
-        recognitionRef.current.addEventListener('result', handleFinalResult)
-        recognitionRef.current.addEventListener('end', handleEnd)
-        
-        // Timeout as fallback (longer timeout to allow user to speak)
-        timeoutId = setTimeout(() => {
+        recognition.onerror = (event: any) => {
+          console.error('[STT] Web Speech error:', event.error)
           if (!hasResolved) {
-            console.log('[STT] Timeout reached, resolving with transcript:', transcript.trim())
-            doResolve(transcript.trim())
+            hasResolved = true
+            resolve('')
           }
-        }, 5000) // 5 second timeout
-      } else {
-        console.log('[STT] No recognition object, resolving immediately')
+        }
+        
+        recognition.onend = () => {
+          if (!hasResolved) {
+            hasResolved = true
+            console.log('[STT] Web Speech ended')
+            resolve('')
+          }
+        }
+        
+        recognition.start()
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          if (!hasResolved) {
+            hasResolved = true
+            recognition.abort()
+            console.log('[STT] Web Speech timeout')
+            resolve('')
+          }
+        }, 10000)
+      } catch (error) {
+        console.error('[STT] Web Speech setup error:', error)
         resolve('')
       }
     })
-  }, [transcript])
+  }, [language])
   
   const getAudioVisualizerData = useCallback((): AudioVisualizerData => {
     const data: AudioVisualizerData = {
@@ -243,7 +292,11 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
   
   const cleanup = useCallback(() => {
     if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop()
+      try {
+        mediaRecorderRef.current.stop()
+      } catch (e) {
+        // ignore
+      }
       mediaRecorderRef.current = null
     }
     
@@ -258,15 +311,17 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
     }
     
     analyserRef.current = null
-    recognitionRef.current?.abort()
+    chunksRef.current = []
     
     setIsRecording(false)
     setIsListening(false)
+    setIsTranscribing(false)
   }, [])
   
   return {
     isRecording,
     isListening,
+    isTranscribing,
     transcript,
     isFinal,
     confidence,

@@ -49,6 +49,7 @@ export default function VoiceChat() {
   const {
     isRecording,
     isListening,
+    isTranscribing,
     transcript,
     isFinal,
     confidence,
@@ -57,7 +58,7 @@ export default function VoiceChat() {
     getAudioVisualizerData,
     cleanup: cleanupRecorder
   } = useVoiceRecorder({
-    language: 'en-US',
+    language: 'en',
     onError: (error) => setError(error)
   })
   
@@ -515,7 +516,7 @@ export default function VoiceChat() {
         </div>
         
         {/* Visualizer and Status */}
-        {(isRecording || isListening) && (
+        {(isRecording || isListening || isTranscribing) && (
           <div style={{
             padding: isMobile ? '12px' : '16px',
             borderTop: '1px solid rgba(148,163,184,0.2)',
@@ -524,11 +525,13 @@ export default function VoiceChat() {
             gap: '12px',
             background: 'rgba(20,20,35,0.5)'
           }}>
-            <VoiceVisualizer
-              isActive={isRecording}
-              frequency={visualizerData.frequency}
-              waveform={visualizerData.waveform}
-            />
+            {(isRecording || isListening) && (
+              <VoiceVisualizer
+                isActive={isRecording}
+                frequency={visualizerData.frequency}
+                waveform={visualizerData.waveform}
+              />
+            )}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -536,14 +539,14 @@ export default function VoiceChat() {
               fontSize: '0.8rem',
               color: 'rgba(148,163,184,0.85)'
             }}>
-              <span>{isRecording ? '🎙️ Recording...' : '👂 Listening...'}</span>
-              {confidence > 0 && (
+              <span>{isTranscribing ? '✨ Transcribing...' : isRecording ? '🎙️ Recording...' : '👂 Listening...'}</span>
+              {confidence > 0 && !isTranscribing && (
                 <span>
                   Confidence: {(confidence * 100).toFixed(0)}%
                 </span>
               )}
             </div>
-            {transcript && (
+            {transcript && !isTranscribing && (
               <div style={{
                 padding: '8px 12px',
                 background: 'rgba(30,41,59,0.4)',
@@ -600,7 +603,7 @@ export default function VoiceChat() {
         
         {/* Status Text */}
         <div style={styles.statusText}>
-          {isProcessing ? '🔄 Processing...' : isSynthesizing ? '🔊 Generating audio...' : isRecording ? '🎙️ Listening...' : 'Ready to talk'}
+          {isProcessing ? '🔄 Processing...' : isSynthesizing ? '🔊 Generating audio...' : isTranscribing ? '✨ Transcribing...' : isRecording ? '🎙️ Recording...' : 'Ready to talk'}
         </div>
         
         {/* Talk Button */}
@@ -610,11 +613,11 @@ export default function VoiceChat() {
           onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          disabled={isProcessing || isSynthesizing}
+          disabled={isProcessing || isSynthesizing || isTranscribing}
           style={{
             ...styles.talkButton,
-            opacity: isProcessing || isSynthesizing ? 0.6 : 1,
-            cursor: isProcessing || isSynthesizing ? 'not-allowed' : 'pointer'
+            opacity: isProcessing || isSynthesizing || isTranscribing ? 0.6 : 1,
+            cursor: isProcessing || isSynthesizing || isTranscribing ? 'not-allowed' : 'pointer'
           }}
           title="Hold to record, release to send"
         >
