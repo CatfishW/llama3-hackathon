@@ -25,6 +25,7 @@ import { TemplateProvider } from './contexts/TemplateContext'
 import { CompletionProvider } from './completion/CompletionProvider'
 import WebGame from './pages/WebGame'
 import ChatStudio from './pages/ChatStudio'
+import VoiceChat from './pages/VoiceChat'
 import { announcementsAPI } from './api'
 
 export default function App() {
@@ -176,6 +177,11 @@ export default function App() {
                 <div style={{ ...contentStyle, flex: 1 }}><ChatStudio /></div>
                 <Footer />
               </div>
+            </PrivateRoute>
+          } />
+          <Route path="/voice-chat" element={
+            <PrivateRoute>
+              <VoiceChat />
             </PrivateRoute>
           } />
           <Route path="/templates/view/:id" element={

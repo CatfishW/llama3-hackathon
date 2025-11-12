@@ -417,3 +417,30 @@ export const modelsAPI = {
   updateModel: (modelName: string, data: any) => api.put(`/api/models/update/${modelName}`, data),
   deleteModel: (modelName: string) => api.delete(`/api/models/delete/${modelName}`)
 }
+
+// Text-to-Speech API
+export const ttsAPI = {
+  synthesize: (data: {
+    text: string
+    voice?: string
+    lang_code?: string
+    speed?: number
+  }) => api.post('/api/tts/synthesize', data),
+  
+  getAvailableVoices: () => api.get('/api/tts/voices'),
+  
+  synthesizeAndStream: async (
+    text: string,
+    voice: string = 'af_heart',
+    speed: number = 1.0
+  ): Promise<{ audio_base64: string; audio_duration_seconds: number; audio_sample_rate: number }> => {
+    const response = await api.post('/api/tts/synthesize', {
+      text,
+      voice,
+      lang_code: 'a',
+      speed
+    })
+    return response.data
+  }
+}
+
