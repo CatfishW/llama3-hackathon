@@ -158,30 +158,62 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       setIsRecording(false)
       
       if (recognitionRef.current) {
-        // Stop speech recognition and wait for final result
+        // First, get any accumulated results before stopping
+        let accumulatedTranscript = transcript
+        
+        // Stop speech recognition
+        recognitionRef.current.stop()
+        
+        // Set up final result handler
         const handleFinalResult = (event: any) => {
           if (event.results.length > 0) {
             let finalTranscript = ''
             for (let i = 0; i < event.results.length; i++) {
               if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript
+                finalTranscript += event.results[i][0].transcript + ' '
               }
             }
+            
+            const completeTranscript = (finalTranscript || accumulatedTranscript).trim()
+            console.log('[STT] Final transcript:', completeTranscript)
+            
             recognitionRef.current.removeEventListener('result', handleFinalResult)
-            setTranscript(finalTranscript.trim())
-            resolve(finalTranscript.trim())
+            recognitionRef.current.removeEventListener('end', handleEnd)
+            
+            setTranscript(completeTranscript)
+            resolve(completeTranscript)
           }
         }
         
-        recognitionRef.current.addEventListener('result', handleFinalResult)
-        recognitionRef.current.stop()
-        
-        // Timeout in case no final result
-        setTimeout(() => {
+        const handleEnd = () => {
+          console.log('[STT] Recognition ended, current transcript:', transcript)
           recognitionRef.current.removeEventListener('result', handleFinalResult)
-          resolve(transcript)
-        }, 500)
+          recognitionRef.current.removeEventListener('end', handleEnd)
+          
+          const finalResult = transcript.trim()
+          setTranscript(finalResult)
+          resolve(finalResult)
+        }
+        
+        recognitionRef.current.addEventListener('result', handleFinalResult)
+        recognitionRef.current.addEventListener('end', handleEnd)
+        
+        // Timeout as fallback
+        const timeoutId = setTimeout(() => {
+          console.log('[STT] Timeout, using current transcript:', transcript)
+          recognitionRef.current.removeEventListener('result', handleFinalResult)
+          recognitionRef.current.removeEventListener('end', handleEnd)
+          resolve(transcript.trim())
+        }, 1000)
+        
+        // Clear timeout if handlers are called first
+        const originalResolve = resolve
+        const wrappedResolve = (text: string) => {
+          clearTimeout(timeoutId)
+          originalResolve(text)
+        }
       } else {
+        console.log('[STT] No recognition object, resolving with current transcript:', transcript)
         resolve(transcript)
       }
     })

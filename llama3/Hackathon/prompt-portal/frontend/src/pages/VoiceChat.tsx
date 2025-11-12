@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, CSSProperties } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { chatbotAPI, ttsAPI } from '../api'
 import useVoiceRecorder from '../hooks/useVoiceRecorder'
 import useTTS from '../hooks/useTTS'
@@ -28,6 +29,7 @@ const useIsMobile = () => {
 
 export default function VoiceChat() {
   const isMobile = useIsMobile()
+  const navigate = useNavigate()
   
   // State
   const [messages, setMessages] = useState<VoiceMessage[]>([])
@@ -120,6 +122,7 @@ export default function VoiceChat() {
   const handleMouseUp = async () => {
     try {
       const finalTranscript = await stopRecording()
+      console.log('[VoiceChat] Final transcript received:', finalTranscript)
       
       if (finalTranscript.trim()) {
         // Add user message
@@ -137,6 +140,7 @@ export default function VoiceChat() {
         
         try {
           // Send to chatbot API
+          console.log('[VoiceChat] Sending to chatbot API:', finalTranscript)
           const response = await chatbotAPI.sendMessage({
             session_id: 1, // Use a default session
             content: finalTranscript,
@@ -144,6 +148,7 @@ export default function VoiceChat() {
           })
           
           const assistantText = response.data.content || response.data.message
+          console.log('[VoiceChat] Got response from LLM:', assistantText)
           
           // Add assistant message
           const assistantMessageId = Date.now().toString() + '_assistant'
@@ -158,6 +163,7 @@ export default function VoiceChat() {
           
           // Synthesize and play response
           try {
+            console.log('[VoiceChat] Starting TTS synthesis...')
             await synthesizeAndPlay(assistantText, selectedVoice, speechRate)
             setPlayingMessageId(assistantMessageId)
           } catch (ttsError) {
@@ -166,12 +172,18 @@ export default function VoiceChat() {
             setError('Could not play audio response, but text is available')
           }
         } catch (apiError) {
+          console.error('[VoiceChat] API Error:', apiError)
           setError(apiError instanceof Error ? apiError.message : 'Failed to get response from LLM')
         } finally {
           setIsProcessing(false)
         }
+      } else {
+        console.log('[VoiceChat] Empty transcript')
+        setError('No speech detected. Please try again.')
+        setIsProcessing(false)
       }
     } catch (err) {
+      console.error('[VoiceChat] Error:', err)
       setError(err instanceof Error ? err.message : 'Failed to process speech')
       setIsProcessing(false)
     }
@@ -185,28 +197,44 @@ export default function VoiceChat() {
       display: 'flex',
       flexDirection: 'column' as const,
       height: '100vh',
-      background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.8))',
+      background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e3a8a 100%)',
       color: '#e2e8f0',
       fontFamily: 'Inter, system-ui, sans-serif'
     },
     header: {
-      padding: isMobile ? '12px 16px' : '20px 24px',
+      padding: isMobile ? '12px 16px' : '16px 24px',
       borderBottom: '1px solid rgba(148,163,184,0.2)',
-      background: 'rgba(20,20,35,0.6)',
+      background: 'rgba(15,23,42,0.8)',
       backdropFilter: 'blur(10px)',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: '16px'
     } as CSSProperties,
-    headerTitle: {
-      fontSize: isMobile ? '1.1rem' : '1.4rem',
-      fontWeight: 600,
-      color: '#e2e8f0'
-    } as CSSProperties,
-    headerButtons: {
+    headerLeft: {
       display: 'flex',
-      gap: '8px'
+      alignItems: 'center',
+      gap: '12px',
+      flex: 1
+    } as CSSProperties,
+    headerTitle: {
+      fontSize: isMobile ? '1.2rem' : '1.5rem',
+      fontWeight: 700,
+      color: '#e2e8f0',
+      margin: 0
+    } as CSSProperties,
+    backButton: {
+      padding: '8px 12px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.3)',
+      background: 'rgba(30,41,59,0.5)',
+      color: 'rgba(226,232,240,0.8)',
+      fontSize: '1rem',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
     } as CSSProperties,
     mainContent: {
       flex: 1,
@@ -220,29 +248,34 @@ export default function VoiceChat() {
       padding: isMobile ? '16px 12px' : '24px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '12px'
+      gap: '16px',
+      backgroundColor: 'rgba(15, 23, 42, 0.4)'
     } as CSSProperties,
     messageBubble: {
-      maxWidth: isMobile ? '90%' : '70%',
-      padding: '12px 16px',
-      borderRadius: '16px',
+      maxWidth: isMobile ? '85%' : '65%',
+      padding: '14px 18px',
+      borderRadius: '18px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '8px'
+      gap: '8px',
+      wordWrap: 'break-word' as const
     } as CSSProperties,
     userBubble: {
-      background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(129,140,248,0.25))',
-      border: '1px solid rgba(129,140,248,0.45)',
-      alignSelf: 'flex-end'
+      background: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(99,102,241,0.3))',
+      border: '1px solid rgba(129,140,248,0.5)',
+      alignSelf: 'flex-end',
+      marginRight: '8px'
     } as CSSProperties,
     assistantBubble: {
-      background: 'rgba(30,41,59,0.6)',
-      border: '1px solid rgba(148,163,184,0.25)',
-      alignSelf: 'flex-start'
+      background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.2))',
+      border: '1px solid rgba(34,197,94,0.4)',
+      alignSelf: 'flex-start',
+      marginLeft: '8px'
     } as CSSProperties,
     messageText: {
       fontSize: '0.95rem',
-      lineHeight: '1.5'
+      lineHeight: '1.6',
+      color: '#e2e8f0'
     } as CSSProperties,
     messageTime: {
       fontSize: '0.7rem',
@@ -354,20 +387,30 @@ export default function VoiceChat() {
       
       {/* Header */}
       <div style={styles.header}>
-        <input
-          type="text"
-          value={sessionTitle}
-          onChange={(e) => setSessionTitle(e.target.value)}
-          style={{
-            fontSize: isMobile ? '1.1rem' : '1.4rem',
-            fontWeight: 600,
-            background: 'transparent',
-            border: 'none',
-            color: '#e2e8f0',
-            flex: 1,
-            outline: 'none'
-          }}
-        />
+        <div style={styles.headerLeft}>
+          <button
+            onClick={() => navigate(-1)}
+            style={styles.backButton}
+            title="Go back"
+          >
+            ← Back
+          </button>
+          <input
+            type="text"
+            value={sessionTitle}
+            onChange={(e) => setSessionTitle(e.target.value)}
+            style={{
+              fontSize: isMobile ? '1.2rem' : '1.5rem',
+              fontWeight: 700,
+              background: 'transparent',
+              border: 'none',
+              color: '#e2e8f0',
+              outline: 'none',
+              flex: 1,
+              minWidth: '0'
+            }}
+          />
+        </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
           style={buttonStyle(showSettings)}
@@ -411,8 +454,8 @@ export default function VoiceChat() {
               gap: '12px'
             }}>
               <div style={{ fontSize: isMobile ? '2rem' : '3rem' }}>🎤</div>
-              <div style={{ fontSize: isMobile ? '0.95rem' : '1.1rem', textAlign: 'center' }}>
-                Hold the Talk button and speak your message
+              <div style={{ fontSize: isMobile ? '0.95rem' : '1.1rem', textAlign: 'center', maxWidth: '300px' }}>
+                Hold the Talk button and speak your message to start a conversation
               </div>
             </div>
           ) : (
@@ -420,40 +463,52 @@ export default function VoiceChat() {
               <div
                 key={msg.id}
                 style={{
-                  ...styles.messageBubble,
-                  ...(msg.role === 'user' ? styles.userBubble : styles.assistantBubble)
+                  display: 'flex',
+                  flexDirection: 'column' as const,
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'
                 }}
               >
-                <div style={styles.messageText}>{msg.text}</div>
-                <div style={styles.messageTime}>{msg.timestamp}</div>
-                {msg.role === 'assistant' && (
-                  <button
-                    onClick={() => {
-                      if (playingMessageId === msg.id) {
-                        stopTTS()
-                        setPlayingMessageId(null)
-                      } else {
-                        synthesizeAndPlay(msg.text, selectedVoice, speechRate)
-                        setPlayingMessageId(msg.id)
-                      }
-                    }}
-                    style={{
-                      alignSelf: 'flex-start',
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      border: '1px solid rgba(148,163,184,0.3)',
-                      background: playingMessageId === msg.id
-                        ? 'rgba(59,130,246,0.2)'
-                        : 'rgba(30,41,59,0.4)',
-                      color: playingMessageId === msg.id ? '#93c5fd' : 'rgba(226,232,240,0.7)',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {playingMessageId === msg.id ? '⏸ Stop' : '▶ Play'}
-                  </button>
-                )}
+                <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.8)', marginBottom: '4px', marginLeft: msg.role === 'assistant' ? '8px' : '0', marginRight: msg.role === 'user' ? '8px' : '0' }}>
+                  {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
+                </div>
+                <div
+                  style={{
+                    ...styles.messageBubble,
+                    ...(msg.role === 'user' ? styles.userBubble : styles.assistantBubble)
+                  }}
+                >
+                  <div style={styles.messageText}>{msg.text}</div>
+                  <div style={styles.messageTime}>{msg.timestamp}</div>
+                  {msg.role === 'assistant' && (
+                    <button
+                      onClick={() => {
+                        if (playingMessageId === msg.id) {
+                          stopTTS()
+                          setPlayingMessageId(null)
+                        } else {
+                          synthesizeAndPlay(msg.text, selectedVoice, speechRate)
+                          setPlayingMessageId(msg.id)
+                        }
+                      }}
+                      style={{
+                        alignSelf: 'flex-start',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(148,163,184,0.3)',
+                        background: playingMessageId === msg.id
+                          ? 'rgba(59,130,246,0.2)'
+                          : 'rgba(30,41,59,0.4)',
+                        color: playingMessageId === msg.id ? '#93c5fd' : 'rgba(226,232,240,0.7)',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {playingMessageId === msg.id ? '⏸ Stop' : '▶ Play'}
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
