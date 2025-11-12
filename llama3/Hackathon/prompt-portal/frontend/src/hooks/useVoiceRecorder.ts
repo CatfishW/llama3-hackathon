@@ -153,68 +153,69 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
     }
   }, [initializeAudioContext, onError])
   
-  const stopRecording = useCallback(async (): Promise<string> => {
+  const stopRecording = useCallback((): Promise<string> => {
     return new Promise((resolve) => {
       setIsRecording(false)
       
       if (recognitionRef.current) {
-        // First, get any accumulated results before stopping
-        let accumulatedTranscript = transcript
+        let hasResolved = false
+        let timeoutId: NodeJS.Timeout | null = null
         
         // Stop speech recognition
         recognitionRef.current.stop()
         
+        const cleanup = () => {
+          if (timeoutId) clearTimeout(timeoutId)
+          recognitionRef.current?.removeEventListener('result', handleFinalResult)
+          recognitionRef.current?.removeEventListener('end', handleEnd)
+        }
+        
+        const doResolve = (text: string) => {
+          if (!hasResolved) {
+            hasResolved = true
+            cleanup()
+            console.log('[STT] Resolved with transcript:', text)
+            resolve(text)
+          }
+        }
+        
         // Set up final result handler
         const handleFinalResult = (event: any) => {
-          if (event.results.length > 0) {
-            let finalTranscript = ''
-            for (let i = 0; i < event.results.length; i++) {
-              if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript + ' '
-              }
+          if (hasResolved) return
+          
+          let finalTranscript = ''
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript + ' '
             }
-            
-            const completeTranscript = (finalTranscript || accumulatedTranscript).trim()
-            console.log('[STT] Final transcript:', completeTranscript)
-            
-            recognitionRef.current.removeEventListener('result', handleFinalResult)
-            recognitionRef.current.removeEventListener('end', handleEnd)
-            
-            setTranscript(completeTranscript)
-            resolve(completeTranscript)
+          }
+          
+          if (finalTranscript.trim()) {
+            console.log('[STT] Got final result:', finalTranscript.trim())
+            doResolve(finalTranscript.trim())
           }
         }
         
         const handleEnd = () => {
-          console.log('[STT] Recognition ended, current transcript:', transcript)
-          recognitionRef.current.removeEventListener('result', handleFinalResult)
-          recognitionRef.current.removeEventListener('end', handleEnd)
+          if (hasResolved) return
           
-          const finalResult = transcript.trim()
-          setTranscript(finalResult)
-          resolve(finalResult)
+          console.log('[STT] Recognition ended')
+          doResolve(transcript.trim())
         }
         
         recognitionRef.current.addEventListener('result', handleFinalResult)
         recognitionRef.current.addEventListener('end', handleEnd)
         
-        // Timeout as fallback
-        const timeoutId = setTimeout(() => {
-          console.log('[STT] Timeout, using current transcript:', transcript)
-          recognitionRef.current.removeEventListener('result', handleFinalResult)
-          recognitionRef.current.removeEventListener('end', handleEnd)
-          resolve(transcript.trim())
-        }, 1000)
-        
-        // Clear timeout if handlers are called first
-        const originalResolve = resolve
-        const wrappedResolve = (text: string) => {
-          clearTimeout(timeoutId)
-          originalResolve(text)
-        }
+        // Timeout as fallback (longer timeout to allow user to speak)
+        timeoutId = setTimeout(() => {
+          if (!hasResolved) {
+            console.log('[STT] Timeout reached, resolving with transcript:', transcript.trim())
+            doResolve(transcript.trim())
+          }
+        }, 5000) // 5 second timeout
       } else {
-        console.log('[STT] No recognition object, resolving with current transcript:', transcript)
-        resolve(transcript)
+        console.log('[STT] No recognition object, resolving immediately')
+        resolve('')
       }
     })
   }, [transcript])
