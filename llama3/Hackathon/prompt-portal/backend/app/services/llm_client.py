@@ -202,6 +202,7 @@ class LLMClient:
     """
     HTTP client for LLM inference using OpenAI-compatible API.
     Supports llama.cpp server, vLLM, and other OpenAI-compatible endpoints.
+    Now supports multi-model configuration with dynamic API switching.
     """
     
     def __init__(
@@ -211,7 +212,8 @@ class LLMClient:
         default_temperature: float = 0.6,
         default_top_p: float = 0.9,
         default_max_tokens: int = 512,
-        skip_thinking: bool = True
+        skip_thinking: bool = True,
+        api_key: str = "not-needed"
     ):
         """
         Initialize LLM client.
@@ -223,6 +225,7 @@ class LLMClient:
             default_top_p: Default top-p sampling
             default_max_tokens: Default max tokens to generate
             skip_thinking: Disable thinking mode (adds /no_think directive)
+            api_key: API key for authentication (default: "not-needed")
         """
         self.server_url = server_url.rstrip('/')
         self.timeout = timeout
@@ -230,15 +233,16 @@ class LLMClient:
         self.default_top_p = default_top_p
         self.default_max_tokens = default_max_tokens
         self.skip_thinking = skip_thinking
+        self.api_key = api_key
         
         logger.info(f"Initializing LLM client: {self.server_url}")
         
         # Initialize OpenAI client with LLM server as base URL when available
         if _OPENAI_AVAILABLE and OpenAI is not None:
-            # Note: api_key is required by OpenAI client but not used by llama.cpp
+            # Note: api_key is required by OpenAI client
             self.client = OpenAI(
                 base_url=self.server_url,
-                api_key="not-needed",
+                api_key=self.api_key,
                 timeout=self.timeout
             )
         else:
@@ -253,6 +257,27 @@ class LLMClient:
             )
         else:
             logger.info("LLM client initialized successfully")
+    
+    def update_config(self, server_url: str, api_key: str):
+        """
+        Update client configuration for a different model.
+        
+        Args:
+            server_url: New API base URL
+            api_key: New API key
+        """
+        self.server_url = server_url.rstrip('/')
+        self.api_key = api_key
+        
+        if _OPENAI_AVAILABLE and OpenAI is not None:
+            self.client = OpenAI(
+                base_url=self.server_url,
+                api_key=self.api_key,
+                timeout=self.timeout
+            )
+            logger.info(f"Updated LLM client configuration: {self.server_url}")
+        else:
+            logger.warning("OpenAI package not available, cannot update client")
     
     def _test_connection(self) -> bool:
         """Test connection to LLM server."""
@@ -468,21 +493,26 @@ class SessionManager:
     Compatible with the MQTT deployment's session management.
     """
     
-    def __init__(self, llm_client: LLMClient, max_history_tokens: int = 10000):
+    def __init__(self, llm_client: LLMClient, max_history_tokens: int = 10000, max_history_messages: Optional[int] = None):
         """
         Initialize session manager.
         
         Args:
             llm_client: LLM client instance
             max_history_tokens: Maximum tokens to keep in conversation history
+            max_history_messages: Maximum number of messages to keep (excluding system prompt). If set, takes precedence over token-based trimming.
         """
         self.llm_client = llm_client
         self.max_history_tokens = max_history_tokens
+        self.max_history_messages = max_history_messages
         self.sessions: Dict[str, Dict] = {}
         self.session_locks: Dict[str, threading.RLock] = {}
         self.global_lock = threading.RLock()
         
-        logger.info("Session manager initialized")
+        if max_history_messages:
+            logger.info(f"Session manager initialized with max_history_messages={max_history_messages}")
+        else:
+            logger.info("Session manager initialized")
     
     def get_or_create_session(
         self,
@@ -535,7 +565,8 @@ class SessionManager:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         use_tools: bool = True,
-        use_history: bool = True
+        use_history: bool = True,
+        max_history_messages: Optional[int] = None
     ) -> str:
         """
         Process a user message and generate a response.
@@ -549,10 +580,15 @@ class SessionManager:
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
             use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt). 
+                                 If not specified, uses self.max_history_messages.
             
         Returns:
             Generated response (may include function calls)
         """
+        # Determine effective max_history_messages
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
         if use_history:
             # Get or create session with history
             session = self.get_or_create_session(session_id, system_prompt)
@@ -564,11 +600,25 @@ class SessionManager:
                 session["dialog"].append({"role": "user", "content": user_message})
                 session["message_count"] += 1
                 
-                # Simple trimming: keep only last N messages
-                max_messages = 20
-                if len(session["dialog"]) > max_messages:
-                    # Keep system message and last N-1 messages
-                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                # Trim history based on max_history_messages if set
+                if effective_max_history_messages is not None:
+                    # Keep system message + last N user/assistant message pairs
+                    # Calculate how many non-system messages to keep
+                    non_system_messages = session["dialog"][1:]  # Skip system message
+                    
+                    # Keep only the last (max_history_messages * 2) non-system messages
+                    # because each pair is user + assistant response
+                    messages_to_keep = effective_max_history_messages * 2
+                    if len(non_system_messages) > messages_to_keep:
+                        # Keep system message + recent messages
+                        session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+                        logger.debug(f"Trimmed dialog to {len(session['dialog'])} messages (max_history_messages={effective_max_history_messages})")
+                else:
+                    # Simple trimming: keep only last N messages (old behavior)
+                    max_messages = 20
+                    if len(session["dialog"]) > max_messages:
+                        # Keep system message and last N-1 messages
+                        session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
                 
                 # Prepare messages for API call
                 messages = session["dialog"].copy()
@@ -614,7 +664,8 @@ class SessionManager:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        use_tools: bool = False  # Note: streaming with tools is complex, disabled by default
+        use_tools: bool = False,  # Note: streaming with tools is complex, disabled by default
+        max_history_messages: Optional[int] = None
     ):
         """
         Process a user message and generate a streaming response.
@@ -627,10 +678,14 @@ class SessionManager:
             top_p: Top-p sampling
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools (not recommended for streaming)
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
             
         Yields:
             Generated text chunks as they arrive
         """
+        # Determine effective max_history_messages
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
         # Get or create session
         session = self.get_or_create_session(session_id, system_prompt)
         session_lock = self.session_locks.get(session_id, threading.RLock())
@@ -641,11 +696,22 @@ class SessionManager:
             session["dialog"].append({"role": "user", "content": user_message})
             session["message_count"] += 1
             
-            # Simple trimming: keep only last N messages
-            max_messages = 20
-            if len(session["dialog"]) > max_messages:
-                # Keep system message and last N-1 messages
-                session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+            # Trim history based on max_history_messages if set
+            if effective_max_history_messages is not None:
+                # Keep system message + last N user/assistant message pairs
+                non_system_messages = session["dialog"][1:]  # Skip system message
+                
+                # Keep only the last (max_history_messages * 2) non-system messages
+                messages_to_keep = effective_max_history_messages * 2
+                if len(non_system_messages) > messages_to_keep:
+                    session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+                    logger.debug(f"Trimmed dialog to {len(session['dialog'])} messages (max_history_messages={effective_max_history_messages})")
+            else:
+                # Simple trimming: keep only last N messages (old behavior)
+                max_messages = 20
+                if len(session["dialog"]) > max_messages:
+                    # Keep system message and last N-1 messages
+                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
             
             # Prepare messages for API call
             messages = session["dialog"].copy()
@@ -736,6 +802,47 @@ def get_llm_client() -> LLMClient:
     if _llm_client is None:
         raise RuntimeError("LLM service not initialized. Call init_llm_service first.")
     return _llm_client
+
+
+def get_llm_client_for_user(user_model_name: Optional[str] = None) -> LLMClient:
+    """
+    Get an LLM client configured for a specific user's selected model.
+    
+    Args:
+        user_model_name: Name of the model selected by the user. If None, uses default.
+        
+    Returns:
+        LLM client configured with the user's selected model
+    """
+    from ..models_config import get_models_manager
+    
+    models_manager = get_models_manager()
+    
+    # Get the model configuration
+    if user_model_name:
+        model_config = models_manager.get_model_by_name(user_model_name)
+        if not model_config:
+            logger.warning(f"Model '{user_model_name}' not found, using default")
+            model_config = models_manager.get_all_models()[0]
+    else:
+        # Use first available model as default
+        models = models_manager.get_all_models()
+        if not models:
+            raise RuntimeError("No models configured")
+        model_config = models[0]
+    
+    # Create a new client with the model's configuration
+    client = LLMClient(
+        server_url=model_config.apiBase,
+        api_key=model_config.apiKey,
+        timeout=300,
+        default_temperature=0.6,
+        default_top_p=0.9,
+        default_max_tokens=512,
+        skip_thinking=True
+    )
+    
+    return client
 
 
 def get_session_manager() -> SessionManager:

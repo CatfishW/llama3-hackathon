@@ -46,6 +46,7 @@ type ChatMessage = {
   session_id: number
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  thinking?: string | null
   metadata?: Record<string, any> | null
   request_id?: string | null
   created_at: string
@@ -81,13 +82,144 @@ const bubbleStyles: Record<string, CSSProperties> = {
   }
 }
 
+// Component to display thinking process similar to ChatGPT
+function ThinkingProcess({ thinking }: { thinking: string }) {
+  const [isExpanded, setIsExpanded] = useState<boolean>(false)
+  const isMobile = useIsMobile()
+
+  if (!thinking || !thinking.trim()) return null
+
+  return (
+    <div
+      style={{
+        maxWidth: isMobile ? '90%' : '70%',
+        alignSelf: 'flex-start',
+        marginBottom: '8px',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        border: '1px solid rgba(168, 85, 247, 0.3)',
+        background: 'rgba(168, 85, 247, 0.08)',
+      }}
+    >
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          width: '100%',
+          padding: '10px 14px',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          color: 'rgba(168, 85, 247, 0.9)',
+          fontSize: '0.85rem',
+          fontWeight: 500,
+          transition: 'color 0.2s',
+          justifyContent: 'space-between',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(196, 181, 253, 0.95)'
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(168, 85, 247, 0.9)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '0.9rem' }}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
+          <span>💭 Thinking Process</span>
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div
+          style={{
+            padding: '0 14px 12px 14px',
+            borderTop: '1px solid rgba(168, 85, 247, 0.2)',
+            background: 'rgba(168, 85, 247, 0.04)',
+            fontSize: '0.8rem',
+            lineHeight: '1.6',
+            color: 'rgba(226, 232, 240, 0.85)',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+          }}
+        >
+          {thinking}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Utility function to extract thinking process from content
+function extractThinkingProcess(content: string): { thinking: string | null; cleanContent: string } {
+  // Look for <thinking>...</thinking> tags
+  const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/
+  const thinkingMatch = content.match(thinkingRegex)
+  
+  if (thinkingMatch) {
+    const thinking = thinkingMatch[1].trim()
+    const cleanContent = content.replace(thinkingRegex, '').trim()
+    return { thinking, cleanContent }
+  }
+  
+  // Look for pattern: ...<|end|><|start|>assistant<|channel|>final<|message|>ACTUAL_RESPONSE
+  const finalMessageRegex = /<\|end\|><\|start\|>assistant<\|channel\|>final<\|message\|>(.*?)$/s
+  const finalMatch = content.match(finalMessageRegex)
+  
+  if (finalMatch) {
+    // Everything before <|end|> is thinking
+    const thinkingEnd = content.indexOf('<|end|>')
+    const thinking = content.substring(0, thinkingEnd).trim()
+    const cleanContent = finalMatch[1].trim()
+    
+    return { thinking, cleanContent }
+  }
+  
+  // Look for <channel>...<analysis>...</analysis>...</channel> patterns
+  const channelRegex = /<channel>([\s\S]*?)<analysis>([\s\S]*?)<\/analysis>([\s\S]*?)<\/channel>/
+  const channelMatch = content.match(channelRegex)
+  
+  if (channelMatch) {
+    // Extract thinking from the channel wrapper and analysis tags
+    const channelStart = channelMatch[1].trim()
+    const thinkingContent = channelMatch[2].trim()
+    const channelEnd = channelMatch[3].trim()
+    
+    // Find the actual response (usually after </channel>)
+    const afterChannel = content.substring(channelMatch.index! + channelMatch[0].length).trim()
+    
+    const thinking = `${channelStart}\n<analysis>\n${thinkingContent}\n</analysis>\n${channelEnd}`.trim()
+    const cleanContent = afterChannel || content.replace(channelRegex, '').trim()
+    
+    return { thinking, cleanContent }
+  }
+  
+  // Also look for ## Thinking or similar markdown headers
+  const markdownThinkingRegex = /^#{1,3}\s*(?:Thinking|思考过程)[\s\S]*?(?=^#{1,3}|$)/m
+  const markdownMatch = content.match(markdownThinkingRegex)
+  
+  if (markdownMatch) {
+    const thinking = markdownMatch[0].trim()
+    const cleanContent = content.replace(markdownThinkingRegex, '').trim()
+    return { thinking, cleanContent }
+  }
+
+  return { thinking: null, cleanContent: content }
+}
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isMobile = useIsMobile()
   const style = bubbleStyles[message.role] || bubbleStyles.assistant
   const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [copiedIndex, setCopiedIndex] = useState<number | string | null>(null)
 
-  const copyToClipboard = async (text: string, index: number) => {
+  const copyToClipboard = async (text: string, index: number | string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedIndex(index)
@@ -98,18 +230,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   const renderContent = () => {
-    const content = message.content
+    // Extract and remove thinking process from display
+    const { cleanContent } = extractThinkingProcess(message.content)
+    const content = cleanContent
     
     // Detect and render code blocks with syntax highlighting
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-    const inlineCodeRegex = /`([^`]+)`/g
     
     const parts: JSX.Element[] = []
     let lastIndex = 0
     let match
     
     // Process code blocks first
-    const matches: Array<{ type: 'code' | 'inline', start: number, end: number, language?: string, content: string }> = []
+    const matches: Array<{ type: 'code', start: number, end: number, language?: string, content: string }> = []
     
     while ((match = codeBlockRegex.exec(content)) !== null) {
       matches.push({
@@ -124,15 +257,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     // Sort matches by start position
     matches.sort((a, b) => a.start - b.start)
     
-    // Build the content with code blocks
+    // Build the content with code blocks and markdown text
     matches.forEach((match, idx) => {
-      // Add text before code block
+      // Add text before code block with markdown rendering
       if (match.start > lastIndex) {
         const textSegment = content.substring(lastIndex, match.start)
         parts.push(
-          <span key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {renderInlineFormatting(textSegment)}
-          </span>
+          <div key={`text-${idx}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {renderMarkdown(textSegment)}
+          </div>
         )
       }
       
@@ -197,63 +330,291 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       lastIndex = match.end
     })
     
-    // Add remaining text
+    // Add remaining text with markdown rendering
     if (lastIndex < content.length) {
       const textSegment = content.substring(lastIndex)
-      parts.push(
-        <span key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {renderInlineFormatting(textSegment)}
-        </span>
-      )
+      // Check if the remaining text is JSON-like (starts with { or [ and ends with } or ])
+      const trimmed = textSegment.trim()
+      const isJsonLike = (trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+                         (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      
+      if (isJsonLike) {
+        // Format JSON-like content as code block
+        parts.push(
+          <div
+            key="json-block"
+            style={{
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '8px',
+              padding: '12px',
+              margin: '8px 0',
+              overflowX: 'auto',
+              position: 'relative'
+            }}
+          >
+            <div style={{ 
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '6px'
+            }}>
+              <div style={{ 
+                fontSize: '0.7rem', 
+                color: 'rgba(148,163,184,0.7)', 
+                fontWeight: 600,
+                textTransform: 'uppercase'
+              }}>
+                JSON
+              </div>
+              <button
+                onClick={() => copyToClipboard(trimmed, 'json')}
+                style={{
+                  background: copiedIndex === 'json' ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
+                  border: `1px solid ${copiedIndex === 'json' ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.65rem',
+                  color: copiedIndex === 'json' ? '#86efac' : 'rgba(226,232,240,0.8)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {copiedIndex === 'json' ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <pre style={{ 
+              margin: 0, 
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85rem',
+              lineHeight: '1.6',
+              color: '#e2e8f0',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              maxWidth: '100%'
+            }}>
+              {trimmed}
+            </pre>
+          </div>
+        )
+      } else {
+        parts.push(
+          <div key="text-final" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {renderMarkdown(textSegment)}
+          </div>
+        )
+      }
     }
     
-    return parts.length > 0 ? parts : renderInlineFormatting(content)
+    return parts.length > 0 ? parts : renderMarkdown(content)
+  }
+
+  const renderMarkdown = (text: string) => {
+    const lines = text.split('\n')
+    const elements: JSX.Element[] = []
+
+    lines.forEach((line, lineIdx) => {
+      if (!line.trim()) {
+        // Empty line
+        elements.push(
+          <div key={`empty-${lineIdx}`} style={{ height: '0.5em' }}>
+            &nbsp;
+          </div>
+        )
+        return
+      }
+
+      // Check for heading (## or ### etc.)
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+      if (headingMatch) {
+        const level = headingMatch[1].length
+        const text = headingMatch[2]
+        const headingSizes: Record<number, number> = { 1: 1.5, 2: 1.3, 3: 1.1, 4: 1, 5: 0.95, 6: 0.9 }
+        elements.push(
+          <div
+            key={`heading-${lineIdx}`}
+            style={{
+              fontSize: `${headingSizes[level]}rem`,
+              fontWeight: 700,
+              marginTop: '12px',
+              marginBottom: '8px',
+              color: '#f1f5f9'
+            }}
+          >
+            {renderInlineFormatting(text)}
+          </div>
+        )
+        return
+      }
+
+      // Check for bullet list items
+      const bulletMatch = line.match(/^[\s]*[-*]\s+(.+)$/)
+      if (bulletMatch) {
+        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
+        elements.push(
+          <div
+            key={`bullet-${lineIdx}`}
+            style={{
+              marginLeft: `${indent * 0.5 + 8}px`,
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '4px'
+            }}
+          >
+            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '16px' }}>•</span>
+            <span>{renderInlineFormatting(bulletMatch[1])}</span>
+          </div>
+        )
+        return
+      }
+
+      // Check for numbered list items
+      const numberedMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/)
+      if (numberedMatch) {
+        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
+        elements.push(
+          <div
+            key={`numbered-${lineIdx}`}
+            style={{
+              marginLeft: `${indent * 0.5 + 8}px`,
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '4px'
+            }}
+          >
+            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '24px' }}>
+              {numberedMatch[1]}.
+            </span>
+            <span>{renderInlineFormatting(numberedMatch[2])}</span>
+          </div>
+        )
+        return
+      }
+
+      // Check for blockquote
+      const quoteMatch = line.match(/^>\s+(.+)$/)
+      if (quoteMatch) {
+        elements.push(
+          <div
+            key={`quote-${lineIdx}`}
+            style={{
+              borderLeft: '3px solid rgba(94,234,212,0.5)',
+              paddingLeft: '12px',
+              marginLeft: '4px',
+              marginBottom: '8px',
+              color: 'rgba(226,232,240,0.8)',
+              fontStyle: 'italic'
+            }}
+          >
+            {renderInlineFormatting(quoteMatch[1])}
+          </div>
+        )
+        return
+      }
+
+      // Regular paragraph with copy button
+      elements.push(
+        <div
+          key={`paragraph-${lineIdx}`}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+            marginBottom: '4px',
+            paddingRight: '8px'
+          }}
+          className="copy-line-container"
+        >
+          <div style={{ flex: 1 }}>
+            {renderInlineFormatting(line)}
+          </div>
+          <button
+            onClick={() => copyToClipboard(line, `line-${lineIdx}`)}
+            title="Copy this line"
+            style={{
+              background: copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.05)',
+              border: `1px solid ${copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.15)'}`,
+              borderRadius: '4px',
+              padding: '2px 6px',
+              fontSize: '0.6rem',
+              color: copiedIndex === `line-${lineIdx}` ? '#86efac' : 'rgba(226,232,240,0.6)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              marginTop: '2px',
+              opacity: 0,
+              transition: 'all 0.2s'
+            }}
+            className="copy-line-btn"
+          >
+            {copiedIndex === `line-${lineIdx}` ? '✓' : '📋'}
+          </button>
+        </div>
+      )
+    })
+
+    return elements
   }
   
   const renderInlineFormatting = (text: string) => {
-    // Handle inline code
-    const inlineCodeRegex = /`([^`]+)`/g
-    const boldRegex = /\*\*(.+?)\*\*/g
-    const italicRegex = /\*(.+?)\*/g
-    const listItemRegex = /^[\s]*[-*]\s(.+)$/gm
-    const numberedListRegex = /^[\s]*\d+\.\s(.+)$/gm
-    
+    // Handle bold, italic, and inline code
     const parts: (string | JSX.Element)[] = []
+    
+    // Pattern to match **bold**, *italic*, and `code` in order of precedence
+    const pattern = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)/g
+    
     let lastIndex = 0
     let match
     
-    // Find all inline code matches
-    const inlineMatches: Array<{ start: number, end: number, content: string }> = []
-    while ((match = inlineCodeRegex.exec(text)) !== null) {
-      inlineMatches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        content: match[1]
-      })
+    while ((match = pattern.exec(text)) !== null) {
+      // Add text before match
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index))
+      }
+      
+      if (match[1]) {
+        // Bold
+        parts.push(
+          <strong
+            key={`bold-${match.index}`}
+            style={{ fontWeight: 700, color: '#f1f5f9' }}
+          >
+            {match[2]}
+          </strong>
+        )
+      } else if (match[3]) {
+        // Italic
+        parts.push(
+          <em
+            key={`italic-${match.index}`}
+            style={{ fontStyle: 'italic', color: 'rgba(226,232,240,0.95)' }}
+          >
+            {match[4]}
+          </em>
+        )
+      } else if (match[5]) {
+        // Inline code
+        parts.push(
+          <code
+            key={`inline-${match.index}`}
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85em',
+              border: '1px solid rgba(148,163,184,0.2)',
+              color: '#a1e8ff'
+            }}
+          >
+            {match[6]}
+          </code>
+        )
+      }
+      
+      lastIndex = match.index + match[0].length
     }
     
-    inlineMatches.forEach((m, idx) => {
-      if (m.start > lastIndex) {
-        parts.push(text.substring(lastIndex, m.start))
-      }
-      parts.push(
-        <code
-          key={`inline-${idx}`}
-          style={{
-            background: 'rgba(0,0,0,0.3)',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-            fontSize: '0.85em',
-            border: '1px solid rgba(148,163,184,0.2)'
-          }}
-        >
-          {m.content}
-        </code>
-      )
-      lastIndex = m.end
-    })
-    
+    // Add remaining text
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex))
     }
@@ -261,13 +622,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     return parts.length > 0 ? parts : text
   }
 
+  // Extract thinking process if it exists
+  const { thinking, cleanContent } = extractThinkingProcess(message.content)
+
   return (
-    <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
-      <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
-        {renderContent()}
+    <>
+      {thinking && message.role === 'assistant' && <ThinkingProcess thinking={thinking} />}
+      <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
+        <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
+          {renderContent()}
+        </div>
+        <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
       </div>
-      <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
-    </div>
+    </>
   )
 }
 
@@ -377,9 +744,9 @@ export default function ChatStudio() {
     const draft: DraftState = {
       title: selectedSession.title,
       system_prompt: normalizedSystemPrompt || (presets[0]?.system_prompt || ''),
-      temperature: selectedSession.temperature ?? 0.6,
+      temperature: selectedSession.temperature ?? 0.5,
       top_p: selectedSession.top_p ?? 0.9,
-  max_tokens: selectedSession.max_tokens ?? 2048,
+  max_tokens: selectedSession.max_tokens ?? 50000,
       template_id: selectedSession.template_id ?? null,
       preset_key: matchedPreset?.key ?? null,
       prompt_source: promptSource,
@@ -654,66 +1021,134 @@ export default function ChatStudio() {
     setInputValue('')
 
     try {
-      const res = await chatbotAPI.sendMessage({
-        session_id: selectedSession.id,
-        content,
-        temperature: sessionDraft.temperature,
-        top_p: sessionDraft.top_p,
-        max_tokens: sessionDraft.max_tokens,
-        system_prompt: sessionDraft.system_prompt,
-        template_id: sessionDraft.template_id
-      })
-      const data = res.data
-      replaceOptimisticMessage(optimisticId, data.user_message as ChatMessage)
-      
-      // Create placeholder for assistant message before streaming
-      const assistantMsg = data.assistant_message as ChatMessage
-      setMessages(prev => [...prev, assistantMsg])
-      
-      // Simulate streaming the response
-      setTimeout(() => {
-        simulateStreamingMessage(assistantMsg.id, assistantMsg.content)
-      }, 100)
-      
-      // Check for consensus if in Driving Game mode
-      if (drivingGameMode && drivingGameStartTime) {
-        // Increment message count for this exchange (user message + assistant response)
-        const newMessageCount = drivingGameMessageCount + 1
-        setDrivingGameMessageCount(newMessageCount)
-        
-        const { hasConsensus, playerOp, agentOp } = detectConsensus(assistantMsg.content)
-        
-        if (hasConsensus) {
-          // Calculate score using the updated count
-          const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
-          const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
-          
-          // Save options, score, and message count for modal display
-          setLastPlayerOption(playerOp)
-          setLastAgentOption(agentOp)
-          setConsensusScore(score)
-          setConsensusMessageCount(newMessageCount)
-          
-          // Submit score to leaderboard
-          try {
-            await submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
-            console.log('[DRIVING GAME] Score submitted successfully, showing modal')
-          } catch (e) {
-            console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
-            // Continue to show modal even if submission failed (user still completed the game)
+      // Use streaming API instead of non-streaming
+      let assistantMsgId: number | null = null
+      let fullContent = ''
+
+      await chatbotAPI.sendMessageStream(
+        {
+          session_id: selectedSession.id,
+          content,
+          temperature: sessionDraft.temperature,
+          top_p: sessionDraft.top_p,
+          max_tokens: sessionDraft.max_tokens,
+          system_prompt: sessionDraft.system_prompt,
+          template_id: sessionDraft.template_id
+        },
+        // onMetadata
+        (metadata) => {
+          // Metadata about the request
+          console.log('[ChatStudio] Stream metadata:', metadata)
+        },
+        // onChunk
+        (chunk) => {
+          fullContent += chunk
+          // Stream the content into a temporary assistant message
+          if (assistantMsgId === null) {
+            // First chunk - create the assistant message
+            const tempId = -Date.now()
+            const assistantMsg: ChatMessage = {
+              id: tempId,
+              session_id: selectedSession.id,
+              role: 'assistant',
+              content: chunk,
+              created_at: new Date().toISOString()
+            }
+            assistantMsgId = tempId
+            setMessages(prev => [...prev, assistantMsg])
+          } else {
+            // Subsequent chunks - update the assistant message
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === assistantMsgId 
+                  ? { ...msg, content: fullContent }
+                  : msg
+              )
+            )
+          }
+        },
+        // onComplete
+        (responseFullContent, assistantMessageId) => {
+          // Replace temporary message with real message from database
+          if (assistantMsgId && assistantMsgId < 0) {
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === assistantMsgId
+                  ? { ...msg, id: assistantMessageId, content: responseFullContent }
+                  : msg
+              )
+            )
           }
           
-          // Show modal
-          setShowConsensusModal(true)
+          // Replace the user message with the real one from backend response
+          // Get the latest messages to find the real user message
+          chatbotAPI.getMessages(selectedSession.id, 2)
+            .then((messagesRes) => {
+              const allMessages = messagesRes.data as ChatMessage[]
+              const realUserMessage = allMessages.find(m => m.role === 'user' && m.content === content)
+              if (realUserMessage) {
+                replaceOptimisticMessage(optimisticId, realUserMessage)
+              }
+            })
+            .catch((e) => {
+              console.error('Failed to get real user message:', e)
+            })
           
-          // Reset driving game mode
-          setDrivingGameMode(false)
-          setDrivingGameStartTime(null)
-          setDrivingGameMessageCount(0)
+          // Check for consensus if in Driving Game mode
+          if (drivingGameMode && drivingGameStartTime) {
+            // Increment message count for this exchange (user message + assistant response)
+            const newMessageCount = drivingGameMessageCount + 1
+            setDrivingGameMessageCount(newMessageCount)
+            
+            const { hasConsensus, playerOp, agentOp } = detectConsensus(responseFullContent)
+            
+            if (hasConsensus) {
+              // Calculate score using the updated count
+              const durationSeconds = (Date.now() - drivingGameStartTime) / 1000
+              const score = calculateDrivingGameScore(newMessageCount, durationSeconds)
+              
+              // Save options, score, and message count for modal display
+              setLastPlayerOption(playerOp)
+              setLastAgentOption(agentOp)
+              setConsensusScore(score)
+              setConsensusMessageCount(newMessageCount)
+              
+              // Submit score to leaderboard
+              submitDrivingGameScore(score, newMessageCount, durationSeconds, playerOp, agentOp)
+                .then(() => {
+                  console.log('[DRIVING GAME] Score submitted successfully, showing modal')
+                })
+                .catch((e) => {
+                  console.error('[DRIVING GAME] Score submission failed, but still showing modal:', e)
+                  // Continue to show modal even if submission failed (user still completed the game)
+                })
+              
+              // Show modal
+              setShowConsensusModal(true)
+              
+              // Reset driving game mode
+              setDrivingGameMode(false)
+              setDrivingGameStartTime(null)
+              setDrivingGameMessageCount(0)
+            }
+          }
+          
+          // Refresh sessions
+          chatbotAPI.listSessions()
+            .then((sessionsRes) => {
+              setSessions(sessionsRes.data as ChatSession[])
+            })
+            .catch((e) => {
+              console.error('Failed to refresh sessions:', e)
+            })
+        },
+        // onError
+        (error) => {
+          setErrorMessage(error.message || 'Failed to send message')
+          // Remove optimistic message on error
+          setMessages(prev => prev.filter(msg => msg.id !== optimisticId && msg.id !== assistantMsgId))
         }
-      }
-      
-      setSessions(prev => prev.map(s => s.id === selectedSession.id ? data.session as ChatSession : s))
+      )
     } catch (e) {
       setMessages(prev => prev.filter(msg => msg.id !== optimisticId))
       setErrorMessage('Failed to send message.')
@@ -755,6 +1190,56 @@ export default function ChatStudio() {
     anchor.download = `${selectedSession.title.replace(/\s+/g, '_').toLowerCase()}_chat.json`
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleDocumentUpload = async (file: File) => {
+    try {
+      setSending(true)
+      setErrorMessage(null)
+      const result = await chatbotAPI.uploadDocument(file)
+      const extractedText = result.data.text
+      
+      // Insert the extracted text into the input field
+      setInputValue(prev => {
+        const prefix = prev ? prev + '\n\n' : ''
+        return prefix + `[Document: ${result.data.filename}]\n\n${extractedText}`
+      })
+      
+      setErrorMessage(null)
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.detail || e?.message || 'Failed to upload document'
+      setErrorMessage(`Document upload failed: ${errorMsg}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleImageUpload = async (file: File) => {
+    try {
+      setSending(true)
+      setErrorMessage(null)
+      const result = await chatbotAPI.uploadImage(file)
+      
+      // If OCR text was extracted, include it in the message
+      if (result.data.ocr_text) {
+        setInputValue(prev => {
+          const prefix = prev ? prev + '\n\n' : ''
+          return prefix + `[Image: ${result.data.filename}]\n\nExtracted text:\n${result.data.ocr_text}`
+        })
+      } else {
+        setInputValue(prev => {
+          const prefix = prev ? prev + '\n' : ''
+          return prefix + `[Image: ${result.data.url}]`
+        })
+      }
+      
+      setErrorMessage(null)
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.detail || e?.message || 'Failed to upload image'
+      setErrorMessage(`Image upload failed: ${errorMsg}`)
+    } finally {
+      setSending(false)
+    }
   }
 
   // Driving Game Mode functions
@@ -1090,13 +1575,29 @@ export default function ChatStudio() {
 
             <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: 1 }}>
-                <TabCompletionTextarea
+                {/* Display thinking process from latest assistant message if it exists */}
+                {messages.length > 0 && (() => {
+                  const lastAssistantMsg = [...messages].reverse().find(msg => msg.role === 'assistant')
+                  if (lastAssistantMsg) {
+                    const { thinking } = extractThinkingProcess(lastAssistantMsg.content)
+                    return thinking ? <ThinkingProcess thinking={thinking} /> : null
+                  }
+                  return null
+                })()}
+
+                <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={sending ? 'Waiting for model response…' : 'Type your message…'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                    // Shift+Enter allows newline naturally
+                  }}
+                  placeholder={sending ? 'Waiting for model response…' : 'Type your message… (Shift+Enter for newline)'}
                   disabled={sending}
                   rows={isMobile ? 2 : 3}
-                  completionType="message"
                   style={{
                     width: '100%',
                     resize: 'vertical',
@@ -1105,9 +1606,79 @@ export default function ChatStudio() {
                     borderRadius: '12px',
                     padding: '14px',
                     color: '#e2e8f0',
-                    fontSize: isMobile ? '0.9rem' : '1rem'
+                    fontSize: isMobile ? '0.9rem' : '1rem',
+                    fontFamily: 'inherit'
                   }}
                 />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="file"
+                    id="document-upload"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleDocumentUpload(e.target.files[0])
+                        e.target.value = '' // Reset input
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => document.getElementById('document-upload')?.click()}
+                    disabled={sending}
+                    style={{
+                      padding: isMobile ? '6px 10px' : '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      background: 'rgba(30,41,59,0.55)',
+                      color: 'rgba(226,232,240,0.85)',
+                      fontSize: '0.7rem',
+                      cursor: sending ? 'default' : 'pointer',
+                      opacity: sending ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="fas fa-file-pdf"></i>
+                    {isMobile ? 'Doc' : 'Upload Doc'}
+                  </button>
+
+                  <input
+                    type="file"
+                    id="image-upload"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleImageUpload(e.target.files[0])
+                        e.target.value = '' // Reset input
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => document.getElementById('image-upload')?.click()}
+                    disabled={sending}
+                    style={{
+                      padding: isMobile ? '6px 10px' : '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      background: 'rgba(30,41,59,0.55)',
+                      color: 'rgba(226,232,240,0.85)',
+                      fontSize: '0.7rem',
+                      cursor: sending ? 'default' : 'pointer',
+                      opacity: sending ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="fas fa-image"></i>
+                    {isMobile ? 'Img' : 'Upload Image'}
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
                 <button
@@ -1533,7 +2104,7 @@ const selectStyle: CSSProperties = {
   color: '#e2e8f0'
 }
 
-// Add pulse animation for saving indicator
+// Add pulse animation and copy button styles for saving indicator
 if (typeof document !== 'undefined' && !document.querySelector('#pulse-animation')) {
   const style = document.createElement('style')
   style.id = 'pulse-animation'
@@ -1545,6 +2116,10 @@ if (typeof document !== 'undefined' && !document.querySelector('#pulse-animation
       50% {
         opacity: 0.4;
       }
+    }
+    
+    .copy-line-container:hover .copy-line-btn {
+      opacity: 1 !important;
     }
   `
   document.head.appendChild(style)

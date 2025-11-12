@@ -168,7 +168,8 @@ class UnifiedLLMService:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         use_tools: bool = True,
-        use_history: bool = True
+        use_history: bool = True,
+        max_history_messages: Optional[int] = None
     ) -> str:
         """
         Process a session-based message (SSE mode only).
@@ -182,6 +183,7 @@ class UnifiedLLMService:
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
             use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
             
         Returns:
             Generated response
@@ -207,7 +209,8 @@ class UnifiedLLMService:
             top_p=top_p,
             max_tokens=max_tokens,
             use_tools=use_tools,
-            use_history=use_history
+            use_history=use_history,
+            max_history_messages=max_history_messages
         )
     
     def process_message_stream(
@@ -218,7 +221,8 @@ class UnifiedLLMService:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        use_tools: bool = False
+        use_tools: bool = False,
+        max_history_messages: Optional[int] = None
     ) -> Iterator[str]:
         """
         Process a session-based message with streaming (SSE mode only).
@@ -231,6 +235,7 @@ class UnifiedLLMService:
             top_p: Top-p sampling
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
+            max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
             
         Yields:
             Generated text chunks
@@ -255,7 +260,8 @@ class UnifiedLLMService:
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            use_tools=use_tools
+            use_tools=use_tools,
+            max_history_messages=max_history_messages
         )
     
     def get_session_history(self, session_id: str) -> Optional[List[Dict[str, str]]]:

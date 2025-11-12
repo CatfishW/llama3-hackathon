@@ -177,6 +177,23 @@ export const chatbotAPI = {
   getMessages: (id: number, limit = 200) => api.get(`/api/chatbot/sessions/${id}/messages?limit=${limit}`),
   sendMessage: (data: any) => api.post('/api/chatbot/messages', data),
   
+  // Document upload support
+  uploadDocument: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/chatbot/upload-document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  
+  uploadImage: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/chatbot/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  
   // Streaming chat - works in both MQTT and SSE modes
   sendMessageStream: async (
     data: any,
@@ -388,4 +405,15 @@ export const announcementsAPI = {
   update: (id: number, data: any) => api.put(`/api/announcements/${id}`, data),
   delete: (id: number) => api.delete(`/api/announcements/${id}`),
   toggle: (id: number) => api.put(`/api/announcements/${id}/toggle`)
+}
+
+// Models API (Multi-model support)
+export const modelsAPI = {
+  getAvailable: () => api.get('/api/models/available'),
+  getSelected: () => api.get('/api/models/selected'),
+  selectModel: (modelName: string) => api.put('/api/models/select', { model_name: modelName }),
+  getModelConfig: (modelName: string) => api.get(`/api/models/config/${modelName}`),
+  addModel: (data: any) => api.post('/api/models/add', data),
+  updateModel: (modelName: string, data: any) => api.put(`/api/models/update/${modelName}`, data),
+  deleteModel: (modelName: string) => api.delete(`/api/models/delete/${modelName}`)
 }

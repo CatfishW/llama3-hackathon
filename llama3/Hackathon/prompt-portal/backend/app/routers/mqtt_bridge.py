@@ -5,6 +5,111 @@ from ..deps import get_current_user
 from .. import models, schemas
 from ..mqtt import publish_state, LAST_HINTS, SUBSCRIBERS, publish_template
 from ..config import settings
+import json
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
+# Track player positions to detect if stuck
+_player_position_history = {}
+_emergency_hint_cooldown = {}  # Track when last emergency hint was sent
+
+def is_player_stuck(session_id: str, current_pos: list, stuck_threshold: int = 8) -> bool:
+    """
+    Detect if player is stuck (same position for N consecutive updates).
+    
+    Args:
+        session_id: Game session ID
+        current_pos: Current player position [x, y]
+        stuck_threshold: Number of updates before considering stuck (increased to 8)
+        
+    Returns:
+        True if player appears stuck AND not in cooldown
+    """
+    if session_id not in _player_position_history:
+        _player_position_history[session_id] = []
+    
+    history = _player_position_history[session_id]
+    history.append(current_pos)
+    
+    # Keep only last 15 positions
+    if len(history) > 15:
+        history.pop(0)
+    
+    # Check if last N positions are all the same
+    if len(history) >= stuck_threshold:
+        last_positions = history[-stuck_threshold:]
+        is_stuck = all(pos == last_positions[0] for pos in last_positions)
+        if is_stuck:
+            # Check cooldown - only trigger emergency once per 30 seconds
+            now = time.time()
+            last_emergency = _emergency_hint_cooldown.get(session_id, 0)
+            if now - last_emergency < 30:
+                logger.info(f"[STUCK DETECTION] Player stuck at {current_pos} but in cooldown")
+                return False
+            
+            logger.warning(f"[STUCK DETECTION] Player stuck at {current_pos} for {stuck_threshold} updates")
+            _emergency_hint_cooldown[session_id] = now
+            return True
+    
+    return False
+
+def get_aggressive_hint(state: dict) -> dict:
+    """
+    Generate an aggressive hint with a simple path when player is stuck.
+    Bypasses normal hint generation to provide immediate help.
+    Returns a dict with hint text and a simple path.
+    """
+    try:
+        player_pos = state.get("playerPosition", state.get("player_pos"))
+        exit_pos = state.get("exitPosition", state.get("exit_pos"))
+        
+        if not player_pos or not exit_pos:
+            return {"hint": "Try moving in any direction to escape the area.", "path": []}
+        
+        # Calculate direction to exit
+        dx = exit_pos[0] - player_pos[0]
+        dy = exit_pos[1] - player_pos[1]
+        
+        directions = []
+        if dx > 0:
+            directions.append("RIGHT")
+        elif dx < 0:
+            directions.append("LEFT")
+        
+        if dy > 0:
+            directions.append("DOWN")
+        elif dy < 0:
+            directions.append("UP")
+        
+        # Generate a simple one-step path in the right direction
+        simple_path = []
+        next_x, next_y = player_pos[0], player_pos[1]
+        
+        # Try to move one step toward exit
+        if dx != 0:
+            next_x = player_pos[0] + (1 if dx > 0 else -1)
+        elif dy != 0:
+            next_y = player_pos[1] + (1 if dy > 0 else -1)
+        
+        simple_path = [[player_pos[0], player_pos[1]], [next_x, next_y]]
+        
+        if directions:
+            direction_str = " and ".join(directions)
+            hint_text = f"🆘 EMERGENCY: Move {direction_str} to reach the exit at {exit_pos}!"
+        else:
+            hint_text = "🎯 You are at the exit! Move any direction to try to find it!"
+        
+        return {
+            "hint": hint_text,
+            "path": simple_path,
+            "show_path": True,
+            "emergency": True
+        }
+    except Exception as e:
+        logger.error(f"Error generating aggressive hint: {e}")
+        return {"hint": "Try moving to find the exit.", "path": []}
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
 
@@ -29,12 +134,32 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
         # In SSE mode, automatically generate and store hint (like MQTT mode does)
         try:
             from ..services.llm_service import get_llm_service
-            import json
-            import logging
             
-            logger = logging.getLogger(__name__)
             session_id = payload.session_id
             logger.info(f"[SSE MODE] Auto-generating hint for publish_state, session: {session_id}")
+            
+            # Check if player is stuck
+            player_pos = state.get("playerPosition", state.get("player_pos"))
+            if player_pos and is_player_stuck(session_id, player_pos):
+                logger.warning(f"[STUCK DETECTION] Providing emergency help for session {session_id}")
+                # Provide emergency hint when stuck (now returns a dict with path)
+                hint_data = get_aggressive_hint(state)
+                hint_data["timestamp"] = time.time()
+                LAST_HINTS[session_id] = hint_data
+                
+                # Broadcast to WebSocket subscribers
+                if session_id in SUBSCRIBERS:
+                    import asyncio
+                    disconnected = set()
+                    for ws in SUBSCRIBERS[session_id]:
+                        try:
+                            await ws.send_json({"hint": hint_data, "session_id": session_id})
+                        except Exception:
+                            disconnected.add(ws)
+                    SUBSCRIBERS[session_id] -= disconnected
+                
+                logger.info(f"[STUCK DETECTION] Emergency hint sent to session {session_id}")
+                return {"ok": True, "mode": "sse", "hint_generated": True, "emergency": True}
             
             llm_service = get_llm_service()
             
@@ -43,18 +168,20 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint for navigating the maze."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=True, max_history_messages=3")
             
-            # Generate hint WITHOUT function calling and WITHOUT history
+            # Generate hint with LLM memory enabled
             # - use_tools=False: llama.cpp doesn't support tools without --jinja flag
-            # - use_history=False: maze game publishes state every 3 seconds, history fills context quickly
+            # - use_history=True: Enable conversation memory to provide contextual hints
+            # - max_history_messages=3: Limit to 3 message pairs to prevent context overflow
             # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
                 use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
-                use_history=False  # Disable history - maze game is stateless, state is in each request
+                use_history=True,  # Enable history for contextual maze guidance
+                max_history_messages=3  # Limit to 3 message pairs (6 total messages + system prompt)
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100] if hint_response else 'None'}...")
             
@@ -73,7 +200,6 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
                 hint_data = {"hint": str(hint_data)}
             
             # Store the hint so it can be retrieved via /last_hint
-            import time
             hint_data["timestamp"] = time.time()
             LAST_HINTS[session_id] = hint_data
             
@@ -93,8 +219,6 @@ async def publish_state_endpoint(payload: schemas.PublishStateIn, db: Session = 
             
         except Exception as e:
             import traceback
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"[SSE MODE] Failed to generate hint in publish_state: {str(e)}")
             logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
             # Still return OK so the game doesn't break, but log the error
@@ -154,6 +278,115 @@ async def request_hint_endpoint(
         # SSE mode: Generate hint directly and store it
         try:
             from ..services.llm_service import get_llm_service
+            
+            logger.info(f"[SSE MODE] Processing hint request for session: {session_id}")
+            
+            # Check if player is stuck
+            player_pos = state.get("playerPosition", state.get("player_pos"))
+            if player_pos and is_player_stuck(session_id, player_pos):
+                logger.warning(f"[STUCK DETECTION] Providing emergency help for session {session_id}")
+                # Provide emergency hint when stuck (now returns a dict with path)
+                hint_data = get_aggressive_hint(state)
+                hint_data["timestamp"] = time.time()
+                LAST_HINTS[session_id] = hint_data
+                
+                # Broadcast to WebSocket subscribers
+                if session_id in SUBSCRIBERS:
+                    import asyncio
+                    disconnected = set()
+                    for ws in SUBSCRIBERS[session_id]:
+                        try:
+                            await ws.send_json({"hint": hint_data, "session_id": session_id})
+                        except Exception:
+                            disconnected.add(ws)
+                    SUBSCRIBERS[session_id] -= disconnected
+                
+                logger.info(f"[STUCK DETECTION] Emergency hint sent to session {session_id}")
+                return {"ok": True, "session_id": session_id, "hint": hint_data, "mode": "sse", "emergency": True}
+            
+            llm_service = get_llm_service()
+            logger.info("[SSE MODE] LLM service obtained")
+            
+            # Build system prompt from template or default
+            system_prompt = template.content if template else (
+                "You are a Large Action Model (LAM) guiding players through a maze game.\n"
+                "You provide strategic hints and pathfinding advice. Be concise and helpful.\n"
+                'Always respond in JSON format with keys: "hint" (string), "suggestion" (string).'
+            )
+            
+            # Build user message from game state
+            user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=True, max_history_messages=3")
+            
+            # Generate hint with LLM memory enabled
+            # - use_tools=False: llama.cpp requires --jinja flag for tools
+            # - use_history=True: Enable conversation memory for contextual guidance
+            # - max_history_messages=3: Limit to 3 message pairs to prevent context overflow
+            # The template should contain instructions for JSON response format instead
+            hint_response = llm_service.process_message(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
+                use_history=True,  # Enable history for contextual maze guidance
+                max_history_messages=3  # Limit to 3 message pairs (6 total messages + system prompt)
+            )
+            logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
+            
+            # Parse response if it's JSON (happens when function calling is used)
+            hint_data = hint_response
+            try:
+                parsed = json.loads(hint_response)
+                if isinstance(parsed, dict):
+                    hint_data = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Response is plain text, use as-is
+                hint_data = {"hint": hint_response}
+            
+            # Ensure hint_data is a dict
+            if not isinstance(hint_data, dict):
+                hint_data = {"hint": str(hint_data)}
+            
+            # Store the hint so it can be retrieved via /last_hint
+            hint_data["timestamp"] = time.time()
+            LAST_HINTS[session_id] = hint_data
+            
+            # Also broadcast to WebSocket subscribers if any
+            if session_id in SUBSCRIBERS:
+                import asyncio
+                disconnected = set()
+                for ws in SUBSCRIBERS[session_id]:
+                    try:
+                        await ws.send_json({"hint": hint_data, "session_id": session_id})
+                    except Exception:
+                        disconnected.add(ws)
+                SUBSCRIBERS[session_id] -= disconnected
+            
+            logger.info(f"[SSE MODE] Successfully processed hint, returning response")
+            return {"ok": True, "session_id": session_id, "hint": hint_data, "mode": "sse"}
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"[SSE MODE] Failed to generate hint: {str(e)}")
+            logger.error(f"[SSE MODE] Traceback: {traceback.format_exc()}")
+            raise HTTPException(500, f"Failed to generate hint: {str(e)}")
+    else:
+        # MQTT mode: Publish state and hint will arrive via MQTT
+        publish_state(state)
+        return {"ok": True, "session_id": session_id, "message": "Hint request published", "mode": "mqtt"}
+    if template:
+        state["prompt_template"] = {
+            "title": template.title,
+            "content": template.content,
+            "version": template.version,
+            "user_id": user.id,
+        }
+    
+    # Handle based on communication mode
+    if settings.LLM_COMM_MODE.lower() == "sse":
+        # SSE mode: Generate hint directly and store it
+        try:
+            from ..services.llm_service import get_llm_service
             import json
             import logging
             
@@ -172,18 +405,20 @@ async def request_hint_endpoint(
             
             # Build user message from game state
             user_message = f"Game state: {json.dumps(state)}\nProvide a helpful hint."
-            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=False")
+            logger.info(f"[SSE MODE] Calling LLM with session_id={session_id}, use_tools=False, use_history=True, max_history_messages=3")
             
-            # Generate hint WITHOUT OpenAI tools API and WITHOUT history
+            # Generate hint with LLM memory enabled
             # - use_tools=False: llama.cpp requires --jinja flag for tools
-            # - use_history=False: maze game is stateless, each request contains full state
+            # - use_history=True: Enable conversation memory for contextual guidance
+            # - max_history_messages=3: Limit to 3 message pairs to prevent context overflow
             # The template should contain instructions for JSON response format instead
             hint_response = llm_service.process_message(
                 session_id=session_id,
                 system_prompt=system_prompt,
                 user_message=user_message,
                 use_tools=False,  # Disable OpenAI tools API - use prompt-based guidance instead
-                use_history=False  # Disable history - maze game is stateless
+                use_history=True,  # Enable history for contextual maze guidance
+                max_history_messages=3  # Limit to 3 message pairs (6 total messages + system prompt)
             )
             logger.info(f"[SSE MODE] Got response from LLM: {hint_response[:100]}...")
             

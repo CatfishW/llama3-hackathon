@@ -9,7 +9,7 @@ from ..deps import get_current_user
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-@router.get("/", response_model=UserSettingsOut)
+@router.get("/")
 def get_user_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -24,22 +24,17 @@ def get_user_settings(
         db.commit()
         db.refresh(user_settings)
     
-    return UserSettingsOut(
-        theme=user_settings.theme,
-        language=user_settings.language,
-        timezone=user_settings.timezone,
-        privacy=PrivacySettings(
-            profile_visible=current_user.profile_visible,
-            allow_friend_requests=current_user.allow_friend_requests,
-            show_online_status=current_user.show_online_status
-        ),
-        notifications=NotificationSettings(
-            email_notifications=current_user.email_notifications,
-            push_notifications=current_user.push_notifications,
-            friend_request_notifications=current_user.friend_request_notifications,
-            message_notifications=current_user.message_notifications
-        )
-    )
+    # Return format that frontend expects
+    return {
+        "email_notifications": current_user.email_notifications,
+        "friend_requests": current_user.allow_friend_requests,
+        "message_notifications": current_user.message_notifications,
+        "leaderboard_visibility": current_user.profile_visible,
+        "profile_visibility": "public" if current_user.profile_visible else "private",
+        "theme": user_settings.theme or "dark",
+        "language": user_settings.language or "en",
+        "timezone": user_settings.timezone or "UTC"
+    }
 
 @router.put("/")
 def update_all_settings(

@@ -47,6 +47,9 @@ class User(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     
+    # LLM Model Selection
+    selected_model: Mapped[str] = mapped_column(String(255), default="TangLLM", nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
