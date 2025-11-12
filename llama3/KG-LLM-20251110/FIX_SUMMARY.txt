@@ -1,0 +1,132 @@
+## Fix Summary: Entity Name Mapping for Evidence Paths
+
+### Issue
+Before sending evidence paths to the LLM, entity IDs (like `m.06f7lp`) and full relation paths (like `location.location.containedby`) were not being converted to human-readable names. This caused the LLM to receive cryptic, non-semantic evidence like:
+
+```
+m.06f7lp --[location.location.containedby]--> m.03_r3
+```
+
+Instead of meaningful paths like:
+
+```
+Jamaica --[containedby]--> Caribbean
+```
+
+### Root Cause
+The `EvidencePath` class had a `to_text()` method that attempted entity mapping, but it:
+1. Didn't properly handle relation path simplification
+2. Didn't have robust fallback mechanisms
+3. Wasn't consistently used in evidence formatting
+
+### Solution Applied
+
+#### 1. Enhanced `EvidencePath.to_text()` Method
+Both `evidence_path_finder.py` and `evidence_path_finder_fast.py` now include:
+
+**Helper Method 1: `_get_entity_name()`**
+- Maps entity IDs to human-readable names via KnowledgeGraph lookup
+- Falls back gracefully to entity ID if name not found
+
+**Helper Method 2: `_get_relation_name()`**
+- Simplifies relation paths by extracting the most specific part
+- Example: `location.location.containedby` → `containedby`
+
+**Updated `to_text()` Method**
+- Uses both helpers to convert raw paths to human-readable format
+- Example output: `Jamaica --[containedby]--> Caribbean`
+
+#### 2. Improved Evidence Formatting
+Both `answer_predictor.py` and `answer_predictor_fast.py` now:
+- Call `path_obj.to_text(kg)` to ensure entity name mapping
+- Include confidence indicators (✓ high, ◐ medium, ✗ low)
+- Add context headers for clarity
+- Format each path with score and reasoning
+
+### Code Changes Summary
+
+**File: evidence_path_finder.py**
+- Added `_get_entity_name()` method
+- Added `_get_relation_name()` method  
+- Updated `to_text()` to use helpers
+
+**File: evidence_path_finder_fast.py**
+- Added same helper methods and updates as standard version
+
+**File: answer_predictor.py**
+- Enhanced `_format_evidence()` method
+- Added descriptive headers
+- Added confidence indicators
+
+**File: answer_predictor_fast.py**
+- Enhanced `_format_evidence_concise()` method
+- Added confidence indicators and headers
+
+### Verification
+
+Test file: `test_entity_name_mapping.py`
+- ✓ Entity IDs properly mapped to names
+- ✓ Relation paths simplified correctly
+- ✓ Multi-hop paths formatted with → separator
+- ✓ Unknown entities fall back gracefully
+- ✓ No entity IDs in final formatted output
+
+Integration test: `test_entity_mapping_integration.py`
+- ✓ WebQSP samples processed correctly
+- ✓ Evidence formatted with entity names
+- ✓ Relation names simplified
+
+### Impact
+
+**Before Fix:**
+```
+LLM Prompt includes:
+- Raw entity IDs (m.06f7lp, m.03_r3, etc.)
+- Full relation paths (location.location.containedby)
+- No semantic meaning for LLM
+```
+
+**After Fix:**
+```
+LLM Prompt includes:
+- Human-readable entity names (Jamaica, Caribbean)
+- Simplified relation names (containedby)
+- Clear semantic meaning for LLM
+- Confidence indicators for path quality
+```
+
+### Benefits
+
+1. **Better LLM Understanding** - Semantic meaning is preserved
+2. **Improved Reasoning** - LLM can understand relationships better
+3. **Cleaner Debugging** - Evidence is human-readable
+4. **Fallback Support** - Gracefully handles missing entities
+5. **Consistency** - Both standard and fast implementations unified
+
+### Testing Commands
+
+```bash
+# Test entity name mapping
+python test_entity_name_mapping.py
+
+# Test integration with WebQSP
+python test_entity_mapping_integration.py
+
+# Run full test suite with checkpointing
+python test_webqsp_eperm.py
+```
+
+### Future Improvements
+
+1. Add entity type information to evidence paths
+2. Include entity descriptions where available
+3. Support for domain-specific relation naming
+4. Entity disambiguation for similar names
+5. Evidence path visualization in debug mode
+
+---
+
+**Implementation Date**: November 11, 2025
+**Status**: ✓ Complete and Tested
+**Files Modified**: 4
+**New Test Files**: 2

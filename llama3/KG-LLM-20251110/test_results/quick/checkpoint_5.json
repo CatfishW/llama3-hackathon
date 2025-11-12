@@ -1,0 +1,93 @@
+{
+  "results": [
+    {
+      "id": "WebQTrn-0",
+      "question": "what is the name of justin bieber brother",
+      "gold_answers": [
+        "Jaxon Bieber"
+      ],
+      "gold_entity_ids": [
+        "m.0gxnnwq"
+      ],
+      "predicted_answer": "m.02w4fkq (02w4fkq)",
+      "predicted_entity_id": "m.02w4fkq",
+      "confidence": 0.95,
+      "correct": false,
+      "time": 1.7199630737304688,
+      "num_paths": 0
+    },
+    {
+      "id": "WebQTrn-1",
+      "question": "what character did natalie portman play in star wars",
+      "gold_answers": [
+        "Padm\u00e9 Amidala"
+      ],
+      "gold_entity_ids": [
+        "m.0drf_"
+      ],
+      "predicted_answer": "m.09l3p (09l3p)",
+      "predicted_entity_id": "m.09l3p",
+      "confidence": 0.3,
+      "correct": false,
+      "time": 1.4316940307617188,
+      "num_paths": 3
+    },
+    {
+      "id": "WebQTrn-3",
+      "question": "what country is the grand bahama island in",
+      "gold_answers": [
+        "Bahamas"
+      ],
+      "gold_entity_ids": [
+        "m.0160w"
+      ],
+      "predicted_answer": "m.01n7 (01n7)",
+      "predicted_entity_id": "m.01n7",
+      "confidence": 0.9,
+      "correct": false,
+      "time": 4.237854480743408,
+      "num_paths": 5
+    },
+    {
+      "id": "WebQTrn-4",
+      "question": "what kind of money to take to bahamas",
+      "gold_answers": [
+        "Bahamian dollar"
+      ],
+      "gold_entity_ids": [
+        "m.01l6dm"
+      ],
+      "predicted_answer": "m.01xrz6t (01xrz6t)",
+      "predicted_entity_id": "m.01xrz6t",
+      "confidence": 0.85,
+      "correct": false,
+      "time": 1.4573893547058105,
+      "num_paths": 3
+    },
+    {
+      "id": "WebQTrn-5",
+      "question": "what character did john noble play in lord of the rings",
+      "gold_answers": [
+        "Denethor II"
+      ],
+      "gold_entity_ids": [
+        "m.0gp7f"
+      ],
+      "predicted_answer": "m.01x3gb5 (01x3gb5)",
+      "predicted_entity_id": "m.01x3gb5",
+      "confidence": 0.9,
+      "correct": false,
+      "time": 1.0542490482330322,
+      "num_paths": 1
+    }
+  ],
+  "stats": {
+    "total_samples": 0,
+    "processed": 5,
+    "correct": 0,
+    "errors": 0,
+    "total_time": 9.901149988174438,
+    "avg_time_per_sample": 0.0
+  },
+  "timestamp": 1762838182.8010175
+}

@@ -1,0 +1,175 @@
+{
+  "results": [
+    {
+      "id": "WebQTrn-0",
+      "question": "what is the name of justin bieber brother",
+      "gold_answers": [
+        "Jaxon Bieber"
+      ],
+      "gold_entity_ids": [
+        "m.0gxnnwq"
+      ],
+      "predicted_answer": "m.02w4fkq (02w4fkq)",
+      "predicted_entity_id": "m.02w4fkq",
+      "confidence": 0.95,
+      "correct": false,
+      "time": 1.7199630737304688,
+      "num_paths": 0
+    },
+    {
+      "id": "WebQTrn-1",
+      "question": "what character did natalie portman play in star wars",
+      "gold_answers": [
+        "Padm\u00e9 Amidala"
+      ],
+      "gold_entity_ids": [
+        "m.0drf_"
+      ],
+      "predicted_answer": "m.09l3p (09l3p)",
+      "predicted_entity_id": "m.09l3p",
+      "confidence": 0.3,
+      "correct": false,
+      "time": 1.4316940307617188,
+      "num_paths": 3
+    },
+    {
+      "id": "WebQTrn-3",
+      "question": "what country is the grand bahama island in",
+      "gold_answers": [
+        "Bahamas"
+      ],
+      "gold_entity_ids": [
+        "m.0160w"
+      ],
+      "predicted_answer": "m.01n7 (01n7)",
+      "predicted_entity_id": "m.01n7",
+      "confidence": 0.9,
+      "correct": false,
+      "time": 4.237854480743408,
+      "num_paths": 5
+    },
+    {
+      "id": "WebQTrn-4",
+      "question": "what kind of money to take to bahamas",
+      "gold_answers": [
+        "Bahamian dollar"
+      ],
+      "gold_entity_ids": [
+        "m.01l6dm"
+      ],
+      "predicted_answer": "m.01xrz6t (01xrz6t)",
+      "predicted_entity_id": "m.01xrz6t",
+      "confidence": 0.85,
+      "correct": false,
+      "time": 1.4573893547058105,
+      "num_paths": 3
+    },
+    {
+      "id": "WebQTrn-5",
+      "question": "what character did john noble play in lord of the rings",
+      "gold_answers": [
+        "Denethor II"
+      ],
+      "gold_entity_ids": [
+        "m.0gp7f"
+      ],
+      "predicted_answer": "m.01x3gb5 (01x3gb5)",
+      "predicted_entity_id": "m.01x3gb5",
+      "confidence": 0.9,
+      "correct": false,
+      "time": 1.0542490482330322,
+      "num_paths": 1
+    },
+    {
+      "id": "WebQTrn-6",
+      "question": "who does joakim noah play for",
+      "gold_answers": [
+        "Chicago Bulls"
+      ],
+      "gold_entity_ids": [
+        "m.0jm74"
+      ],
+      "predicted_answer": "m.059g4 (059g4)",
+      "predicted_entity_id": "m.059g4",
+      "confidence": 0.95,
+      "correct": false,
+      "time": 1.028944492340088,
+      "num_paths": 0
+    },
+    {
+      "id": "WebQTrn-7",
+      "question": "where are the nfl redskins from",
+      "gold_answers": [
+        "Washington, D.C."
+      ],
+      "gold_entity_ids": [
+        "m.0rh6k"
+      ],
+      "predicted_answer": "m.01c5 (01c5)",
+      "predicted_entity_id": "m.01c5",
+      "confidence": 0.95,
+      "correct": false,
+      "time": 1.1297526359558105,
+      "num_paths": 0
+    },
+    {
+      "id": "WebQTrn-8",
+      "question": "where did saki live",
+      "gold_answers": [
+        "Sittwe"
+      ],
+      "gold_entity_ids": [
+        "m.05ql8_"
+      ],
+      "predicted_answer": "m.05np2 (05np2)",
+      "predicted_entity_id": "m.05np2",
+      "confidence": 0.0,
+      "correct": false,
+      "time": 1.7748394012451172,
+      "num_paths": 5
+    },
+    {
+      "id": "WebQTrn-12",
+      "question": "who did draco malloy end up marrying",
+      "gold_answers": [
+        "Astoria Greengrass"
+      ],
+      "gold_entity_ids": [
+        "m.09k254x"
+      ],
+      "predicted_answer": "m.042xh (042xh)",
+      "predicted_entity_id": "m.042xh",
+      "confidence": 0.0,
+      "correct": false,
+      "time": 2.253085136413574,
+      "num_paths": 5
+    },
+    {
+      "id": "WebQTrn-13",
+      "question": "which countries border the us",
+      "gold_answers": [
+        "Mexico",
+        "Canada"
+      ],
+      "gold_entity_ids": [
+        "m.0b90_r",
+        "m.0d060g"
+      ],
+      "predicted_answer": "m.09c7w0 (09c7w0)",
+      "predicted_entity_id": "m.09c7w0",
+      "confidence": 0.9,
+      "correct": false,
+      "time": 1.9348862171173096,
+      "num_paths": 5
+    }
+  ],
+  "stats": {
+    "total_samples": 10,
+    "processed": 10,
+    "correct": 0,
+    "errors": 0,
+    "total_time": 18.022657871246338,
+    "avg_time_per_sample": 1.8022657871246337
+  },
+  "timestamp": 1762838190.9258842
+}

@@ -1,0 +1,73 @@
+{
+  "results": [
+    {
+      "id": "WebQTrn-0",
+      "question": "what is the name of justin bieber brother",
+      "gold_answers": [
+        "Jaxon Bieber"
+      ],
+      "predicted_answer": "Jazmyn Bieber",
+      "confidence": 0.7,
+      "correct": true,
+      "time": 2.518052101135254,
+      "num_paths": 2
+    },
+    {
+      "id": "WebQTrn-1",
+      "question": "what character did natalie portman play in star wars",
+      "gold_answers": [
+        "Padm\u00e9 Amidala"
+      ],
+      "predicted_answer": "Padm\u00e9 Amidala",
+      "confidence": 0.95,
+      "correct": true,
+      "time": 1.7908554077148438,
+      "num_paths": 2
+    },
+    {
+      "id": "WebQTrn-3",
+      "question": "what country is the grand bahama island in",
+      "gold_answers": [
+        "Bahamas"
+      ],
+      "predicted_answer": "Bahamas",
+      "confidence": 0.9,
+      "correct": true,
+      "time": 3.676287889480591,
+      "num_paths": 5
+    },
+    {
+      "id": "WebQTrn-4",
+      "question": "what kind of money to take to bahamas",
+      "gold_answers": [
+        "Bahamian dollar"
+      ],
+      "predicted_answer": "US dollars",
+      "confidence": 0.3,
+      "correct": false,
+      "time": 2.249974012374878,
+      "num_paths": 3
+    },
+    {
+      "id": "WebQTrn-5",
+      "question": "what character did john noble play in lord of the rings",
+      "gold_answers": [
+        "Denethor II"
+      ],
+      "predicted_answer": "No answer found",
+      "confidence": 0.0,
+      "correct": false,
+      "time": 0.2738463878631592,
+      "num_paths": 0
+    }
+  ],
+  "stats": {
+    "total_samples": 5,
+    "processed": 5,
+    "correct": 3,
+    "errors": 0,
+    "total_time": 10.509015798568726,
+    "avg_time_per_sample": 2.101803159713745
+  },
+  "timestamp": 1762837023.9920764
+}
