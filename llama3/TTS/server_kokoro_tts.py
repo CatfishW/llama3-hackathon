@@ -340,7 +340,7 @@ if __name__ == "__main__":
     import uvicorn
 
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "8081"))
     workers = int(os.getenv("WORKERS", "1"))
     
     logger.info(f"Starting Kokoro TTS Server on {host}:{port} with {workers} worker(s)")

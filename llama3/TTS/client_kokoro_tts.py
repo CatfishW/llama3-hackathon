@@ -43,7 +43,7 @@ class KokoroTTSClient:
     
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: str = "http://localhost:8081",
         timeout: float = 60.0,
         verify_ssl: bool = True
     ):
@@ -988,8 +988,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--url", "-u",
         type=str,
-        default="http://localhost:8000",
-        help="Server URL (default: http://localhost:8000)"
+        default="http://localhost:8081",
+        help="Server URL (default: http://localhost:8081)"
     )
     parser.add_argument(
         "--voice", "-v",
