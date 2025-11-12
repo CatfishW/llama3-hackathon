@@ -12,18 +12,51 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-# Import the models and configuration from the base server
-from server_kokoro_tts import (
-    DEFAULT_LANG_CODE,
-    DEFAULT_VOICE,
-    AUDIO_SAMPLE_RATE,
-    TEXT_LENGTH_LIMIT,
-    MAX_TOKENS,
-    SynthesisRequest,
-    SynthesisResponse,
-)
+# ============================================================================
+# Local Request/Response Models (mirrors server_kokoro_tts.py)
+# ============================================================================
 
+class SynthesisRequest(BaseModel):
+    """Request model for text-to-speech synthesis"""
+    model_config = {"protected_namespaces": ()}
+    
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=10000,
+        description="Text to synthesize"
+    )
+    voice: str = Field(
+        "af_heart",
+        description="Voice name (e.g., 'af_heart', 'af', 'am')"
+    )
+    lang_code: str = Field(
+        "a",
+        description="Language code (e.g., 'a' for English)"
+    )
+    speed: float = Field(
+        1.0,
+        gt=0.0,
+        le=2.0,
+        description="Speech speed multiplier (0.5-2.0)"
+    )
+
+
+class SynthesisResponse(BaseModel):
+    """Response model for synthesis results"""
+    audio_base64: str
+    audio_sample_rate: int
+    audio_duration_seconds: float
+    voice: str
+    lang_code: str
+    speed: float
+    text_length: int
+
+
+# ============================================================================
 # Configuration
+# ============================================================================
+
 LOG_LEVEL_NAME = os.getenv("TTS_BROKER_LOG_LEVEL", "INFO").upper()
 REMOTE_TTS_HOST = os.getenv("REMOTE_TTS_HOST", "localhost")
 REMOTE_TTS_PORT = int(os.getenv("REMOTE_TTS_PORT", "8081"))
@@ -177,11 +210,6 @@ async def server_info() -> Dict[str, object]:
             "version": "1.0.0",
             "broker_role": "Public IP Bridge",
             "remote_tts_server": REMOTE_TTS_URL,
-            "default_lang_code": DEFAULT_LANG_CODE,
-            "default_voice": DEFAULT_VOICE,
-            "audio_sample_rate": AUDIO_SAMPLE_RATE,
-            "text_length_limit": TEXT_LENGTH_LIMIT,
-            "max_tokens": MAX_TOKENS,
             "remote_server_info": remote_info
         }
     except HTTPException:
