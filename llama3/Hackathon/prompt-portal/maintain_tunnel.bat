@@ -44,7 +44,7 @@ if errorlevel 1 (
 
 REM Check if local LLM server is running
 echo [INFO] Checking local LLM server on port %LOCAL_PORT%...
-curl -s --max-time 2 http://localhost:%LOCAL_PORT%/health >nul 2>nul
+curl -s --max-time 2 http://127.0.0.1:%LOCAL_PORT%/health >nul 2>nul
 if errorlevel 1 (
     echo [WARNING] Local LLM server not responding on port %LOCAL_PORT%
     echo [WARNING] Make sure llama.cpp server is running before starting tunnel
@@ -57,7 +57,7 @@ if errorlevel 1 (
 echo.
 echo [INFO] Configuration:
 echo   Remote Server: %REMOTE_USER%@%REMOTE_HOST%
-echo   Remote Port:   %REMOTE_PORT% (localhost on Machine B)
+echo   Remote Port:   %REMOTE_PORT% (127.0.0.1 on Machine B)
 echo   Local Port:    %LOCAL_PORT% (llama.cpp server)
 echo   Keepalive:     %KEEPALIVE_INTERVAL%s interval, %KEEPALIVE_MAX% max failures
 echo   Reconnect:     %RECONNECT_DELAY%s delay
@@ -66,13 +66,13 @@ echo.
 echo [SUCCESS] Tunnel starting...
 echo.
 echo [INFO] What's happening:
-echo   • Your LLM server (localhost:%LOCAL_PORT%) is now accessible on Machine B
-echo   • Machine B can connect to http://localhost:%REMOTE_PORT%
+echo   • Your LLM server (127.0.0.1:%LOCAL_PORT%) is now accessible on Machine B
+echo   • Machine B can connect to http://127.0.0.1:%REMOTE_PORT%
 echo   • This connection is encrypted and secure
 echo.
 echo [INFO] To verify on Machine B:
 echo   ssh %REMOTE_USER%@%REMOTE_HOST%
-echo   curl http://localhost:%REMOTE_PORT%/health
+echo   curl http://127.0.0.1:%REMOTE_PORT%/health
 echo.
 echo [WARNING] Keep this window open! Closing it will stop the tunnel.
 echo.
@@ -80,11 +80,11 @@ echo.
 :TUNNEL_LOOP
 SET /a ATTEMPT+=1
 echo [INFO] Starting tunnel (attempt #%ATTEMPT%) at %TIME%...
-echo [INFO] Forwarding: %REMOTE_HOST%:%REMOTE_PORT% -^> localhost:%LOCAL_PORT%
+echo [INFO] Forwarding: %REMOTE_HOST%:%REMOTE_PORT% -^> 127.0.0.1:%LOCAL_PORT%
 echo.
 
 REM Start SSH tunnel
-ssh -R %REMOTE_PORT%:localhost:%LOCAL_PORT% ^
+ssh -R %REMOTE_PORT%:127.0.0.1:%LOCAL_PORT% ^
     -o ServerAliveInterval=%KEEPALIVE_INTERVAL% ^
     -o ServerAliveCountMax=%KEEPALIVE_MAX% ^
     -o ExitOnForwardFailure=yes ^
