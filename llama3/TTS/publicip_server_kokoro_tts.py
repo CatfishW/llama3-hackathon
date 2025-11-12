@@ -4,8 +4,10 @@ Acts as a proxy/broker between public IP machines and private IP TTS server.
 Inherits all APIs from server_kokoro_tts.py and forwards requests to remote TTS service.
 """
 
+import argparse
 import logging
 import os
+import sys
 from typing import Dict, List, Optional
 
 import httpx
@@ -57,13 +59,76 @@ class SynthesisResponse(BaseModel):
 # Configuration
 # ============================================================================
 
-LOG_LEVEL_NAME = os.getenv("TTS_BROKER_LOG_LEVEL", "INFO").upper()
-REMOTE_TTS_HOST = os.getenv("REMOTE_TTS_HOST", "localhost")
-REMOTE_TTS_PORT = int(os.getenv("REMOTE_TTS_PORT", "8081"))
+# ============================================================================
+# Configuration - supports environment variables and command-line arguments
+# ============================================================================
+
+def _parse_arguments():
+    """Parse command-line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Kokoro TTS Broker Server - Forward requests to private IP TTS server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python publicip_server_kokoro_tts.py --port 9000
+  python publicip_server_kokoro_tts.py --port 8080 --remote-host 192.168.1.100 --remote-port 8081
+  python publicip_server_kokoro_tts.py --host 0.0.0.0 --port 8080 --remote-host tts.internal.local
+  python publicip_server_kokoro_tts.py --log-level DEBUG
+        """
+    )
+    
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("BROKER_PORT", "8080")),
+        help="Port for broker server to listen on (default: 8080, env: BROKER_PORT)"
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=os.getenv("BROKER_HOST", "0.0.0.0"),
+        help="Host for broker server to bind to (default: 0.0.0.0, env: BROKER_HOST)"
+    )
+    parser.add_argument(
+        "--remote-host",
+        type=str,
+        default=os.getenv("REMOTE_TTS_HOST", "localhost"),
+        help="Remote TTS server host (default: localhost, env: REMOTE_TTS_HOST)"
+    )
+    parser.add_argument(
+        "--remote-port",
+        type=int,
+        default=int(os.getenv("REMOTE_TTS_PORT", "8081")),
+        help="Remote TTS server port (default: 8081, env: REMOTE_TTS_PORT)"
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.getenv("REQUEST_TIMEOUT", "30.0")),
+        help="Request timeout in seconds (default: 30.0, env: REQUEST_TIMEOUT)"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=os.getenv("TTS_BROKER_LOG_LEVEL", "INFO").upper(),
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Logging level (default: INFO, env: TTS_BROKER_LOG_LEVEL)"
+    )
+    
+    return parser.parse_args()
+
+
+# Parse arguments
+args = _parse_arguments()
+
+# Configuration values (from arguments or environment variables)
+LOG_LEVEL_NAME = args.log_level
+REMOTE_TTS_HOST = args.remote_host
+REMOTE_TTS_PORT = args.remote_port
 REMOTE_TTS_URL = f"http://{REMOTE_TTS_HOST}:{REMOTE_TTS_PORT}"
-REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30.0"))
-BROKER_HOST = os.getenv("BROKER_HOST", "0.0.0.0")
-BROKER_PORT = int(os.getenv("BROKER_PORT", "8081"))
+REQUEST_TIMEOUT = args.timeout
+BROKER_HOST = args.host
+BROKER_PORT = args.port
 
 # Logging setup
 logging.basicConfig(
@@ -334,6 +399,15 @@ async def broker_status() -> Dict[str, object]:
 if __name__ == "__main__":
     import uvicorn
 
+    print("\n" + "="*70)
+    print("Kokoro TTS Broker Server Configuration")
+    print("="*70)
+    print(f"  Broker listening on:      {BROKER_HOST}:{BROKER_PORT}")
+    print(f"  Remote TTS server:        {REMOTE_TTS_URL}")
+    print(f"  Request timeout:          {REQUEST_TIMEOUT}s")
+    print(f"  Log level:                {LOG_LEVEL_NAME}")
+    print("="*70 + "\n")
+    
     logger.info(
         f"Starting Kokoro TTS Broker Server on {BROKER_HOST}:{BROKER_PORT}\n"
         f"Forwarding requests to TTS server at {REMOTE_TTS_URL}"
