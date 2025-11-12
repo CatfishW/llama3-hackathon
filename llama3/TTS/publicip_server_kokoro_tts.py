@@ -63,7 +63,7 @@ REMOTE_TTS_PORT = int(os.getenv("REMOTE_TTS_PORT", "8081"))
 REMOTE_TTS_URL = f"http://{REMOTE_TTS_HOST}:{REMOTE_TTS_PORT}"
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30.0"))
 BROKER_HOST = os.getenv("BROKER_HOST", "0.0.0.0")
-BROKER_PORT = int(os.getenv("BROKER_PORT", "8080"))
+BROKER_PORT = int(os.getenv("BROKER_PORT", "8081"))
 
 # Logging setup
 logging.basicConfig(
