@@ -41,7 +41,7 @@ export default function VoiceChat() {
   
   // Refs
   const messageContainerRef = useRef<HTMLDivElement>(null)
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   
   // Hooks
   const {
