@@ -988,8 +988,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--url", "-u",
         type=str,
-        default="http://localhost:8081",
-        help="Server URL (default: http://localhost:8081)"
+        default="http://173.61.35.162:8081",
+        help="Server URL (default: http://173.61.35.162:8081)"
     )
     parser.add_argument(
         "--voice", "-v",
