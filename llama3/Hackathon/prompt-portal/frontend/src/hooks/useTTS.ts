@@ -93,7 +93,7 @@ const useTTS = (props: UseTTSProps = {}) => {
               // Raw PCM data - need to wrap in WAV header
               console.log('[TTS] Data appears to be raw PCM, wrapping in WAV header...')
               const sampleRate = response.data.audio_sample_rate || 24000
-              const numChannels = 2 // Kokoro outputs stereo
+              const numChannels = 1 // Kokoro outputs MONO audio (not stereo)
               const bitsPerSample = 32 // Float32 PCM
               const bytesPerSample = bitsPerSample / 8
               const byteRate = sampleRate * numChannels * bytesPerSample
@@ -135,7 +135,7 @@ const useTTS = (props: UseTTSProps = {}) => {
               const audioDataView = new Uint8Array(wavBuffer, wavHeaderSize)
               audioDataView.set(bytes)
               
-              console.log('[TTS] WAV header created - format: Float32 Stereo, sample rate:', sampleRate, 'Hz, header:', wavHeaderSize, 'bytes, data:', audioDataSize, 'bytes, total:', wavBuffer.byteLength)
+              console.log('[TTS] WAV header created - format: Float32 Mono, sample rate:', sampleRate, 'Hz, header:', wavHeaderSize, 'bytes, data:', audioDataSize, 'bytes, total:', wavBuffer.byteLength)
               audioBlob = new Blob([wavBuffer], { type: 'audio/wav' })
             }
             

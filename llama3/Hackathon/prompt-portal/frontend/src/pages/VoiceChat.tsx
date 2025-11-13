@@ -36,7 +36,7 @@ export default function VoiceChat() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedVoice, setSelectedVoice] = useState('af_heart')
-  const [speechRate, setSpeechRate] = useState(1.0)
+  const [speechRate, setSpeechRate] = useState(1) // Slower default for clarity
   const [sessionTitle, setSessionTitle] = useState('Voice Chat Session')
   const [showSettings, setShowSettings] = useState(false)
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
