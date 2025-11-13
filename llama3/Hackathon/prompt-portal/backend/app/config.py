@@ -34,11 +34,11 @@ class Settings(BaseSettings):
     LLM_MAX_HISTORY_TOKENS: int = 10000
 
     # Voice Chat - SST (Speech-to-Text) Configuration
-    SST_BROKER_URL: str = "http://localhost:8082"
+    SST_BROKER_URL: str = "http://173.61.35.162:25567"
     SST_REQUEST_TIMEOUT: int = 300
     
     # Voice Chat - TTS (Text-to-Speech) Configuration
-    TTS_BROKER_URL: str = "http://localhost:8081"
+    TTS_BROKER_URL: str = "http://173.61.35.162:25566"
     TTS_REQUEST_TIMEOUT: int = 30
 
     # Vision configuration
