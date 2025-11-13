@@ -112,6 +112,44 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
     }
   }, [initializeAudioContext, onError])
   
+  // Decode WebM audio blob to raw PCM format for SST
+  const decodeWebMToPCM = useCallback(async (webmBlob: Blob): Promise<Uint8Array> => {
+    console.log('[STT] Decoding WebM blob to raw PCM...')
+    console.log('[STT] WebM blob size:', webmBlob.size)
+    
+    if (!audioContextRef.current) {
+      throw new Error('Audio context not available for decoding')
+    }
+    
+    const arrayBuffer = await webmBlob.arrayBuffer()
+    console.log('[STT] WebM arrayBuffer size:', arrayBuffer.byteLength)
+    
+    try {
+      // Decode WebM to AudioBuffer
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
+      console.log('[STT] Decoded AudioBuffer - sampleRate:', audioBuffer.sampleRate, 'channels:', audioBuffer.numberOfChannels, 'duration:', audioBuffer.duration)
+      
+      // Convert AudioBuffer to raw PCM (16-bit mono)
+      const rawData = audioBuffer.getChannelData(0) // Get mono channel
+      console.log('[STT] Extracted channel data, length:', rawData.length)
+      
+      // Convert float32 samples to int16 PCM
+      const pcm = new Int16Array(rawData.length)
+      for (let i = 0; i < rawData.length; i++) {
+        // Clamp to [-1, 1] and convert to 16-bit signed integer
+        const sample = Math.max(-1, Math.min(1, rawData[i]))
+        pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+      }
+      
+      console.log('[STT] Converted to PCM, total bytes:', pcm.byteLength)
+      
+      return new Uint8Array(pcm.buffer)
+    } catch (error) {
+      console.error('[STT] Failed to decode WebM:', error)
+      throw new Error(`WebM decode failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [])
+  
   const stopRecording = useCallback(async (): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!mediaRecorderRef.current) {
@@ -140,12 +178,19 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
             return
           }
           
-          // Send to backend for transcription
-          console.log('[STT] Sending audio to backend for transcription...')
+          // Decode WebM to raw PCM
+          console.log('[STT] Decoding recorded WebM audio to PCM...')
+          const rawPCM = await decodeWebMToPCM(audioBlob)
+          console.log('[STT] PCM conversion complete, PCM size:', rawPCM.byteLength)
+          
+          // Send PCM to backend for transcription
+          console.log('[STT] Sending PCM audio to backend for transcription...')
           setTranscript('🔄 Transcribing...')
           
           const formData = new FormData()
-          formData.append('file', audioBlob, 'audio.webm')
+          // Send raw PCM bytes as file (backend will add WAV header)
+          const pcmBlob = new Blob([rawPCM as any], { type: 'application/octet-stream' })
+          formData.append('file', pcmBlob, 'audio.pcm')
           formData.append('language', language)
           
           console.log('[STT] FormData prepared')

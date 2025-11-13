@@ -49,10 +49,23 @@ async def _get_sst_client() -> httpx.AsyncClient:
 async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") -> dict:
     """Transcribe audio using SST broker (Whisper.cpp)"""
     try:
-        # Ensure audio is in WAV format (add header if needed)
-        wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
+        # Detect if audio is WebM or raw PCM
+        is_webm = audio_data[:4] == b'RIFF' and len(audio_data) >= 12 and audio_data[8:12] == b'WAVE'
+        is_webm = is_webm or (audio_data[:4] == b'\x1aE\xdf\xa3')  # WebM magic bytes
         
-        logger.info(f"[SST] Original audio: {len(audio_data)} bytes, WAV with header: {len(wav_audio)} bytes")
+        logger.info(f"[SST] Received audio data: {len(audio_data)} bytes")
+        logger.info(f"[SST] First 8 bytes (hex): {audio_data[:8].hex()}")
+        logger.info(f"[SST] Detected format - Is WebM: {is_webm}")
+        
+        # If raw PCM (not WebM or WAV), add WAV header
+        if not is_webm and audio_data[:4] != b'RIFF':
+            logger.info(f"[SST] Treating as raw PCM, adding WAV header...")
+            wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
+            logger.info(f"[SST] Added WAV header: {len(audio_data)} bytes PCM → {len(wav_audio)} bytes WAV")
+        else:
+            # Already WAV or WebM format
+            wav_audio = audio_data
+            logger.info(f"[SST] Audio already in correct format, using as-is")
         
         client = await _get_sst_client()
         
@@ -65,8 +78,9 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             "response_format": "json"
         }
         
-        logger.info(f"[SST] Transcribing audio ({len(audio_data)} bytes → {len(wav_audio)} bytes with header, lang={language})")
+        logger.info(f"[SST] Transcribing audio (lang={language})")
         logger.info(f"[SST] Sending to: {SST_BROKER_URL}/inference")
+        logger.info(f"[SST] Audio size: {len(wav_audio)} bytes")
         
         response = await client.post(
             f"{SST_BROKER_URL}/inference",
@@ -76,27 +90,28 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         logger.info(f"[SST] Response status: {response.status_code}")
         response.raise_for_status()
         
+        # Log raw response text before parsing
+        logger.info(f"[SST] Raw response text: {response.text}")
+        logger.info(f"[SST] Raw response text length: {len(response.text)}")
+        
+        # Parse JSON
         result = response.json()
-        logger.info(f"[SST] Raw response: {result}")
-        logger.debug(f"[SST] Full raw response: {result}")
+        logger.info(f"[SST] Parsed JSON result: {result}")
+        logger.info(f"[SST] Result type: {type(result)}, Keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
         
         # Try multiple response formats
-        # Format 1: {"result": {"text": "..."}}
         text = result.get("result", {}).get("text", "")
         logger.info(f"[SST] Format 1 (result.text): '{text}'")
         
-        # Format 2: {"text": "..."}
         if not text:
             text = result.get("text", "")
             logger.info(f"[SST] Format 2 (text): '{text}'")
         
-        # Format 3: Direct text content
         if not text and isinstance(result, dict):
-            # Check for other possible keys
             for key in ["transcription", "output", "content"]:
                 if key in result:
                     text = result[key]
-                    logger.info(f"[SST] Format 3 ({key}): '{text}'")
+                    logger.info(f"[SST] Format {key}: '{text}'")
                     break
         
         logger.info(f"[SST] Extracted text before filtering: '{text}' (length: {len(text)})")
@@ -115,7 +130,7 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             logger.info(f"[SST] Filtered invalid artifact: '{text}'")
             text = ""
         
-        logger.info(f"[SST] Transcribed = '{text}' (length: {len(text)})")
+        logger.info(f"[SST] Final transcribed text: '{text}' (length: {len(text)})")
         
         return {
             "text": text,
