@@ -129,7 +129,23 @@ async def _transcribe_audio(audio_data: bytes, language: str = "en") -> str:
         response.raise_for_status()
         
         result = response.json()
+        logger.debug(f"SST raw response: {result}")
+        
+        # Try multiple response formats
+        # Format 1: {"result": {"text": "..."}}
         text = result.get("result", {}).get("text", "")
+        
+        # Format 2: {"text": "..."}
+        if not text:
+            text = result.get("text", "")
+        
+        # Format 3: Direct text content
+        if not text and isinstance(result, dict):
+            # Check for other possible keys
+            for key in ["transcription", "output", "content"]:
+                if key in result:
+                    text = result[key]
+                    break
         
         logger.info(f"SST: Transcribed text = '{text}'")
         return text
