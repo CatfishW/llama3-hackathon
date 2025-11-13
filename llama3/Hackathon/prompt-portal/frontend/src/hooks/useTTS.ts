@@ -79,23 +79,69 @@ const useTTS = (props: UseTTSProps = {}) => {
             console.log('[TTS] Created Uint8Array, length:', bytes.length)
             console.log('[TTS] First 20 bytes (hex):', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
             
-            // Detect audio format from header
+            // Check if data is already WAV or raw PCM
             const header = String.fromCharCode(...bytes.slice(0, 4))
             console.log('[TTS] Audio header:', header)
             
-            let mimeType = 'audio/wav'
+            let audioBlob: Blob
+            
             if (header === 'RIFF') {
-              console.log('[TTS] Detected WAV format')
-              mimeType = 'audio/wav'
-            } else if (header === 'ID3' || bytes[0] === 0xFF) {
-              console.log('[TTS] Detected MP3 format')
-              mimeType = 'audio/mpeg'
+              // Already a WAV file
+              console.log('[TTS] Data is already WAV format')
+              audioBlob = new Blob([bytes], { type: 'audio/wav' })
+            } else {
+              // Raw PCM data - need to wrap in WAV header
+              console.log('[TTS] Data appears to be raw PCM, wrapping in WAV header...')
+              const sampleRate = response.data.audio_sample_rate || 24000
+              const numChannels = 2 // Kokoro outputs stereo
+              const bitsPerSample = 32 // Float32 PCM
+              const bytesPerSample = bitsPerSample / 8
+              const byteRate = sampleRate * numChannels * bytesPerSample
+              const blockAlign = numChannels * bytesPerSample
+              
+              // Create WAV header
+              const wavHeaderSize = 44
+              const audioDataSize = bytes.length
+              const wavBuffer = new ArrayBuffer(wavHeaderSize + audioDataSize)
+              const wavView = new DataView(wavBuffer)
+              
+              // Helper to write string
+              const writeString = (offset: number, string: string) => {
+                for (let i = 0; i < string.length; i++) {
+                  wavView.setUint8(offset + i, string.charCodeAt(i))
+                }
+              }
+              
+              // RIFF header
+              writeString(0, 'RIFF')
+              wavView.setUint32(4, wavHeaderSize + audioDataSize - 8, true)
+              writeString(8, 'WAVE')
+              
+              // fmt subchunk
+              writeString(12, 'fmt ')
+              wavView.setUint32(16, 16, true) // fmt chunk size
+              wavView.setUint16(20, 3, true) // Audio format (3 = IEEE Float)
+              wavView.setUint16(22, numChannels, true) // Number of channels
+              wavView.setUint32(24, sampleRate, true) // Sample rate
+              wavView.setUint32(28, byteRate, true) // Byte rate
+              wavView.setUint16(32, blockAlign, true) // Block align
+              wavView.setUint16(34, bitsPerSample, true) // Bits per sample
+              
+              // data subchunk
+              writeString(36, 'data')
+              wavView.setUint32(40, audioDataSize, true) // Data size
+              
+              // Copy audio data
+              const audioDataView = new Uint8Array(wavBuffer, wavHeaderSize)
+              audioDataView.set(bytes)
+              
+              console.log('[TTS] WAV header created - format: Float32 Stereo, sample rate:', sampleRate, 'Hz, header:', wavHeaderSize, 'bytes, data:', audioDataSize, 'bytes, total:', wavBuffer.byteLength)
+              audioBlob = new Blob([wavBuffer], { type: 'audio/wav' })
             }
             
-            const blob = new Blob([bytes], { type: mimeType })
-            console.log('[TTS] Created blob - Type:', blob.type, 'Size:', blob.size)
-            
-            const url = URL.createObjectURL(blob)
+            console.log('[TTS] Created blob - Type:', audioBlob.type, 'Size:', audioBlob.size)
+
+            const url = URL.createObjectURL(audioBlob)
             console.log('[TTS] Created object URL:', url)
             
             // Set source and wait for canplay before playing
