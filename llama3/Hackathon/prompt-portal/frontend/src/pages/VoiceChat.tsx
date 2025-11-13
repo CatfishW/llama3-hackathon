@@ -40,6 +40,8 @@ export default function VoiceChat() {
   const [sessionTitle, setSessionTitle] = useState('Voice Chat Session')
   const [showSettings, setShowSettings] = useState(false)
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<number | null>(null)
+  const [isInitializingSession, setIsInitializingSession] = useState(true)
   
   // Refs
   const messageContainerRef = useRef<HTMLDivElement>(null)
@@ -101,6 +103,28 @@ export default function VoiceChat() {
     }
   }, [messages])
   
+  // Initialize chatbot session
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        setIsInitializingSession(true)
+        const response = await chatbotAPI.createSession({
+          title: 'Voice Chat Session',
+          system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
+        })
+        setSessionId(response.data.id)
+        console.log('[VoiceChat] Session created:', response.data.id)
+      } catch (err) {
+        console.error('[VoiceChat] Failed to create session:', err)
+        setError('Failed to initialize chat session')
+      } finally {
+        setIsInitializingSession(false)
+      }
+    }
+    
+    initSession()
+  }, [])
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -140,10 +164,14 @@ export default function VoiceChat() {
         setError(null)
         
         try {
-          // Send to chatbot API
+          // Send to chatbot API using the created session
+          if (!sessionId) {
+            throw new Error('Chat session not initialized')
+          }
+          
           console.log('[VoiceChat] Sending to chatbot API:', finalTranscript)
           const response = await chatbotAPI.sendMessage({
-            session_id: 1, // Use a default session
+            session_id: sessionId,
             content: finalTranscript,
             system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
           })
@@ -440,6 +468,20 @@ export default function VoiceChat() {
         </div>
       )}
       
+      {/* Loading Indicator */}
+      {isInitializingSession && (
+        <div style={{
+          padding: '12px 16px',
+          background: 'rgba(59,130,246,0.2)',
+          color: '#93c5fd',
+          textAlign: 'center',
+          fontSize: '0.9rem',
+          borderBottom: '1px solid rgba(59,130,246,0.3)'
+        }}>
+          ⏳ Initializing chat session...
+        </div>
+      )}
+      
       {/* Main Content */}
       <div style={styles.mainContent}>
         {/* Messages */}
@@ -613,15 +655,15 @@ export default function VoiceChat() {
           onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          disabled={isProcessing || isSynthesizing || isTranscribing}
+          disabled={isProcessing || isSynthesizing || isTranscribing || isInitializingSession}
           style={{
             ...styles.talkButton,
-            opacity: isProcessing || isSynthesizing || isTranscribing ? 0.6 : 1,
-            cursor: isProcessing || isSynthesizing || isTranscribing ? 'not-allowed' : 'pointer'
+            opacity: isProcessing || isSynthesizing || isTranscribing || isInitializingSession ? 0.6 : 1,
+            cursor: isProcessing || isSynthesizing || isTranscribing || isInitializingSession ? 'not-allowed' : 'pointer'
           }}
-          title="Hold to record, release to send"
+          title={isInitializingSession ? "Initializing session..." : "Hold to record, release to send"}
         >
-          {isRecording ? '🎤' : '💬'}
+          {isRecording ? '🎤' : isInitializingSession ? '⏳' : '💬'}
         </button>
         
         {/* Quick Actions */}

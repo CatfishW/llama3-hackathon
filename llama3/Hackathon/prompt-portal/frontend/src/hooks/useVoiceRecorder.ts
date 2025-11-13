@@ -159,7 +159,20 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           }
           
           const result = await response.json()
-          const transcribedText = result.text || ''
+          let transcribedText = result.text || ''
+          
+          // Filter out invalid Whisper.cpp artifacts
+          const invalidPatterns = [
+            /^\s*\[MUSIC PLAYING\]\s*$/i,
+            /^\s*\[SILENCE\]\s*$/i,
+            /^\s*\[\s*\]\s*$/,
+            /^\s*\.+\s*$/,
+          ]
+          
+          if (invalidPatterns.some(pattern => pattern.test(transcribedText))) {
+            console.log('[STT] Filtered out invalid pattern:', transcribedText)
+            transcribedText = ''
+          }
           
           console.log('[STT] Transcription complete:', transcribedText)
           setTranscript(transcribedText)
