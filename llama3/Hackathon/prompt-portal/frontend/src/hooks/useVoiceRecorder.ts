@@ -165,6 +165,7 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           const invalidPatterns = [
             /^\s*\[MUSIC PLAYING\]\s*$/i,
             /^\s*\[SILENCE\]\s*$/i,
+            /^\s*\[BLANK[_\s]*AUDIO\]\s*$/i,
             /^\s*\[\s*\]\s*$/,
             /^\s*\.+\s*$/,
           ]

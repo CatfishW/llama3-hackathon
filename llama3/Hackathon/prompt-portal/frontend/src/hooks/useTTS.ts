@@ -18,7 +18,11 @@ const useTTS = (props: UseTTSProps = {}) => {
   
   const synthesizeAndPlay = useCallback(
     async (text: string, voiceOverride?: string, speedOverride?: number) => {
-      if (!text.trim()) return
+      // Validate text input
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        console.warn('[TTS] Cannot synthesize empty or invalid text:', text)
+        return
+      }
       
       try {
         setIsSynthesizing(true)

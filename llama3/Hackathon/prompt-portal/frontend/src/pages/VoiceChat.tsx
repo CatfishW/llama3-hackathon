@@ -176,7 +176,13 @@ export default function VoiceChat() {
             system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
           })
           
-          const assistantText = response.data.content || response.data.message
+          // Extract assistant text safely
+          const assistantText = response.data?.content || response.data?.message || response.data?.text || ''
+          
+          if (!assistantText || !assistantText.trim()) {
+            throw new Error('LLM returned empty response')
+          }
+          
           console.log('[VoiceChat] Got response from LLM:', assistantText)
           
           // Add assistant message
@@ -184,7 +190,7 @@ export default function VoiceChat() {
           const assistantMessage: VoiceMessage = {
             id: assistantMessageId,
             role: 'assistant',
-            text: assistantText,
+            text: assistantText.trim(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
           
@@ -193,8 +199,11 @@ export default function VoiceChat() {
           // Synthesize and play response
           try {
             console.log('[VoiceChat] Starting TTS synthesis...')
-            await synthesizeAndPlay(assistantText, selectedVoice, speechRate)
-            setPlayingMessageId(assistantMessageId)
+            const textToSpeak = assistantText.trim()
+            if (textToSpeak) {
+              await synthesizeAndPlay(textToSpeak, selectedVoice, speechRate)
+              setPlayingMessageId(assistantMessageId)
+            }
           } catch (ttsError) {
             console.error('TTS Error:', ttsError)
             // Don't fail the entire interaction if TTS fails

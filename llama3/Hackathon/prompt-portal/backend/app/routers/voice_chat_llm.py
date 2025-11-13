@@ -147,6 +147,20 @@ async def _transcribe_audio(audio_data: bytes, language: str = "en") -> str:
                     text = result[key]
                     break
         
+        # Filter out invalid Whisper.cpp artifacts
+        import re
+        invalid_patterns = [
+            r'^\s*\[MUSIC\s+PLAYING\]\s*$',
+            r'^\s*\[SILENCE\]\s*$',
+            r'^\s*\[BLANK[_\s]*AUDIO\]\s*$',
+            r'^\s*\[\s*\]\s*$',
+            r'^\s*\.+\s*$',
+        ]
+        
+        if text and any(re.match(pattern, text, re.IGNORECASE) for pattern in invalid_patterns):
+            logger.info(f"SST: Filtered invalid artifact: '{text}'")
+            text = ""
+        
         logger.info(f"SST: Transcribed text = '{text}'")
         return text
         
