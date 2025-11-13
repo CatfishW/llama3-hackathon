@@ -46,6 +46,7 @@ export default function VoiceChat() {
   // Refs
   const messageContainerRef = useRef<HTMLDivElement>(null)
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isProcessingRef = useRef(false)
   
   // Hooks
   const {
@@ -145,7 +146,14 @@ export default function VoiceChat() {
   }
   
   const handleMouseUp = async () => {
+    // Prevent duplicate processing
+    if (isProcessingRef.current) {
+      console.log('[VoiceChat] handleMouseUp already processing, ignoring duplicate call')
+      return
+    }
+    
     try {
+      isProcessingRef.current = true
       console.log('[VoiceChat] handleMouseUp called')
       const finalTranscript = await stopRecording()
       console.log('[VoiceChat] stopRecording returned:', finalTranscript)
@@ -251,6 +259,8 @@ export default function VoiceChat() {
       console.error('[VoiceChat] Error:', err)
       setError(err instanceof Error ? err.message : 'Failed to process speech')
       setIsProcessing(false)
+    } finally {
+      isProcessingRef.current = false
     }
   }
   
