@@ -127,13 +127,49 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
       console.log('[STT] Decoded - sampleRate:', audioBuffer.sampleRate, 'duration:', audioBuffer.duration)
       
-      // Convert to raw PCM (16-bit mono)
+      // Get raw audio data (float32)
       const rawData = audioBuffer.getChannelData(0)
-      const pcm = new Int16Array(rawData.length)
-      for (let i = 0; i < rawData.length; i++) {
-        const sample = Math.max(-1, Math.min(1, rawData[i]))
-        pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+      console.log('[STT] Raw data length:', rawData.length, 'samples')
+      
+      // Downsample from 48kHz to 16kHz if needed
+      const targetSampleRate = 16000
+      const sourceSampleRate = audioBuffer.sampleRate
+      let pcmData: Int16Array
+      
+      if (sourceSampleRate === targetSampleRate) {
+        // No downsampling needed
+        console.log('[STT] No downsampling needed (already 16kHz)')
+        pcmData = new Int16Array(rawData.length)
+        for (let i = 0; i < rawData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, rawData[i]))
+          pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+        }
+      } else {
+        // Downsample using simple linear interpolation
+        const ratio = sourceSampleRate / targetSampleRate
+        const downsampledLength = Math.floor(rawData.length / ratio)
+        console.log('[STT] Downsampling from', sourceSampleRate, 'Hz to', targetSampleRate, 'Hz')
+        console.log('[STT] Samples:', rawData.length, '→', downsampledLength)
+        
+        pcmData = new Int16Array(downsampledLength)
+        for (let i = 0; i < downsampledLength; i++) {
+          const sourceIndex = i * ratio
+          const sourceIndexFloor = Math.floor(sourceIndex)
+          const sourceIndexFraction = sourceIndex - sourceIndexFloor
+          
+          // Linear interpolation between samples
+          let sample = rawData[sourceIndexFloor]
+          if (sourceIndexFloor + 1 < rawData.length) {
+            sample = sample * (1 - sourceIndexFraction) + rawData[sourceIndexFloor + 1] * sourceIndexFraction
+          }
+          
+          // Convert float32 [-1, 1] to int16
+          sample = Math.max(-1, Math.min(1, sample))
+          pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+        }
       }
+      
+      console.log('[STT] Converted to PCM - size:', pcmData.byteLength, 'bytes')
       
       // Create WAV file with proper header
       const sampleRate = 16000
@@ -143,35 +179,44 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       const byteRate = sampleRate * numChannels * bytesPerSample
       const blockAlign = numChannels * bytesPerSample
       
-      const wav = new ArrayBuffer(44 + pcm.byteLength)
+      const wavDataSize = pcmData.byteLength
+      const wavHeaderSize = 44
+      const wavTotal = wavHeaderSize + wavDataSize
+      
+      const wav = new ArrayBuffer(wavTotal)
       const view = new DataView(wav)
       
-      // Write RIFF header
+      // Helper to write ASCII string
       const writeString = (offset: number, string: string) => {
         for (let i = 0; i < string.length; i++) {
           view.setUint8(offset + i, string.charCodeAt(i))
         }
       }
       
+      // RIFF header
       writeString(0, 'RIFF')
-      view.setUint32(4, 36 + pcm.byteLength, true)
+      view.setUint32(4, wavTotal - 8, true) // File size minus RIFF header
       writeString(8, 'WAVE')
+      
+      // fmt subchunk
       writeString(12, 'fmt ')
-      view.setUint32(16, 16, true)
-      view.setUint16(20, 1, true)
-      view.setUint16(22, numChannels, true)
-      view.setUint32(24, sampleRate, true)
-      view.setUint32(28, byteRate, true)
-      view.setUint16(32, blockAlign, true)
-      view.setUint16(34, bitsPerSample, true)
+      view.setUint32(16, 16, true) // fmt chunk size
+      view.setUint16(20, 1, true) // Audio format (PCM = 1)
+      view.setUint16(22, numChannels, true) // Number of channels
+      view.setUint32(24, sampleRate, true) // Sample rate
+      view.setUint32(28, byteRate, true) // Byte rate
+      view.setUint16(32, blockAlign, true) // Block align
+      view.setUint16(34, bitsPerSample, true) // Bits per sample
+      
+      // data subchunk
       writeString(36, 'data')
-      view.setUint32(40, pcm.byteLength, true)
+      view.setUint32(40, wavDataSize, true) // Data size
       
       // Copy PCM data
       const pcmView = new Uint8Array(wav, 44)
-      pcmView.set(new Uint8Array(pcm.buffer))
+      pcmView.set(new Uint8Array(pcmData.buffer))
       
-      console.log('[STT] WAV created - size:', wav.byteLength, 'bytes')
+      console.log('[STT] WAV created - header:', wavHeaderSize, 'bytes, data:', wavDataSize, 'bytes, total:', wavTotal, 'bytes')
       return new Blob([wav], { type: 'audio/wav' })
     } catch (error) {
       console.error('[STT] Failed to convert to WAV:', error)
