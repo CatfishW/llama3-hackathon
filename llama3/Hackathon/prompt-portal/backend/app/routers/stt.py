@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from pydantic import BaseModel
 import httpx
+from ..utils.audio_utils import ensure_wav_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/stt", tags=["speech-to-text"])
@@ -48,10 +49,13 @@ async def _get_sst_client() -> httpx.AsyncClient:
 async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") -> dict:
     """Transcribe audio using SST broker (Whisper.cpp)"""
     try:
+        # Ensure audio is in WAV format (add header if needed)
+        wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
+        
         client = await _get_sst_client()
         
         files = {
-            "file": ("audio.wav", audio_data, "audio/wav")
+            "file": ("audio.wav", wav_audio, "audio/wav")
         }
         data = {
             "temperature": "0.0",
@@ -59,7 +63,7 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             "response_format": "json"
         }
         
-        logger.info(f"SST: Transcribing audio ({len(audio_data)} bytes, lang={language})")
+        logger.info(f"SST: Transcribing audio ({len(audio_data)} bytes → {len(wav_audio)} bytes with header, lang={language})")
         
         response = await client.post(
             f"{SST_BROKER_URL}/inference",

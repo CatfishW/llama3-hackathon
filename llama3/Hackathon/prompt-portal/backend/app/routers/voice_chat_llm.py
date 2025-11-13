@@ -16,6 +16,7 @@ import io
 from ..config import settings
 from ..deps import get_current_user
 from ..services.llm_client import get_llm_client_for_user
+from ..utils.audio_utils import ensure_wav_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/voice", tags=["voice-chat"])
@@ -104,10 +105,13 @@ async def _transcribe_audio(audio_data: bytes, language: str = "en") -> str:
         Transcribed text
     """
     try:
+        # Ensure audio is in WAV format (add header if needed)
+        wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
+        
         client = await _get_sst_client()
         
         files = {
-            "file": ("audio.wav", audio_data, "audio/wav")
+            "file": ("audio.wav", wav_audio, "audio/wav")
         }
         data = {
             "temperature": "0.0",
@@ -115,7 +119,7 @@ async def _transcribe_audio(audio_data: bytes, language: str = "en") -> str:
             "response_format": "json"
         }
         
-        logger.debug(f"SST: Transcribing audio ({len(audio_data)} bytes, lang={language})")
+        logger.debug(f"SST: Transcribing audio ({len(audio_data)} bytes → {len(wav_audio)} bytes with header, lang={language})")
         
         response = await client.post(
             f"{SST_BROKER_URL}/inference",
