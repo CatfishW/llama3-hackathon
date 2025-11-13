@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { chatbotAPI, ttsAPI } from '../api'
+import { chatbotAPI } from '../api'
 import useVoiceRecorder from '../hooks/useVoiceRecorder'
 import useTTS from '../hooks/useTTS'
 import VoiceVisualizer from '../components/VoiceVisualizer'
@@ -36,7 +36,7 @@ export default function VoiceChat() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedVoice, setSelectedVoice] = useState('af_heart')
-  const [speechRate, setSpeechRate] = useState(0.75) // Gentle default playback speed
+  const [speechRate, setSpeechRate] = useState(1.0) // Default playback speed
   const [sessionTitle, setSessionTitle] = useState('Voice Chat Session')
   const [showSettings, setShowSettings] = useState(false)
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
@@ -275,29 +275,36 @@ export default function VoiceChat() {
       fontFamily: 'Inter, system-ui, sans-serif',
       display: 'flex',
       justifyContent: 'center',
-      padding: isMobile ? '16px' : '32px'
+      alignItems: 'stretch',
+      padding: isMobile ? '12px' : '32px',
+      paddingBottom: isMobile ? '18px' : '32px',
+      boxSizing: 'border-box' as const
     } as CSSProperties,
     contentWrapper: {
       width: '100%',
       maxWidth: isMobile ? '100%' : '1100px',
+      height: isMobile ? 'calc(100vh - 24px)' : 'auto',
+      maxHeight: isMobile ? 'none' : '95vh',
       display: 'flex',
       flexDirection: 'column' as const,
       gap: '16px',
-      background: 'rgba(15, 23, 42, 0.6)',
-      borderRadius: '24px',
+      background: 'rgba(15, 23, 42, 0.65)',
+      borderRadius: isMobile ? '18px' : '24px',
       border: '1px solid rgba(148,163,184,0.12)',
       boxShadow: '0 32px 80px rgba(15, 23, 42, 0.45)',
       backdropFilter: 'blur(18px)',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      position: 'relative' as const
     } as CSSProperties,
     header: {
-      padding: isMobile ? '12px 18px' : '18px 28px',
+      padding: isMobile ? '12px 16px' : '18px 28px',
       borderBottom: '1px solid rgba(148,163,184,0.12)',
       background: 'linear-gradient(135deg, rgba(30,64,175,0.45), rgba(30,41,59,0.55))',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      gap: '16px'
+      gap: '16px',
+      flexWrap: isMobile ? 'wrap' as const : 'nowrap'
     } as CSSProperties,
     headerLeft: {
       display: 'flex',
@@ -328,16 +335,19 @@ export default function VoiceChat() {
       flex: 1,
       display: 'flex',
       flexDirection: 'column' as const,
-      overflow: 'hidden'
+      overflow: 'hidden',
+      minHeight: 0
     } as CSSProperties,
     messagesContainer: {
       flex: 1,
+      minHeight: 0,
       overflowY: 'auto' as const,
-      padding: isMobile ? '18px 16px' : '28px',
+      padding: isMobile ? '16px 14px' : '28px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '18px',
-      background: 'linear-gradient(180deg, rgba(10,15,30,0.75) 0%, rgba(15,23,42,0.65) 60%, rgba(21, 32, 55, 0.75) 100%)'
+      gap: isMobile ? '14px' : '18px',
+      background: 'linear-gradient(180deg, rgba(10,15,30,0.75) 0%, rgba(15,23,42,0.65) 60%, rgba(21, 32, 55, 0.75) 100%)',
+      overscrollBehavior: 'contain' as const
     } as CSSProperties,
     messageBubble: {
       maxWidth: isMobile ? '88%' : '70%',
@@ -372,24 +382,29 @@ export default function VoiceChat() {
       alignSelf: 'flex-end'
     } as CSSProperties,
     controlsContainer: {
-      padding: isMobile ? '18px 16px' : '28px',
+      padding: isMobile ? '16px 14px' : '28px',
       borderTop: '1px solid rgba(148,163,184,0.12)',
-      background: 'linear-gradient(180deg, rgba(15,23,42,0.65), rgba(12,20,38,0.75))',
+      background: isMobile
+        ? 'linear-gradient(180deg, rgba(12,20,38,0.88), rgba(10,15,30,0.95))'
+        : 'linear-gradient(180deg, rgba(15,23,42,0.65), rgba(12,20,38,0.75))',
       backdropFilter: 'blur(14px)',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '20px'
+      gap: '20px',
+      position: isMobile ? 'sticky' as const : 'static',
+      bottom: 0,
+      zIndex: 5
     } as CSSProperties,
     talkButton: {
-      width: isMobile ? '100%' : '200px',
-      height: isMobile ? '80px' : '100px',
+      width: isMobile ? '100%' : '220px',
+      height: isMobile ? '76px' : '100px',
       borderRadius: '32px',
       border: '1px solid rgba(226,232,240,0.12)',
       background: isRecording
         ? 'radial-gradient(circle at top, rgba(248,113,113,0.55), rgba(220,38,38,0.28))'
         : 'radial-gradient(circle at top, rgba(34,197,94,0.6), rgba(16,185,129,0.28))',
       color: isRecording ? '#ffe4e6' : '#ecfdf5',
-      fontSize: isMobile ? '1.6rem' : '2.2rem',
+      fontSize: isMobile ? '1.8rem' : '2.2rem',
       fontWeight: 600,
       cursor: 'pointer',
       transition: 'transform 0.25s ease, box-shadow 0.25s ease',
@@ -419,18 +434,20 @@ export default function VoiceChat() {
       display: 'flex',
       flexDirection: 'column' as const,
       gap: '14px',
-      boxShadow: '0 18px 35px rgba(15, 23, 42, 0.22)'
+      boxShadow: '0 18px 35px rgba(15, 23, 42, 0.22)',
+      width: '100%'
     } as CSSProperties,
     settingRow: {
       display: 'flex',
-      alignItems: 'center',
+      alignItems: isMobile ? 'stretch' : 'center',
       gap: '12px',
-      flexWrap: 'wrap' as const
+      flexWrap: 'wrap' as const,
+      flexDirection: isMobile ? 'column' as const : 'row' as const
     } as CSSProperties,
     settingLabel: {
-      fontSize: '0.9rem',
+      fontSize: '0.92rem',
       fontWeight: 600,
-      minWidth: '110px'
+      minWidth: isMobile ? 'auto' : '110px'
     } as CSSProperties,
     select: {
       padding: '10px 14px',
@@ -442,11 +459,12 @@ export default function VoiceChat() {
       cursor: 'pointer',
       transition: 'border 0.2s ease, box-shadow 0.2s ease',
       boxShadow: 'inset 0 0 0 rgba(148,163,184,0)',
-      outline: 'none'
+      outline: 'none',
+      width: isMobile ? '100%' : 'auto'
     } as CSSProperties,
     slider: {
       flex: 1,
-      minWidth: '140px'
+      minWidth: isMobile ? '100%' : '140px'
     } as CSSProperties,
     errorMessage: {
       padding: '14px 18px',
@@ -459,16 +477,18 @@ export default function VoiceChat() {
   }
   
   const buttonStyle = (isActive: boolean): CSSProperties => ({
-    padding: '9px 16px',
+    padding: '10px 16px',
     borderRadius: '10px',
     border: '1px solid rgba(148,163,184,0.25)',
     background: isActive ? 'rgba(45,212,191,0.25)' : 'rgba(30,41,59,0.55)',
     color: isActive ? '#99f6e4' : 'rgba(226,232,240,0.85)',
-    fontSize: isMobile ? '0.78rem' : '0.9rem',
+    fontSize: isMobile ? '0.82rem' : '0.9rem',
     cursor: 'pointer',
     transition: 'all 0.25s',
     fontWeight: 600,
-    boxShadow: isActive ? '0 8px 20px rgba(45,212,191,0.2)' : 'none'
+    boxShadow: isActive ? '0 8px 20px rgba(45,212,191,0.2)' : 'none',
+    width: isMobile ? '100%' : 'auto',
+    textAlign: 'center' as const
   })
   
   return (
@@ -737,9 +757,11 @@ export default function VoiceChat() {
         {/* Quick Actions */}
         <div style={{
           display: 'flex',
-          gap: '10px',
-          justifyContent: 'center',
-          flexWrap: 'wrap' as const
+          gap: isMobile ? '8px' : '12px',
+          justifyContent: isMobile ? 'flex-start' : 'center',
+          alignItems: isMobile ? 'stretch' : 'center',
+          flexWrap: isMobile ? 'nowrap' as const : 'wrap' as const,
+          flexDirection: isMobile ? 'column' as const : 'row' as const
         }}>
           {isPlaying && (
             <button

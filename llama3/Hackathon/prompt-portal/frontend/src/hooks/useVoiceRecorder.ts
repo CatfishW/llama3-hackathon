@@ -352,14 +352,29 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       }
 
       recorder.addEventListener('stop', onStop, { once: true })
-      recorder.stop()
+
+      if (recorder.state !== 'inactive') {
+        try {
+          if (typeof recorder.requestData === 'function') {
+            recorder.requestData()
+          }
+        } catch (requestError) {
+          console.warn('[STT] requestData failed, continuing with stop():', requestError)
+        }
+
+        recorder.stop()
+      } else {
+        console.log('[STT] MediaRecorder already inactive when stop requested')
+        void finalizeTranscription()
+        return
+      }
 
       forceTimeout = setTimeout(() => {
         if (!stopHandled) {
-          console.warn('[STT] MediaRecorder stop event timeout, forcing transcription...')
+          console.warn('[STT] MediaRecorder stop event timeout, forcing transcription immediately')
           void finalizeTranscription()
         }
-      }, 2500)
+      }, 1200)
     })
   }, [language, apiUrl, onTranscription, onError, recordingToWav])
   
