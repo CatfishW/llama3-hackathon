@@ -186,12 +186,24 @@ export default function VoiceChat() {
           console.log('[VoiceChat] Chatbot response:', response)
           console.log('[VoiceChat] Response data:', response.data)
           
-          // Extract assistant text safely
-          const assistantText = response.data?.content || response.data?.message || response.data?.text || ''
+          // Extract assistant text from nested assistant_message object
+          let assistantText = ''
+          if (response.data?.assistant_message?.content) {
+            assistantText = response.data.assistant_message.content
+          } else if (response.data?.content) {
+            assistantText = response.data.content
+          } else if (response.data?.message) {
+            assistantText = response.data.message
+          } else if (response.data?.text) {
+            assistantText = response.data.text
+          } else if (response.data?.assistant_message?.text) {
+            assistantText = response.data.assistant_message.text
+          }
           
           console.log('[VoiceChat] Extracted text:', assistantText)
           console.log('[VoiceChat] Text type:', typeof assistantText)
           console.log('[VoiceChat] Text length:', assistantText?.length)
+          console.log('[VoiceChat] Full assistant_message object:', JSON.stringify(response.data?.assistant_message, null, 2))
           
           if (!assistantText || !assistantText.trim()) {
             throw new Error('LLM returned empty response')

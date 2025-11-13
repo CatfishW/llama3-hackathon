@@ -108,9 +108,12 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         invalid_patterns = [
             r'^\s*\[MUSIC\]\s*$',
             r'^\s*\[SOUND\]\s*$',
+            r'^\s*\[snaps fingers\]\s*$',
+            r'^\s*\[snap\]\s*$',
             r'^\s*\[MUSIC\s+PLAYING\]\s*$',
             r'^\s*\[SILENCE\]\s*$',
             r'^\s*\[BLANK[_\s]*AUDIO\]\s*$',
+            r'^\s*\[applause\]\s*$',
             r'^\s*\[\s*\]\s*$',
             r'^\s*\.+\s*$',
         ]
