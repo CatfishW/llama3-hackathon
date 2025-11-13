@@ -52,6 +52,8 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         # Ensure audio is in WAV format (add header if needed)
         wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
         
+        logger.info(f"[SST] Original audio: {len(audio_data)} bytes, WAV with header: {len(wav_audio)} bytes")
+        
         client = await _get_sst_client()
         
         files = {
@@ -63,25 +65,30 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             "response_format": "json"
         }
         
-        logger.info(f"SST: Transcribing audio ({len(audio_data)} bytes → {len(wav_audio)} bytes with header, lang={language})")
+        logger.info(f"[SST] Transcribing audio ({len(audio_data)} bytes → {len(wav_audio)} bytes with header, lang={language})")
+        logger.info(f"[SST] Sending to: {SST_BROKER_URL}/inference")
         
         response = await client.post(
             f"{SST_BROKER_URL}/inference",
             files=files,
             data=data
         )
+        logger.info(f"[SST] Response status: {response.status_code}")
         response.raise_for_status()
         
         result = response.json()
-        logger.debug(f"SST raw response: {result}")
+        logger.info(f"[SST] Raw response: {result}")
+        logger.debug(f"[SST] Full raw response: {result}")
         
         # Try multiple response formats
         # Format 1: {"result": {"text": "..."}}
         text = result.get("result", {}).get("text", "")
+        logger.info(f"[SST] Format 1 (result.text): '{text}'")
         
         # Format 2: {"text": "..."}
         if not text:
             text = result.get("text", "")
+            logger.info(f"[SST] Format 2 (text): '{text}'")
         
         # Format 3: Direct text content
         if not text and isinstance(result, dict):
@@ -89,7 +96,10 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             for key in ["transcription", "output", "content"]:
                 if key in result:
                     text = result[key]
+                    logger.info(f"[SST] Format 3 ({key}): '{text}'")
                     break
+        
+        logger.info(f"[SST] Extracted text before filtering: '{text}' (length: {len(text)})")
         
         # Filter out invalid Whisper.cpp artifacts
         import re
@@ -102,10 +112,10 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         ]
         
         if text and any(re.match(pattern, text, re.IGNORECASE) for pattern in invalid_patterns):
-            logger.info(f"SST: Filtered invalid artifact: '{text}'")
+            logger.info(f"[SST] Filtered invalid artifact: '{text}'")
             text = ""
         
-        logger.info(f"SST: Transcribed = '{text}'")
+        logger.info(f"[SST] Transcribed = '{text}' (length: {len(text)})")
         
         return {
             "text": text,
@@ -153,20 +163,31 @@ async def transcribe_audio(
         # Read audio file
         audio_data = await file.read()
         
+        logger.info(f"[STT] Endpoint received file: {file.filename}")
+        logger.info(f"[STT] File content-type: {file.content_type}")
+        logger.info(f"[STT] Audio data size: {len(audio_data)} bytes")
+        logger.info(f"[STT] Language: {language}")
+        
         if not audio_data:
+            logger.error(f"[STT] Empty audio file received")
             raise HTTPException(status_code=400, detail="Empty audio file")
         
-        logger.info(f"STT endpoint: Received {len(audio_data)} bytes")
+        logger.info(f"[STT] STT endpoint: Received {len(audio_data)} bytes")
         
         # Use SST broker
         result = await transcribe_with_sst_broker(audio_data, language)
         
-        return STTResponse(**result)
+        logger.info(f"[STT] Returning result: {result}")
+        
+        response = STTResponse(**result)
+        logger.info(f"[STT] Final response text: '{response.text}' (length: {len(response.text)})")
+        
+        return response
     
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Transcription endpoint error: {exc}", exc_info=True)
+        logger.error(f"[STT] Transcription endpoint error: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}") from exc
 
 

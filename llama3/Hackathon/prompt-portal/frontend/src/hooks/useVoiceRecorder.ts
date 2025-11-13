@@ -148,18 +148,35 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           formData.append('file', audioBlob, 'audio.webm')
           formData.append('language', language)
           
+          console.log('[STT] FormData prepared')
+          console.log('[STT] API URL:', `${apiUrl}/transcribe`)
+          console.log('[STT] Audio blob details - Type:', audioBlob.type, 'Size:', audioBlob.size)
+          
           const response = await fetch(`${apiUrl}/transcribe`, {
             method: 'POST',
             body: formData
           })
           
+          console.log('[STT] Response received')
+          console.log('[STT] Response status:', response.status)
+          console.log('[STT] Response ok:', response.ok)
+          console.log('[STT] Response headers:', response.headers)
+          
           if (!response.ok) {
             const errorData = await response.json()
+            console.error('[STT] Error response:', errorData)
             throw new Error(errorData.detail || `HTTP ${response.status}`)
           }
           
           const result = await response.json()
+          console.log('[STT] Parsed result:', result)
+          
           let transcribedText = result.text || ''
+          
+          console.log('[STT] Raw response:', result)
+          console.log('[STT] Extracted text:', transcribedText)
+          console.log('[STT] Text length:', transcribedText.length)
+          console.log('[STT] Text type:', typeof transcribedText)
           
           // Filter out invalid Whisper.cpp artifacts
           const invalidPatterns = [
@@ -170,22 +187,30 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
             /^\s*\.+\s*$/,
           ]
           
-          if (invalidPatterns.some(pattern => pattern.test(transcribedText))) {
-            console.log('[STT] Filtered out invalid pattern:', transcribedText)
+          const matchedPattern = invalidPatterns.find(pattern => pattern.test(transcribedText))
+          if (matchedPattern) {
+            console.log('[STT] Filtered out invalid pattern:', transcribedText, 'Pattern:', matchedPattern)
             transcribedText = ''
           }
           
+          console.log('[STT] After filtering:', transcribedText)
           console.log('[STT] Transcription complete:', transcribedText)
+          console.log('[STT] Is empty?', !transcribedText || transcribedText.trim() === '')
+          
           setTranscript(transcribedText)
           setIsFinal(true)
           setConfidence(result.confidence || 0.95)
           
           if (transcribedText && onTranscription) {
+            console.log('[STT] Calling onTranscription callback with:', transcribedText)
             onTranscription(transcribedText)
+          } else {
+            console.log('[STT] Not calling onTranscription - text is empty or falsy')
           }
           
           setIsListening(false)
           setIsTranscribing(false)
+          console.log('[STT] Resolving with:', transcribedText)
           resolve(transcribedText)
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Transcription failed'

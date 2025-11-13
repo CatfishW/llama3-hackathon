@@ -146,10 +146,16 @@ export default function VoiceChat() {
   
   const handleMouseUp = async () => {
     try {
+      console.log('[VoiceChat] handleMouseUp called')
       const finalTranscript = await stopRecording()
+      console.log('[VoiceChat] stopRecording returned:', finalTranscript)
+      console.log('[VoiceChat] Type:', typeof finalTranscript)
+      console.log('[VoiceChat] Length:', finalTranscript?.length)
+      console.log('[VoiceChat] Trimmed length:', finalTranscript?.trim?.().length)
       console.log('[VoiceChat] Final transcript received:', finalTranscript)
       
-      if (finalTranscript.trim()) {
+      if (finalTranscript && finalTranscript.trim()) {
+        console.log('[VoiceChat] Transcript is valid, proceeding')
         // Add user message
         const userMessageId = Date.now().toString()
         const userMessage: VoiceMessage = {
@@ -169,15 +175,23 @@ export default function VoiceChat() {
             throw new Error('Chat session not initialized')
           }
           
-          console.log('[VoiceChat] Sending to chatbot API:', finalTranscript)
+          console.log('[VoiceChat] Sending to chatbot API with session:', sessionId)
+          console.log('[VoiceChat] Message content:', finalTranscript)
           const response = await chatbotAPI.sendMessage({
             session_id: sessionId,
             content: finalTranscript,
             system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
           })
           
+          console.log('[VoiceChat] Chatbot response:', response)
+          console.log('[VoiceChat] Response data:', response.data)
+          
           // Extract assistant text safely
           const assistantText = response.data?.content || response.data?.message || response.data?.text || ''
+          
+          console.log('[VoiceChat] Extracted text:', assistantText)
+          console.log('[VoiceChat] Text type:', typeof assistantText)
+          console.log('[VoiceChat] Text length:', assistantText?.length)
           
           if (!assistantText || !assistantText.trim()) {
             throw new Error('LLM returned empty response')
@@ -200,6 +214,7 @@ export default function VoiceChat() {
           try {
             console.log('[VoiceChat] Starting TTS synthesis...')
             const textToSpeak = assistantText.trim()
+            console.log('[VoiceChat] Text to speak:', textToSpeak)
             if (textToSpeak) {
               await synthesizeAndPlay(textToSpeak, selectedVoice, speechRate)
               setPlayingMessageId(assistantMessageId)
@@ -216,9 +231,9 @@ export default function VoiceChat() {
           setIsProcessing(false)
         }
       } else {
+        console.log('[VoiceChat] Empty transcript received')
         console.log('[VoiceChat] Empty transcript')
         setError('No speech detected. Please try again.')
-        setIsProcessing(false)
       }
     } catch (err) {
       console.error('[VoiceChat] Error:', err)
