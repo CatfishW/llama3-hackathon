@@ -237,8 +237,19 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       console.log('[STT] Stopping recording...')
       setIsRecording(false)
       setIsTranscribing(true)
-      
-      const handleStopEvent = async () => {
+      const recorder = mediaRecorderRef.current
+      let stopHandled = false
+      let forceTimeout: ReturnType<typeof setTimeout>
+
+      const finalizeTranscription = async () => {
+        if (stopHandled) {
+          return
+        }
+        stopHandled = true
+        if (forceTimeout) {
+          clearTimeout(forceTimeout)
+        }
+
         try {
           // Get audio blob
           const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
@@ -335,9 +346,20 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           })
         }
       }
-      
-      mediaRecorderRef.current.addEventListener('stop', handleStopEvent, { once: true })
-      mediaRecorderRef.current.stop()
+
+      const onStop = () => {
+        void finalizeTranscription()
+      }
+
+      recorder.addEventListener('stop', onStop, { once: true })
+      recorder.stop()
+
+      forceTimeout = setTimeout(() => {
+        if (!stopHandled) {
+          console.warn('[STT] MediaRecorder stop event timeout, forcing transcription...')
+          void finalizeTranscription()
+        }
+      }, 2500)
     })
   }, [language, apiUrl, onTranscription, onError, recordingToWav])
   

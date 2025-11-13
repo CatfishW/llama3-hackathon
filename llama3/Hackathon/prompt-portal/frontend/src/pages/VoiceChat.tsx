@@ -36,7 +36,7 @@ export default function VoiceChat() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedVoice, setSelectedVoice] = useState('af_heart')
-  const [speechRate, setSpeechRate] = useState(1) // Slower default for clarity
+  const [speechRate, setSpeechRate] = useState(0.75) // Gentle default playback speed
   const [sessionTitle, setSessionTitle] = useState('Voice Chat Session')
   const [showSettings, setShowSettings] = useState(false)
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
@@ -269,18 +269,31 @@ export default function VoiceChat() {
   
   const styles = {
     container: {
+      minHeight: '100vh',
+      background: 'radial-gradient(circle at top, #3730a3 0%, #111827 55%, #0f172a 100%)',
+      color: '#e2e8f0',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      display: 'flex',
+      justifyContent: 'center',
+      padding: isMobile ? '16px' : '32px'
+    } as CSSProperties,
+    contentWrapper: {
+      width: '100%',
+      maxWidth: isMobile ? '100%' : '1100px',
       display: 'flex',
       flexDirection: 'column' as const,
-      height: '100vh',
-      background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e3a8a 100%)',
-      color: '#e2e8f0',
-      fontFamily: 'Inter, system-ui, sans-serif'
-    },
+      gap: '16px',
+      background: 'rgba(15, 23, 42, 0.6)',
+      borderRadius: '24px',
+      border: '1px solid rgba(148,163,184,0.12)',
+      boxShadow: '0 32px 80px rgba(15, 23, 42, 0.45)',
+      backdropFilter: 'blur(18px)',
+      overflow: 'hidden'
+    } as CSSProperties,
     header: {
-      padding: isMobile ? '12px 16px' : '16px 24px',
-      borderBottom: '1px solid rgba(148,163,184,0.2)',
-      background: 'rgba(15,23,42,0.8)',
-      backdropFilter: 'blur(10px)',
+      padding: isMobile ? '12px 18px' : '18px 28px',
+      borderBottom: '1px solid rgba(148,163,184,0.12)',
+      background: 'linear-gradient(135deg, rgba(30,64,175,0.45), rgba(30,41,59,0.55))',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
@@ -293,9 +306,9 @@ export default function VoiceChat() {
       flex: 1
     } as CSSProperties,
     headerTitle: {
-      fontSize: isMobile ? '1.2rem' : '1.5rem',
+      fontSize: isMobile ? '1.25rem' : '1.6rem',
       fontWeight: 700,
-      color: '#e2e8f0',
+      color: '#f8fafc',
       margin: 0
     } as CSSProperties,
     backButton: {
@@ -320,32 +333,33 @@ export default function VoiceChat() {
     messagesContainer: {
       flex: 1,
       overflowY: 'auto' as const,
-      padding: isMobile ? '16px 12px' : '24px',
+      padding: isMobile ? '18px 16px' : '28px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '16px',
-      backgroundColor: 'rgba(15, 23, 42, 0.4)'
+      gap: '18px',
+      background: 'linear-gradient(180deg, rgba(10,15,30,0.75) 0%, rgba(15,23,42,0.65) 60%, rgba(21, 32, 55, 0.75) 100%)'
     } as CSSProperties,
     messageBubble: {
-      maxWidth: isMobile ? '85%' : '65%',
-      padding: '14px 18px',
+      maxWidth: isMobile ? '88%' : '70%',
+      padding: isMobile ? '14px 16px' : '18px 22px',
       borderRadius: '18px',
       display: 'flex',
       flexDirection: 'column' as const,
       gap: '8px',
-      wordWrap: 'break-word' as const
+      wordWrap: 'break-word' as const,
+      boxShadow: '0 18px 40px rgba(15, 23, 42, 0.25)'
     } as CSSProperties,
     userBubble: {
-      background: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(99,102,241,0.3))',
-      border: '1px solid rgba(129,140,248,0.5)',
+      background: 'linear-gradient(135deg, rgba(99,102,241,0.4), rgba(59,130,246,0.35))',
+      border: '1px solid rgba(129,140,248,0.4)',
       alignSelf: 'flex-end',
-      marginRight: '8px'
+      marginRight: '10px'
     } as CSSProperties,
     assistantBubble: {
-      background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.2))',
-      border: '1px solid rgba(34,197,94,0.4)',
+      background: 'linear-gradient(135deg, rgba(34,197,94,0.35), rgba(16,185,129,0.3))',
+      border: '1px solid rgba(45,212,191,0.4)',
       alignSelf: 'flex-start',
-      marginLeft: '8px'
+      marginLeft: '10px'
     } as CSSProperties,
     messageText: {
       fontSize: '0.95rem',
@@ -358,51 +372,54 @@ export default function VoiceChat() {
       alignSelf: 'flex-end'
     } as CSSProperties,
     controlsContainer: {
-      padding: isMobile ? '16px 12px' : '24px',
-      borderTop: '1px solid rgba(148,163,184,0.2)',
-      background: 'rgba(20,20,35,0.5)',
-      backdropFilter: 'blur(10px)',
+      padding: isMobile ? '18px 16px' : '28px',
+      borderTop: '1px solid rgba(148,163,184,0.12)',
+      background: 'linear-gradient(180deg, rgba(15,23,42,0.65), rgba(12,20,38,0.75))',
+      backdropFilter: 'blur(14px)',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '16px'
+      gap: '20px'
     } as CSSProperties,
     talkButton: {
       width: isMobile ? '100%' : '200px',
       height: isMobile ? '80px' : '100px',
-      borderRadius: '50%',
-      border: isRecording ? '2px solid rgba(248,113,113,0.5)' : '2px solid rgba(34,197,94,0.5)',
+      borderRadius: '32px',
+      border: '1px solid rgba(226,232,240,0.12)',
       background: isRecording
-        ? 'linear-gradient(135deg, rgba(248,113,113,0.4), rgba(239,68,68,0.4))'
-        : 'linear-gradient(135deg, rgba(34,197,94,0.3), rgba(16,185,129,0.3))',
-      color: isRecording ? '#fecaca' : '#86efac',
-      fontSize: isMobile ? '1.5rem' : '2rem',
+        ? 'radial-gradient(circle at top, rgba(248,113,113,0.55), rgba(220,38,38,0.28))'
+        : 'radial-gradient(circle at top, rgba(34,197,94,0.6), rgba(16,185,129,0.28))',
+      color: isRecording ? '#ffe4e6' : '#ecfdf5',
+      fontSize: isMobile ? '1.6rem' : '2.2rem',
       fontWeight: 600,
       cursor: 'pointer',
-      transition: 'all 0.2s ease',
+      transition: 'transform 0.25s ease, box-shadow 0.25s ease',
       boxShadow: isRecording
-        ? '0 0 30px rgba(248,113,113,0.3)'
-        : '0 0 20px rgba(34,197,94,0.2)',
+        ? '0 20px 45px rgba(248,113,113,0.25), inset 0 0 30px rgba(248,113,113,0.35)'
+        : '0 18px 50px rgba(34,197,94,0.2), inset 0 0 24px rgba(34,197,94,0.32)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       margin: '0 auto',
-      animation: isRecording ? 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
+      transform: isRecording ? 'scale(1.02)' : 'scale(1)',
+      animation: isRecording ? 'pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
     } as CSSProperties,
     statusText: {
       textAlign: 'center' as const,
-      fontSize: isMobile ? '0.9rem' : '1rem',
-      color: isRecording ? '#fecaca' : '#86efac',
-      fontWeight: 500,
-      minHeight: '24px'
+      fontSize: isMobile ? '0.95rem' : '1.05rem',
+      color: isRecording ? '#fecaca' : isTranscribing ? '#fde68a' : '#bbf7d0',
+      fontWeight: 600,
+      minHeight: '24px',
+      letterSpacing: '0.02em'
     } as CSSProperties,
     settingsPanel: {
-      padding: isMobile ? '12px' : '16px',
-      background: 'rgba(30,41,59,0.4)',
-      border: '1px solid rgba(148,163,184,0.2)',
-      borderRadius: '12px',
+      padding: isMobile ? '14px' : '20px',
+      background: 'rgba(15,23,42,0.55)',
+      border: '1px solid rgba(148,163,184,0.18)',
+      borderRadius: '16px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '12px'
+      gap: '14px',
+      boxShadow: '0 18px 35px rgba(15, 23, 42, 0.22)'
     } as CSSProperties,
     settingRow: {
       display: 'flex',
@@ -411,43 +428,47 @@ export default function VoiceChat() {
       flexWrap: 'wrap' as const
     } as CSSProperties,
     settingLabel: {
-      fontSize: '0.85rem',
-      fontWeight: 500,
-      minWidth: '100px'
+      fontSize: '0.9rem',
+      fontWeight: 600,
+      minWidth: '110px'
     } as CSSProperties,
     select: {
-      padding: '8px 12px',
-      borderRadius: '8px',
-      border: '1px solid rgba(148,163,184,0.3)',
-      background: 'rgba(15,23,42,0.55)',
-      color: '#e2e8f0',
-      fontSize: '0.85rem',
-      cursor: 'pointer'
+      padding: '10px 14px',
+      borderRadius: '10px',
+      border: '1px solid rgba(148,163,184,0.25)',
+      background: 'rgba(15,23,42,0.65)',
+      color: '#f1f5f9',
+      fontSize: '0.9rem',
+      cursor: 'pointer',
+      transition: 'border 0.2s ease, box-shadow 0.2s ease',
+      boxShadow: 'inset 0 0 0 rgba(148,163,184,0)',
+      outline: 'none'
     } as CSSProperties,
     slider: {
       flex: 1,
-      minWidth: '120px'
+      minWidth: '140px'
     } as CSSProperties,
     errorMessage: {
-      padding: '12px 16px',
-      background: 'rgba(248,113,113,0.15)',
-      border: '1px solid rgba(248,113,113,0.3)',
-      borderRadius: '8px',
-      color: '#fecaca',
-      fontSize: '0.85rem'
+      padding: '14px 18px',
+      background: 'rgba(248,113,113,0.18)',
+      border: '1px solid rgba(248,113,113,0.28)',
+      borderRadius: '12px',
+      color: '#ffe4e6',
+      fontSize: '0.9rem'
     } as CSSProperties
   }
   
   const buttonStyle = (isActive: boolean): CSSProperties => ({
-    padding: '8px 14px',
-    borderRadius: '8px',
-    border: '1px solid rgba(148,163,184,0.3)',
-    background: isActive ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.5)',
-    color: isActive ? '#86efac' : 'rgba(226,232,240,0.8)',
-    fontSize: isMobile ? '0.75rem' : '0.85rem',
+    padding: '9px 16px',
+    borderRadius: '10px',
+    border: '1px solid rgba(148,163,184,0.25)',
+    background: isActive ? 'rgba(45,212,191,0.25)' : 'rgba(30,41,59,0.55)',
+    color: isActive ? '#99f6e4' : 'rgba(226,232,240,0.85)',
+    fontSize: isMobile ? '0.78rem' : '0.9rem',
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    fontWeight: 500
+    transition: 'all 0.25s',
+    fontWeight: 600,
+    boxShadow: isActive ? '0 8px 20px rgba(45,212,191,0.2)' : 'none'
   })
   
   return (
@@ -460,7 +481,8 @@ export default function VoiceChat() {
         }
       `}</style>
       
-      {/* Header */}
+      <div style={styles.contentWrapper}>
+        {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <button
@@ -715,10 +737,21 @@ export default function VoiceChat() {
         {/* Quick Actions */}
         <div style={{
           display: 'flex',
-          gap: '8px',
+          gap: '10px',
           justifyContent: 'center',
           flexWrap: 'wrap' as const
         }}>
+          {isPlaying && (
+            <button
+              onClick={() => {
+                stopTTS()
+                setPlayingMessageId(null)
+              }}
+              style={buttonStyle(true)}
+            >
+              ⏹️ Stop Audio
+            </button>
+          )}
           <button
             onClick={() => {
               setMessages([])
@@ -743,6 +776,7 @@ export default function VoiceChat() {
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
