@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     LLM_SKIP_THINKING: bool = True
     LLM_MAX_HISTORY_TOKENS: int = 10000
 
+    # Voice Chat - SST (Speech-to-Text) Configuration
+    SST_BROKER_URL: str = "http://localhost:8082"
+    SST_REQUEST_TIMEOUT: int = 300
+    
+    # Voice Chat - TTS (Text-to-Speech) Configuration
+    TTS_BROKER_URL: str = "http://localhost:8081"
+    TTS_REQUEST_TIMEOUT: int = 30
+
     # Vision configuration
     LLM_VISION_ENABLED: bool = True  # When True, attempt to send images to VLM
     LLM_VISION_MODE: str = "auto"    # e.g., "auto", "openai-compatible" (for chat.completions with images)
