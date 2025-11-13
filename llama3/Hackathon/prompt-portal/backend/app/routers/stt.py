@@ -49,23 +49,21 @@ async def _get_sst_client() -> httpx.AsyncClient:
 async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") -> dict:
     """Transcribe audio using SST broker (Whisper.cpp)"""
     try:
-        # Detect if audio is WebM or raw PCM
-        is_webm = audio_data[:4] == b'RIFF' and len(audio_data) >= 12 and audio_data[8:12] == b'WAVE'
-        is_webm = is_webm or (audio_data[:4] == b'\x1aE\xdf\xa3')  # WebM magic bytes
+        # Check if audio is already WAV format
+        is_wav = audio_data[:4] == b'RIFF' and len(audio_data) >= 12 and audio_data[8:12] == b'WAVE'
         
         logger.info(f"[SST] Received audio data: {len(audio_data)} bytes")
-        logger.info(f"[SST] First 8 bytes (hex): {audio_data[:8].hex()}")
-        logger.info(f"[SST] Detected format - Is WebM: {is_webm}")
+        logger.info(f"[SST] First 4 bytes (hex): {audio_data[:4].hex()}")
+        logger.info(f"[SST] Is WAV format: {is_wav}")
         
-        # If raw PCM (not WebM or WAV), add WAV header
-        if not is_webm and audio_data[:4] != b'RIFF':
-            logger.info(f"[SST] Treating as raw PCM, adding WAV header...")
+        # If not WAV, treat as raw PCM and add WAV header
+        if not is_wav:
+            logger.info(f"[SST] Not WAV format, treating as raw PCM and adding WAV header")
             wav_audio = ensure_wav_format(audio_data, sample_rate=16000)
             logger.info(f"[SST] Added WAV header: {len(audio_data)} bytes PCM → {len(wav_audio)} bytes WAV")
         else:
-            # Already WAV or WebM format
+            logger.info(f"[SST] Already WAV format, using as-is")
             wav_audio = audio_data
-            logger.info(f"[SST] Audio already in correct format, using as-is")
         
         client = await _get_sst_client()
         
@@ -78,9 +76,8 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
             "response_format": "json"
         }
         
-        logger.info(f"[SST] Transcribing audio (lang={language})")
+        logger.info(f"[SST] Transcribing audio (lang={language}, size={len(wav_audio)} bytes)")
         logger.info(f"[SST] Sending to: {SST_BROKER_URL}/inference")
-        logger.info(f"[SST] Audio size: {len(wav_audio)} bytes")
         
         response = await client.post(
             f"{SST_BROKER_URL}/inference",
@@ -90,35 +87,27 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         logger.info(f"[SST] Response status: {response.status_code}")
         response.raise_for_status()
         
-        # Log raw response text before parsing
-        logger.info(f"[SST] Raw response text: {response.text}")
-        logger.info(f"[SST] Raw response text length: {len(response.text)}")
-        
-        # Parse JSON
+        # Parse JSON response
         result = response.json()
         logger.info(f"[SST] Parsed JSON result: {result}")
-        logger.info(f"[SST] Result type: {type(result)}, Keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
         
-        # Try multiple response formats
-        text = result.get("result", {}).get("text", "")
-        logger.info(f"[SST] Format 1 (result.text): '{text}'")
-        
+        # Extract text from response (try multiple possible formats)
+        text = result.get("text", "")
         if not text:
-            text = result.get("text", "")
-            logger.info(f"[SST] Format 2 (text): '{text}'")
-        
+            text = result.get("result", {}).get("text", "")
         if not text and isinstance(result, dict):
             for key in ["transcription", "output", "content"]:
                 if key in result:
                     text = result[key]
-                    logger.info(f"[SST] Format {key}: '{text}'")
                     break
         
-        logger.info(f"[SST] Extracted text before filtering: '{text}' (length: {len(text)})")
+        logger.info(f"[SST] Extracted text: '{text}' (length: {len(text)})")
         
         # Filter out invalid Whisper.cpp artifacts
         import re
         invalid_patterns = [
+            r'^\s*\[MUSIC\]\s*$',
+            r'^\s*\[SOUND\]\s*$',
             r'^\s*\[MUSIC\s+PLAYING\]\s*$',
             r'^\s*\[SILENCE\]\s*$',
             r'^\s*\[BLANK[_\s]*AUDIO\]\s*$',
@@ -127,7 +116,7 @@ async def transcribe_with_sst_broker(audio_data: bytes, language: str = "en") ->
         ]
         
         if text and any(re.match(pattern, text, re.IGNORECASE) for pattern in invalid_patterns):
-            logger.info(f"[SST] Filtered invalid artifact: '{text}'")
+            logger.info(f"[SST] Filtered out invalid artifact: '{text}'")
             text = ""
         
         logger.info(f"[SST] Final transcribed text: '{text}' (length: {len(text)})")

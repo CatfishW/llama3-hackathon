@@ -150,6 +150,52 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
     }
   }, [])
   
+  // Convert raw PCM to WAV format
+  const pcmToWav = useCallback((pcmData: Uint8Array, sampleRate: number = 16000): Blob => {
+    console.log('[STT] Converting PCM to WAV format...')
+    
+    const numChannels = 1
+    const bitsPerSample = 16
+    const bytesPerSample = bitsPerSample / 8
+    const byteRate = sampleRate * numChannels * bytesPerSample
+    const blockAlign = numChannels * bytesPerSample
+    
+    const wav = new ArrayBuffer(44 + pcmData.length)
+    const view = new DataView(wav)
+    
+    // RIFF header
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i))
+      }
+    }
+    
+    writeString(0, 'RIFF')
+    view.setUint32(4, 36 + pcmData.length, true)
+    writeString(8, 'WAVE')
+    
+    // fmt subchunk
+    writeString(12, 'fmt ')
+    view.setUint32(16, 16, true) // subchunk1Size
+    view.setUint16(20, 1, true) // PCM format
+    view.setUint16(22, numChannels, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, byteRate, true)
+    view.setUint16(32, blockAlign, true)
+    view.setUint16(34, bitsPerSample, true)
+    
+    // data subchunk
+    writeString(36, 'data')
+    view.setUint32(40, pcmData.length, true)
+    
+    // Copy PCM data
+    const pcmView = new Uint8Array(wav, 44)
+    pcmView.set(pcmData)
+    
+    console.log('[STT] WAV conversion complete, size:', wav.byteLength)
+    return new Blob([wav], { type: 'audio/wav' })
+  }, [])
+
   const stopRecording = useCallback(async (): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!mediaRecorderRef.current) {
@@ -183,19 +229,22 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           const rawPCM = await decodeWebMToPCM(audioBlob)
           console.log('[STT] PCM conversion complete, PCM size:', rawPCM.byteLength)
           
-          // Send PCM to backend for transcription
-          console.log('[STT] Sending PCM audio to backend for transcription...')
+          // Convert PCM to WAV format
+          console.log('[STT] Converting PCM to WAV format...')
+          const wavBlob = pcmToWav(rawPCM, 16000)
+          console.log('[STT] WAV blob created, size:', wavBlob.size)
+          
+          // Send WAV to backend for transcription
+          console.log('[STT] Sending WAV audio to backend for transcription...')
           setTranscript('🔄 Transcribing...')
           
           const formData = new FormData()
-          // Send raw PCM bytes as file (backend will add WAV header)
-          const pcmBlob = new Blob([rawPCM as any], { type: 'application/octet-stream' })
-          formData.append('file', pcmBlob, 'audio.pcm')
+          formData.append('file', wavBlob, 'audio.wav')
           formData.append('language', language)
           
           console.log('[STT] FormData prepared')
           console.log('[STT] API URL:', `${apiUrl}/transcribe`)
-          console.log('[STT] Audio blob details - Type:', audioBlob.type, 'Size:', audioBlob.size)
+          console.log('[STT] WAV blob details - Type:', wavBlob.type, 'Size:', wavBlob.size)
           
           const response = await fetch(`${apiUrl}/transcribe`, {
             method: 'POST',
@@ -225,7 +274,9 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           
           // Filter out invalid Whisper.cpp artifacts
           const invalidPatterns = [
-            /^\s*\[MUSIC PLAYING\]\s*$/i,
+            /^\s*\[MUSIC\]\s*$/i,
+            /^\s*\[SOUND\]\s*$/i,
+            /^\s*\[MUSIC\s+PLAYING\]\s*$/i,
             /^\s*\[SILENCE\]\s*$/i,
             /^\s*\[BLANK[_\s]*AUDIO\]\s*$/i,
             /^\s*\[\s*\]\s*$/,
@@ -261,11 +312,12 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
           const errorMsg = error instanceof Error ? error.message : 'Transcription failed'
           console.error('[STT] Transcription error:', errorMsg)
           
+          setIsListening(false)
+          setIsTranscribing(false)
+          
           // Fallback: try to use Web Speech API as backup
           console.log('[STT] Attempting Web Speech API fallback...')
           attemptWebSpeechFallback().then(resolve).catch(() => {
-            setIsListening(false)
-            setIsTranscribing(false)
             if (onError) onError(errorMsg)
             resolve('')
           })
@@ -275,7 +327,7 @@ const useVoiceRecorder = (props: UseVoiceRecorderProps = {}) => {
       mediaRecorderRef.current.addEventListener('stop', handleStopEvent, { once: true })
       mediaRecorderRef.current.stop()
     })
-  }, [language, apiUrl, onTranscription, onError])
+  }, [language, apiUrl, onTranscription, onError, decodeWebMToPCM, pcmToWav])
   
   // Fallback: Web Speech API
   const attemptWebSpeechFallback = useCallback((): Promise<string> => {
