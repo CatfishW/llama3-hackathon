@@ -3,6 +3,7 @@ OpenAI-compatible API proxy for local llama.cpp server.
 
 - Exposes /v1/chat/completions, /v1/completions, /v1/models
 - Supports both HTTP and HTTPS upstream connections
+- Supports serving over HTTPS (required for browsers on HTTPS pages)
 - Streams via SSE like OpenAI when stream=True
 - Config via env vars or .env:
     LLAMA_BASE_URL=http://127.0.0.1:8080     # or https://... for SSL
@@ -10,17 +11,35 @@ OpenAI-compatible API proxy for local llama.cpp server.
     DEFAULT_MODEL=qwen3-30b-a3b-instruct
     REQUEST_TIMEOUT=300                       # request timeout in seconds
     CONNECT_TIMEOUT=30                        # connection timeout in seconds
+    
+    # Upstream SSL/TLS Configuration (for connecting to llama.cpp)
     SSL_VERIFY=true                           # set to "false" for self-signed certs
     SSL_CA_BUNDLE=/path/to/ca-bundle.crt     # optional custom CA bundle
     SSL_CLIENT_CERT=/path/to/client.crt      # optional client certificate
     SSL_CLIENT_KEY=/path/to/client.key       # optional client key
+    
+    # Server SSL/TLS Configuration (for serving HTTPS to clients)
+    SERVER_SSL_CERT=/path/to/server.crt      # SSL certificate for this server
+    SERVER_SSL_KEY=/path/to/server.key       # SSL private key for this server
 
-Run:
+Run (HTTP):
     uvicorn deployment.openai_compat_server:app --host 0.0.0.0 --port 8000
+
+Run (HTTPS - required when clients connect from HTTPS pages):
+    uvicorn deployment.openai_compat_server:app --host 0.0.0.0 --port 8000 \\
+        --ssl-keyfile=/path/to/server.key --ssl-certfile=/path/to/server.crt
+
+    Or use environment variables:
+        SERVER_SSL_CERT=/path/to/server.crt SERVER_SSL_KEY=/path/to/server.key \\
+        python -m deployment.openai_compat_server
+
+Quick self-signed cert for testing:
+    openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes \\
+        -subj "/C=US/ST=State/L=City/O=Organization/CN=173.61.35.162"
 
 Use with OpenAI SDK (python):
     from openai import OpenAI
-    client = OpenAI(api_key="sk-local-abc", base_url="http://localhost:8000/v1")
+    client = OpenAI(api_key="sk-local-abc", base_url="https://173.61.35.162:8000/v1")
     client.chat.completions.create(model="qwen3-30b-a3b-instruct", messages=[{"role":"user","content":"Hello"}])
 """
 from __future__ import annotations
@@ -56,6 +75,13 @@ SSL_VERIFY = os.getenv("SSL_VERIFY", "true").lower() not in ("false", "0", "no")
 SSL_CA_BUNDLE = os.getenv("SSL_CA_BUNDLE", None)
 SSL_CLIENT_CERT = os.getenv("SSL_CLIENT_CERT", None)
 SSL_CLIENT_KEY = os.getenv("SSL_CLIENT_KEY", None)
+
+# Server SSL/TLS Configuration (for serving HTTPS to clients)
+# Required when clients connect from HTTPS pages to avoid mixed content errors
+SERVER_SSL_CERT = os.getenv("SERVER_SSL_CERT", None)
+SERVER_SSL_KEY = os.getenv("SERVER_SSL_KEY", None)
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -495,3 +521,29 @@ async def completions(req: CompletionRequest, _: None = Depends(verify_auth)):
         "choices": [{"text": text, "index": 0, "finish_reason": "stop"}],
         "usage": result.get("usage", {}),
     }
+
+
+# ---------- Main Entry Point ----------
+if __name__ == "__main__":
+    import uvicorn
+    
+    ssl_kwargs = {}
+    if SERVER_SSL_CERT and SERVER_SSL_KEY:
+        ssl_kwargs = {
+            "ssl_certfile": SERVER_SSL_CERT,
+            "ssl_keyfile": SERVER_SSL_KEY,
+        }
+        logger.info(f"Starting HTTPS server on {SERVER_HOST}:{SERVER_PORT}")
+    else:
+        logger.info(f"Starting HTTP server on {SERVER_HOST}:{SERVER_PORT}")
+        logger.warning(
+            "Running without HTTPS. Browsers on HTTPS pages will block requests. "
+            "Set SERVER_SSL_CERT and SERVER_SSL_KEY to enable HTTPS."
+        )
+    
+    uvicorn.run(
+        app,
+        host=SERVER_HOST,
+        port=SERVER_PORT,
+        **ssl_kwargs,
+    )
