@@ -2,11 +2,18 @@
 OpenAI-compatible API proxy for local llama.cpp server.
 
 - Exposes /v1/chat/completions, /v1/completions, /v1/models
+- Supports both HTTP and HTTPS upstream connections
 - Streams via SSE like OpenAI when stream=True
 - Config via env vars or .env:
-    LLAMA_BASE_URL=http://127.0.0.1:8080
-    API_KEYS=sk-local-abc,sk-local-def          # optional comma-separated list; if set, require Bearer token
+    LLAMA_BASE_URL=http://127.0.0.1:8080     # or https://... for SSL
+    API_KEYS=sk-local-abc,sk-local-def       # optional comma-separated list; if set, require Bearer token
     DEFAULT_MODEL=qwen3-30b-a3b-instruct
+    REQUEST_TIMEOUT=300                       # request timeout in seconds
+    CONNECT_TIMEOUT=30                        # connection timeout in seconds
+    SSL_VERIFY=true                           # set to "false" for self-signed certs
+    SSL_CA_BUNDLE=/path/to/ca-bundle.crt     # optional custom CA bundle
+    SSL_CLIENT_CERT=/path/to/client.crt      # optional client certificate
+    SSL_CLIENT_KEY=/path/to/client.key       # optional client key
 
 Run:
     uvicorn deployment.openai_compat_server:app --host 0.0.0.0 --port 8000
@@ -35,10 +42,20 @@ from pydantic import BaseModel, ConfigDict, Field
 load_dotenv()
 
 # ---------- Configuration ----------
-LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8080")
+LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen3-30b-a3b-instruct")
 API_KEYS = [k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()]
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "300"))
+CONNECT_TIMEOUT = float(os.getenv("CONNECT_TIMEOUT", "30"))
+# Max characters for messages (rough estimate: 4 chars ≈ 1 token, 8192 tokens = ~32000 chars)
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "24000"))
+# SSL/TLS Configuration
+# Set to "false" to disable SSL verification (for self-signed certs)
+SSL_VERIFY = os.getenv("SSL_VERIFY", "true").lower() not in ("false", "0", "no")
+# Optional: Path to CA bundle or client certificate
+SSL_CA_BUNDLE = os.getenv("SSL_CA_BUNDLE", None)
+SSL_CLIENT_CERT = os.getenv("SSL_CLIENT_CERT", None)
+SSL_CLIENT_KEY = os.getenv("SSL_CLIENT_KEY", None)
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -48,13 +65,37 @@ logger = logging.getLogger(__name__)
 http_client: httpx.AsyncClient | None = None
 
 
+def _create_ssl_context() -> httpx.Client | bool:
+    """Create SSL context based on configuration."""
+    if not SSL_VERIFY:
+        logger.warning("SSL verification is DISABLED - not recommended for production")
+        return False
+    
+    if SSL_CA_BUNDLE:
+        import ssl
+        ctx = ssl.create_default_context(cafile=SSL_CA_BUNDLE)
+        if SSL_CLIENT_CERT:
+            ctx.load_cert_chain(SSL_CLIENT_CERT, SSL_CLIENT_KEY)
+        return ctx
+    
+    return True  # Use default SSL verification
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage shared HTTP client lifecycle."""
     global http_client
-    timeout = httpx.Timeout(REQUEST_TIMEOUT, connect=30.0)
-    http_client = httpx.AsyncClient(timeout=timeout)
-    logger.info(f"Proxy started, upstream: {LLAMA_BASE_URL}")
+    timeout = httpx.Timeout(REQUEST_TIMEOUT, connect=CONNECT_TIMEOUT)
+    ssl_context = _create_ssl_context()
+    
+    http_client = httpx.AsyncClient(
+        timeout=timeout,
+        verify=ssl_context,
+        follow_redirects=True,
+    )
+    
+    protocol = "https" if LLAMA_BASE_URL.startswith("https://") else "http"
+    logger.info(f"Proxy started, upstream: {LLAMA_BASE_URL} (protocol: {protocol}, ssl_verify: {SSL_VERIFY})")
     yield
     await http_client.aclose()
     logger.info("Proxy shutdown")
@@ -122,11 +163,70 @@ class CompletionRequest(BaseModel):
 
 
 # ---------- llama.cpp Client Helpers ----------
+def _truncate_messages(messages: list[dict[str, str]], max_chars: int) -> list[dict[str, str]]:
+    """Truncate conversation history to fit within context limit.
+    
+    Strategy: Keep system message (first) + most recent messages.
+    """
+    if not messages:
+        return messages
+    
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+    if total_chars <= max_chars:
+        return messages
+    
+    logger.warning(f"Truncating messages: {total_chars} chars -> {max_chars} chars limit")
+    
+    # Always keep system message if present
+    system_msg = None
+    other_msgs = list(messages)
+    if messages and messages[0].get("role") == "system":
+        system_msg = messages[0]
+        other_msgs = messages[1:]
+    
+    # Calculate available space
+    system_chars = len(system_msg.get("content", "")) if system_msg else 0
+    available = max_chars - system_chars
+    
+    # Keep most recent messages that fit
+    kept = []
+    for msg in reversed(other_msgs):
+        msg_chars = len(msg.get("content", ""))
+        if available >= msg_chars:
+            kept.insert(0, msg)
+            available -= msg_chars
+        else:
+            # Truncate this message if it's the last user message and nothing else fits
+            if not kept and msg.get("role") == "user":
+                truncated_content = msg["content"][:available - 100] + "\n...[truncated]"
+                kept.insert(0, {"role": msg["role"], "content": truncated_content})
+            break
+    
+    result = ([system_msg] if system_msg else []) + kept
+    logger.info(f"Kept {len(result)}/{len(messages)} messages after truncation")
+    return result
+
+
+def _serialize_messages(messages: list[Any]) -> list[dict[str, str]]:
+    """Convert messages to plain dicts for JSON serialization."""
+    result = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            result.append({"role": msg.get("role", ""), "content": msg.get("content", "")})
+        elif hasattr(msg, "model_dump"):
+            result.append(msg.model_dump())
+        else:
+            result.append({"role": str(getattr(msg, "role", "")), "content": str(getattr(msg, "content", ""))})
+    return result
+
+
 def _build_llama_payload(payload: dict[str, Any], is_chat: bool, stream: bool) -> dict[str, Any]:
     """Build llama.cpp-compatible payload from OpenAI-style request."""
     if is_chat:
+        messages = _serialize_messages(payload.get("messages", []))
+        messages = _truncate_messages(messages, MAX_CONTEXT_CHARS)
         mapped = {
-            "messages": payload.get("messages", []),
+            "messages": messages,
             "temperature": payload.get("temperature"),
             "top_p": payload.get("top_p"),
             "max_tokens": payload.get("max_tokens"),
@@ -196,7 +296,11 @@ async def _stream_upstream(
     
     try:
         async with http_client.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
+            if response.status_code >= 400:
+                error_text = await response.aread()
+                logger.error(f"Upstream stream error {response.status_code}: {error_text.decode()[:500]}")
+                yield f"data: {json.dumps({'error': {'message': f'Upstream error: {error_text.decode()[:200]}'}})}\n\n".encode()
+                return
             async for line in response.aiter_lines():
                 if not line:
                     continue
@@ -236,9 +340,15 @@ async def _stream_upstream(
                     }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
 
+    except httpx.ConnectError as e:
+        logger.error(f"Connection error to upstream {url}: {e}")
+        yield f"data: {json.dumps({'error': {'message': f'Connection failed: {str(e)}', 'type': 'connection_error'}})}\n\n".encode()
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to upstream {url}: {e}")
+        yield f"data: {json.dumps({'error': {'message': f'Request timeout: {str(e)}', 'type': 'timeout_error'}})}\n\n".encode()
     except httpx.HTTPError as e:
-        logger.error(f"Upstream error: {e}")
-        yield f"data: {json.dumps({'error': {'message': str(e)}})}\n\n".encode()
+        logger.error(f"HTTP error from upstream: {e}")
+        yield f"data: {json.dumps({'error': {'message': str(e), 'type': 'http_error'}})}\n\n".encode()
 
 
 def _streaming_response(generator: AsyncGenerator[bytes, None]) -> StreamingResponse:
@@ -263,8 +373,26 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Health check endpoint with upstream connectivity test."""
+    upstream_ok = False
+    upstream_error = None
+    try:
+        response = await http_client.get(f"{LLAMA_BASE_URL}/health", timeout=5.0)
+        upstream_ok = response.status_code < 400
+    except httpx.HTTPError as e:
+        upstream_error = str(e)
+    except Exception as e:
+        upstream_error = f"Unexpected error: {e}"
+    
+    return {
+        "status": "healthy" if upstream_ok else "degraded",
+        "upstream": {
+            "url": LLAMA_BASE_URL,
+            "connected": upstream_ok,
+            "error": upstream_error,
+        },
+        "ssl_verify": SSL_VERIFY,
+    }
 
 
 @app.get("/v1/models")
@@ -295,7 +423,9 @@ async def chat_completions(req: ChatCompletionRequest, _: None = Depends(verify_
     model = req.model or DEFAULT_MODEL
     payload = req.model_dump(by_alias=True)
     llama_payload = _build_llama_payload(payload, is_chat=True, stream=req.stream)
-    url = f"{LLAMA_BASE_URL}/chat/completions"
+    url = f"{LLAMA_BASE_URL}/v1/chat/completions"
+
+    logger.debug(f"Sending to {url}: {json.dumps(llama_payload, default=str)[:500]}")
 
     if req.stream:
         return _streaming_response(_stream_upstream(url, llama_payload, model, is_chat=True))
@@ -304,8 +434,16 @@ async def chat_completions(req: ChatCompletionRequest, _: None = Depends(verify_
         response = await http_client.post(url, json=llama_payload)
         response.raise_for_status()
         result = response.json()
+    except httpx.ConnectError as e:
+        logger.error(f"Connection error to upstream: {e}")
+        raise HTTPException(status_code=503, detail=f"Cannot connect to upstream server: {e}")
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout error: {e}")
+        raise HTTPException(status_code=504, detail=f"Upstream request timeout: {e}")
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+        error_body = e.response.text[:500] if e.response else "No response body"
+        logger.error(f"Upstream error {e.response.status_code}: {error_body}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Upstream error: {error_body}")
 
     text = _extract_text_from_response(result, is_chat=True)
     return {
@@ -326,7 +464,9 @@ async def completions(req: CompletionRequest, _: None = Depends(verify_auth)):
     model = req.model or DEFAULT_MODEL
     payload = req.model_dump(by_alias=True)
     llama_payload = _build_llama_payload(payload, is_chat=False, stream=req.stream)
-    url = f"{LLAMA_BASE_URL}/completion"
+    url = f"{LLAMA_BASE_URL}/v1/completions"
+
+    logger.debug(f"Sending to {url}: {json.dumps(llama_payload, default=str)[:500]}")
 
     if req.stream:
         return _streaming_response(_stream_upstream(url, llama_payload, model, is_chat=False))
@@ -335,8 +475,16 @@ async def completions(req: CompletionRequest, _: None = Depends(verify_auth)):
         response = await http_client.post(url, json=llama_payload)
         response.raise_for_status()
         result = response.json()
+    except httpx.ConnectError as e:
+        logger.error(f"Connection error to upstream: {e}")
+        raise HTTPException(status_code=503, detail=f"Cannot connect to upstream server: {e}")
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout error: {e}")
+        raise HTTPException(status_code=504, detail=f"Upstream request timeout: {e}")
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+        error_body = e.response.text[:500] if e.response else "No response body"
+        logger.error(f"Upstream error {e.response.status_code}: {error_body}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Upstream error: {error_body}")
 
     text = _extract_text_from_response(result, is_chat=False)
     return {

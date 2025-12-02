@@ -96,6 +96,10 @@ class WebQSPLoader:
         """
         kg = KnowledgeGraph()
         
+        # Store the sample-specific entity name map (from answers)
+        if entity_name_map:
+            kg.sample_entity_name_map = entity_name_map.copy()
+        
         # Get subgraph tuples
         tuples = sample.get('subgraph', {}).get('tuples', [])
         

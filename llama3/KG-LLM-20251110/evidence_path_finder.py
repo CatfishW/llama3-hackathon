@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
 import json
-from knowledge_graph import KnowledgeGraph
+from knowledge_graph import KnowledgeGraph, get_global_entity_name_map
 from llm_client import LLMClient
 from config import PATH_FINDER_CONFIG, SYSTEM_CONFIG
 
@@ -19,17 +19,27 @@ class EvidencePath:
     def _get_entity_name(self, entity_id: str, kg: KnowledgeGraph) -> str:
         """
         Get readable entity name from entity ID.
-        Maps entity IDs to their human-readable names, with fallback to ID if not found.
+        Uses local sample mapping first, then global entity name map, then falls back to entity.name.
         
         Priority:
-        1. Check entity_name_map in KG (from answer data in WebQSP)
-        2. Look up entity.name in KG
-        3. Fall back to entity ID
+        1. Check sample_entity_name_map (from answer data in WebQSP)
+        2. Check global entity_name_map (loaded from data/entities_names.json)
+        3. Look up entity.name in KG
+        4. Fall back to entity ID
         """
         if not entity_id:
             return "Unknown"
         
-        # Look up entity directly
+        # First check sample-specific entity name map (from answers)
+        if hasattr(kg, 'sample_entity_name_map') and entity_id in kg.sample_entity_name_map:
+            return kg.sample_entity_name_map[entity_id]
+        
+        # Then check global entity name map
+        entity_name_map = get_global_entity_name_map()
+        if entity_id in entity_name_map:
+            return entity_name_map[entity_id]
+        
+        # Then look up entity directly in KG
         entity = kg.get_entity(entity_id)
         if entity and entity.name:
             return entity.name
@@ -292,11 +302,23 @@ Identify potential answer entities (return JSON list):"""
         path: List[Tuple[str, str, str]],
         kg: KnowledgeGraph
     ) -> str:
-        """Convert path to readable text."""
+        """Convert path to readable text using sample-specific map first, then global map."""
+        entity_name_map = get_global_entity_name_map()
+        sample_entity_name_map = kg.sample_entity_name_map if hasattr(kg, 'sample_entity_name_map') else {}
+        
         parts = []
         for head_id, relation, tail_id in path:
-            head_name = kg.get_entity(head_id).name if kg.get_entity(head_id) else head_id
-            tail_name = kg.get_entity(tail_id).name if kg.get_entity(tail_id) else tail_id
+            # Use sample map first, then global map, then fall back to entity.name, then ID
+            head_name = sample_entity_name_map.get(head_id) or entity_name_map.get(head_id)
+            if not head_name:
+                entity = kg.get_entity(head_id)
+                head_name = entity.name if entity else head_id
+            
+            tail_name = sample_entity_name_map.get(tail_id) or entity_name_map.get(tail_id)
+            if not tail_name:
+                entity = kg.get_entity(tail_id)
+                tail_name = entity.name if entity else tail_id
+            
             parts.append(f"{head_name} --[{relation}]--> {tail_name}")
         return " → ".join(parts)
     
