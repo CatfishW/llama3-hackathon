@@ -220,7 +220,8 @@ class LLMClient:
         default_max_tokens: int = 512,
         skip_thinking: bool = True,
         api_key: str = "not-needed",
-        backend_type: str = "auto"
+        backend_type: str = "auto",
+        default_model: str = ""
     ):
         """
         Initialize LLM client.
@@ -234,6 +235,7 @@ class LLMClient:
             skip_thinking: Disable thinking mode (adds /no_think directive for llama.cpp)
             api_key: API key for authentication (default: "not-needed")
             backend_type: Backend type - "auto", "llama.cpp", "vllm", or "openai"
+            default_model: Default model name (required for vLLM, optional for llama.cpp)
         """
         self.server_url = server_url.rstrip('/')
         self.timeout = timeout
@@ -243,6 +245,7 @@ class LLMClient:
         self.skip_thinking = skip_thinking
         self.api_key = api_key
         self.backend_type = backend_type
+        self.default_model = default_model if default_model else ""
         
         # Auto-detect backend type from URL if set to "auto"
         if self.backend_type == "auto":
@@ -253,16 +256,16 @@ class LLMClient:
         # Prepare base URL for OpenAI client
         # vLLM and most OpenAI-compatible servers expect the base_url to include /v1
         # llama.cpp also uses /v1 endpoints, so we need to ensure /v1 is in the URL
-        base_url = self.server_url
-        if not base_url.endswith("/v1") and not base_url.endswith("/v1/"):
-            base_url = f"{base_url}/v1"
-            logger.info(f"Added /v1 suffix to base URL: {base_url}")
+        self._base_url = self.server_url
+        if not self._base_url.endswith("/v1") and not self._base_url.endswith("/v1/"):
+            self._base_url = f"{self._base_url}/v1"
+            logger.info(f"Added /v1 suffix to base URL: {self._base_url}")
         
         # Initialize OpenAI client with LLM server as base URL when available
         if _OPENAI_AVAILABLE and OpenAI is not None:
             # Note: api_key is required by OpenAI client
             self.client = OpenAI(
-                base_url=base_url,
+                base_url=self._base_url,
                 api_key=self.api_key,
                 timeout=self.timeout
             )
@@ -270,8 +273,17 @@ class LLMClient:
             # Degraded mode: no OpenAI client; generation calls will raise at runtime
             self.client = None
         
-        # Test connection to server
-        if not self._test_connection():
+        # Auto-detect model name if not specified (for vLLM/OpenAI backends)
+        if not self.default_model:
+            detected_model = self._detect_model_name()
+            if detected_model:
+                self.default_model = detected_model
+                logger.info(f"Auto-detected model name: {self.default_model}")
+            else:
+                self.default_model = "default"  # Fallback for llama.cpp
+        
+        # Test connection to server (skip for vLLM as we already validated via model detection)
+        if self.backend_type != "vllm" and not self._test_connection():
             logger.warning(
                 f"Could not connect to LLM server at {self.server_url}. "
                 f"LLM features will not work until server is available."
@@ -306,6 +318,39 @@ class LLMClient:
         # Default to vllm as it's the most common OpenAI-compatible server
         logger.info("Could not auto-detect backend, defaulting to vllm (OpenAI-compatible)")
         return "vllm"
+    
+    def _detect_model_name(self) -> Optional[str]:
+        """
+        Auto-detect model name by querying the /v1/models endpoint.
+        
+        Returns:
+            First available model name, or None if detection failed
+        """
+        try:
+            import httpx
+            
+            # Query the models endpoint
+            models_url = f"{self._base_url}/models"
+            logger.info(f"Querying models endpoint: {models_url}")
+            
+            with httpx.Client(timeout=10) as client:
+                response = client.get(models_url, headers={"accept": "application/json"})
+                response.raise_for_status()
+                data = response.json()
+            
+            # Parse response - vLLM returns {"object": "list", "data": [...]}
+            if "data" in data and len(data["data"]) > 0:
+                model_id = data["data"][0].get("id")
+                if model_id:
+                    logger.info(f"Found model from /v1/models: {model_id}")
+                    return model_id
+            
+            logger.warning("No models found in /v1/models response")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to auto-detect model name: {e}")
+            return None
     
     def update_config(self, server_url: str, api_key: str, backend_type: str = "auto"):
         """
@@ -345,9 +390,17 @@ class LLMClient:
         if self.client is None:
             logger.warning("LLM client not available (openai package missing); skipping connection test")
             return False
+        
+        # Skip connection test for vLLM - it requires exact model name which we may not know
+        # vLLM doesn't accept "default" as a model name
+        if self.backend_type == "vllm":
+            logger.info("Skipping connection test for vLLM backend (requires exact model name)")
+            return True
+        
         try:
             logger.info("Testing connection to LLM server...")
             # Try a simple chat completion call to test connectivity
+            # Note: This only works with llama.cpp which accepts "default" as model name
             self.client.chat.completions.create(
                 model="default",
                 messages=[{"role": "system", "content": "test"}],
@@ -389,6 +442,9 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
+        # Resolve model name - use configured default if "default" is passed
+        actual_model = self.default_model if model == "default" else model
+        
         if self.client is None:
             raise RuntimeError("LLM client is not available on this server (openai not installed)")
         try:
@@ -396,7 +452,7 @@ class LLMClient:
             
             # Build API call parameters (compatible with all backends)
             api_params = {
-                "model": model,
+                "model": actual_model,
                 "messages": messages,
                 "temperature": temperature,
                 "top_p": top_p,
@@ -484,6 +540,9 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
+        # Resolve model name - use configured default if "default" is passed
+        actual_model = self.default_model if model == "default" else model
+        
         if self.client is None:
             yield "Error: LLM client is not available on this server (openai not installed)"
             return
@@ -492,7 +551,7 @@ class LLMClient:
             
             # Build API call parameters (compatible with all backends)
             api_params = {
-                "model": model,
+                "model": actual_model,
                 "messages": messages,
                 "temperature": temperature,
                 "top_p": top_p,
