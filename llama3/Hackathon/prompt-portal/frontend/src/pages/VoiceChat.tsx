@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { chatbotAPI, ttsAPI } from '../api'
+import { chatbotAPI } from '../api'
 import useVoiceRecorder from '../hooks/useVoiceRecorder'
 import useTTS from '../hooks/useTTS'
 import VoiceVisualizer from '../components/VoiceVisualizer'
@@ -36,14 +36,17 @@ export default function VoiceChat() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedVoice, setSelectedVoice] = useState('af_heart')
-  const [speechRate, setSpeechRate] = useState(1.0)
+  const [speechRate, setSpeechRate] = useState(1.0) // Default playback speed
   const [sessionTitle, setSessionTitle] = useState('Voice Chat Session')
   const [showSettings, setShowSettings] = useState(false)
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<number | null>(null)
+  const [isInitializingSession, setIsInitializingSession] = useState(true)
   
   // Refs
   const messageContainerRef = useRef<HTMLDivElement>(null)
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isProcessingRef = useRef(false)
   
   // Hooks
   const {
@@ -101,6 +104,28 @@ export default function VoiceChat() {
     }
   }, [messages])
   
+  // Initialize chatbot session
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        setIsInitializingSession(true)
+        const response = await chatbotAPI.createSession({
+          title: 'Voice Chat Session',
+          system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
+        })
+        setSessionId(response.data.id)
+        console.log('[VoiceChat] Session created:', response.data.id)
+      } catch (err) {
+        console.error('[VoiceChat] Failed to create session:', err)
+        setError('Failed to initialize chat session')
+      } finally {
+        setIsInitializingSession(false)
+      }
+    }
+    
+    initSession()
+  }, [])
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -121,11 +146,24 @@ export default function VoiceChat() {
   }
   
   const handleMouseUp = async () => {
+    // Prevent duplicate processing
+    if (isProcessingRef.current) {
+      console.log('[VoiceChat] handleMouseUp already processing, ignoring duplicate call')
+      return
+    }
+    
     try {
+      isProcessingRef.current = true
+      console.log('[VoiceChat] handleMouseUp called')
       const finalTranscript = await stopRecording()
+      console.log('[VoiceChat] stopRecording returned:', finalTranscript)
+      console.log('[VoiceChat] Type:', typeof finalTranscript)
+      console.log('[VoiceChat] Length:', finalTranscript?.length)
+      console.log('[VoiceChat] Trimmed length:', finalTranscript?.trim?.().length)
       console.log('[VoiceChat] Final transcript received:', finalTranscript)
       
-      if (finalTranscript.trim()) {
+      if (finalTranscript && finalTranscript.trim()) {
+        console.log('[VoiceChat] Transcript is valid, proceeding')
         // Add user message
         const userMessageId = Date.now().toString()
         const userMessage: VoiceMessage = {
@@ -140,15 +178,45 @@ export default function VoiceChat() {
         setError(null)
         
         try {
-          // Send to chatbot API
-          console.log('[VoiceChat] Sending to chatbot API:', finalTranscript)
+          // Send to chatbot API using the created session
+          if (!sessionId) {
+            throw new Error('Chat session not initialized')
+          }
+          
+          console.log('[VoiceChat] Sending to chatbot API with session:', sessionId)
+          console.log('[VoiceChat] Message content:', finalTranscript)
           const response = await chatbotAPI.sendMessage({
-            session_id: 1, // Use a default session
+            session_id: sessionId,
             content: finalTranscript,
             system_prompt: 'You are a helpful voice assistant. Keep responses concise and conversational. Respond in 1-2 sentences.'
           })
           
-          const assistantText = response.data.content || response.data.message
+          console.log('[VoiceChat] Chatbot response:', response)
+          console.log('[VoiceChat] Response data:', response.data)
+          
+          // Extract assistant text from nested assistant_message object
+          let assistantText = ''
+          if (response.data?.assistant_message?.content) {
+            assistantText = response.data.assistant_message.content
+          } else if (response.data?.content) {
+            assistantText = response.data.content
+          } else if (response.data?.message) {
+            assistantText = response.data.message
+          } else if (response.data?.text) {
+            assistantText = response.data.text
+          } else if (response.data?.assistant_message?.text) {
+            assistantText = response.data.assistant_message.text
+          }
+          
+          console.log('[VoiceChat] Extracted text:', assistantText)
+          console.log('[VoiceChat] Text type:', typeof assistantText)
+          console.log('[VoiceChat] Text length:', assistantText?.length)
+          console.log('[VoiceChat] Full assistant_message object:', JSON.stringify(response.data?.assistant_message, null, 2))
+          
+          if (!assistantText || !assistantText.trim()) {
+            throw new Error('LLM returned empty response')
+          }
+          
           console.log('[VoiceChat] Got response from LLM:', assistantText)
           
           // Add assistant message
@@ -156,7 +224,7 @@ export default function VoiceChat() {
           const assistantMessage: VoiceMessage = {
             id: assistantMessageId,
             role: 'assistant',
-            text: assistantText,
+            text: assistantText.trim(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
           
@@ -165,8 +233,12 @@ export default function VoiceChat() {
           // Synthesize and play response
           try {
             console.log('[VoiceChat] Starting TTS synthesis...')
-            await synthesizeAndPlay(assistantText, selectedVoice, speechRate)
-            setPlayingMessageId(assistantMessageId)
+            const textToSpeak = assistantText.trim()
+            console.log('[VoiceChat] Text to speak:', textToSpeak)
+            if (textToSpeak) {
+              await synthesizeAndPlay(textToSpeak, selectedVoice, speechRate)
+              setPlayingMessageId(assistantMessageId)
+            }
           } catch (ttsError) {
             console.error('TTS Error:', ttsError)
             // Don't fail the entire interaction if TTS fails
@@ -179,14 +251,16 @@ export default function VoiceChat() {
           setIsProcessing(false)
         }
       } else {
+        console.log('[VoiceChat] Empty transcript received')
         console.log('[VoiceChat] Empty transcript')
         setError('No speech detected. Please try again.')
-        setIsProcessing(false)
       }
     } catch (err) {
       console.error('[VoiceChat] Error:', err)
       setError(err instanceof Error ? err.message : 'Failed to process speech')
       setIsProcessing(false)
+    } finally {
+      isProcessingRef.current = false
     }
   }
   
@@ -195,22 +269,42 @@ export default function VoiceChat() {
   
   const styles = {
     container: {
+      minHeight: '100vh',
+      background: 'radial-gradient(circle at top, #3730a3 0%, #111827 55%, #0f172a 100%)',
+      color: '#e2e8f0',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'stretch',
+      padding: isMobile ? '12px' : '32px',
+      paddingBottom: isMobile ? '18px' : '32px',
+      boxSizing: 'border-box' as const
+    } as CSSProperties,
+    contentWrapper: {
+      width: '100%',
+      maxWidth: isMobile ? '100%' : '1100px',
+      height: isMobile ? 'calc(100vh - 24px)' : 'auto',
+      maxHeight: isMobile ? 'none' : '95vh',
       display: 'flex',
       flexDirection: 'column' as const,
-      height: '100vh',
-      background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e3a8a 100%)',
-      color: '#e2e8f0',
-      fontFamily: 'Inter, system-ui, sans-serif'
-    },
+      gap: '16px',
+      background: 'rgba(15, 23, 42, 0.65)',
+      borderRadius: isMobile ? '18px' : '24px',
+      border: '1px solid rgba(148,163,184,0.12)',
+      boxShadow: '0 32px 80px rgba(15, 23, 42, 0.45)',
+      backdropFilter: 'blur(18px)',
+      overflow: 'hidden',
+      position: 'relative' as const
+    } as CSSProperties,
     header: {
-      padding: isMobile ? '12px 16px' : '16px 24px',
-      borderBottom: '1px solid rgba(148,163,184,0.2)',
-      background: 'rgba(15,23,42,0.8)',
-      backdropFilter: 'blur(10px)',
+      padding: isMobile ? '12px 16px' : '18px 28px',
+      borderBottom: '1px solid rgba(148,163,184,0.12)',
+      background: 'linear-gradient(135deg, rgba(30,64,175,0.45), rgba(30,41,59,0.55))',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      gap: '16px'
+      gap: '16px',
+      flexWrap: isMobile ? 'wrap' as const : 'nowrap'
     } as CSSProperties,
     headerLeft: {
       display: 'flex',
@@ -219,9 +313,9 @@ export default function VoiceChat() {
       flex: 1
     } as CSSProperties,
     headerTitle: {
-      fontSize: isMobile ? '1.2rem' : '1.5rem',
+      fontSize: isMobile ? '1.25rem' : '1.6rem',
       fontWeight: 700,
-      color: '#e2e8f0',
+      color: '#f8fafc',
       margin: 0
     } as CSSProperties,
     backButton: {
@@ -241,37 +335,41 @@ export default function VoiceChat() {
       flex: 1,
       display: 'flex',
       flexDirection: 'column' as const,
-      overflow: 'hidden'
+      overflow: 'hidden',
+      minHeight: 0
     } as CSSProperties,
     messagesContainer: {
       flex: 1,
+      minHeight: 0,
       overflowY: 'auto' as const,
-      padding: isMobile ? '16px 12px' : '24px',
+      padding: isMobile ? '16px 14px' : '28px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '16px',
-      backgroundColor: 'rgba(15, 23, 42, 0.4)'
+      gap: isMobile ? '14px' : '18px',
+      background: 'linear-gradient(180deg, rgba(10,15,30,0.75) 0%, rgba(15,23,42,0.65) 60%, rgba(21, 32, 55, 0.75) 100%)',
+      overscrollBehavior: 'contain' as const
     } as CSSProperties,
     messageBubble: {
-      maxWidth: isMobile ? '85%' : '65%',
-      padding: '14px 18px',
+      maxWidth: isMobile ? '88%' : '70%',
+      padding: isMobile ? '14px 16px' : '18px 22px',
       borderRadius: '18px',
       display: 'flex',
       flexDirection: 'column' as const,
       gap: '8px',
-      wordWrap: 'break-word' as const
+      wordWrap: 'break-word' as const,
+      boxShadow: '0 18px 40px rgba(15, 23, 42, 0.25)'
     } as CSSProperties,
     userBubble: {
-      background: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(99,102,241,0.3))',
-      border: '1px solid rgba(129,140,248,0.5)',
+      background: 'linear-gradient(135deg, rgba(99,102,241,0.4), rgba(59,130,246,0.35))',
+      border: '1px solid rgba(129,140,248,0.4)',
       alignSelf: 'flex-end',
-      marginRight: '8px'
+      marginRight: '10px'
     } as CSSProperties,
     assistantBubble: {
-      background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.2))',
-      border: '1px solid rgba(34,197,94,0.4)',
+      background: 'linear-gradient(135deg, rgba(34,197,94,0.35), rgba(16,185,129,0.3))',
+      border: '1px solid rgba(45,212,191,0.4)',
       alignSelf: 'flex-start',
-      marginLeft: '8px'
+      marginLeft: '10px'
     } as CSSProperties,
     messageText: {
       fontSize: '0.95rem',
@@ -284,96 +382,113 @@ export default function VoiceChat() {
       alignSelf: 'flex-end'
     } as CSSProperties,
     controlsContainer: {
-      padding: isMobile ? '16px 12px' : '24px',
-      borderTop: '1px solid rgba(148,163,184,0.2)',
-      background: 'rgba(20,20,35,0.5)',
-      backdropFilter: 'blur(10px)',
+      padding: isMobile ? '16px 14px' : '28px',
+      borderTop: '1px solid rgba(148,163,184,0.12)',
+      background: isMobile
+        ? 'linear-gradient(180deg, rgba(12,20,38,0.88), rgba(10,15,30,0.95))'
+        : 'linear-gradient(180deg, rgba(15,23,42,0.65), rgba(12,20,38,0.75))',
+      backdropFilter: 'blur(14px)',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '16px'
+      gap: '20px',
+      position: isMobile ? 'sticky' as const : 'static',
+      bottom: 0,
+      zIndex: 5
     } as CSSProperties,
     talkButton: {
-      width: isMobile ? '100%' : '200px',
-      height: isMobile ? '80px' : '100px',
-      borderRadius: '50%',
-      border: isRecording ? '2px solid rgba(248,113,113,0.5)' : '2px solid rgba(34,197,94,0.5)',
+      width: isMobile ? '100%' : '220px',
+      height: isMobile ? '76px' : '100px',
+      borderRadius: '32px',
+      border: '1px solid rgba(226,232,240,0.12)',
       background: isRecording
-        ? 'linear-gradient(135deg, rgba(248,113,113,0.4), rgba(239,68,68,0.4))'
-        : 'linear-gradient(135deg, rgba(34,197,94,0.3), rgba(16,185,129,0.3))',
-      color: isRecording ? '#fecaca' : '#86efac',
-      fontSize: isMobile ? '1.5rem' : '2rem',
+        ? 'radial-gradient(circle at top, rgba(248,113,113,0.55), rgba(220,38,38,0.28))'
+        : 'radial-gradient(circle at top, rgba(34,197,94,0.6), rgba(16,185,129,0.28))',
+      color: isRecording ? '#ffe4e6' : '#ecfdf5',
+      fontSize: isMobile ? '1.8rem' : '2.2rem',
       fontWeight: 600,
       cursor: 'pointer',
-      transition: 'all 0.2s ease',
+      transition: 'transform 0.25s ease, box-shadow 0.25s ease',
       boxShadow: isRecording
-        ? '0 0 30px rgba(248,113,113,0.3)'
-        : '0 0 20px rgba(34,197,94,0.2)',
+        ? '0 20px 45px rgba(248,113,113,0.25), inset 0 0 30px rgba(248,113,113,0.35)'
+        : '0 18px 50px rgba(34,197,94,0.2), inset 0 0 24px rgba(34,197,94,0.32)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       margin: '0 auto',
-      animation: isRecording ? 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
+      transform: isRecording ? 'scale(1.02)' : 'scale(1)',
+      animation: isRecording ? 'pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
     } as CSSProperties,
     statusText: {
       textAlign: 'center' as const,
-      fontSize: isMobile ? '0.9rem' : '1rem',
-      color: isRecording ? '#fecaca' : '#86efac',
-      fontWeight: 500,
-      minHeight: '24px'
+      fontSize: isMobile ? '0.95rem' : '1.05rem',
+      color: isRecording ? '#fecaca' : isTranscribing ? '#fde68a' : '#bbf7d0',
+      fontWeight: 600,
+      minHeight: '24px',
+      letterSpacing: '0.02em'
     } as CSSProperties,
     settingsPanel: {
-      padding: isMobile ? '12px' : '16px',
-      background: 'rgba(30,41,59,0.4)',
-      border: '1px solid rgba(148,163,184,0.2)',
-      borderRadius: '12px',
+      padding: isMobile ? '14px' : '20px',
+      background: 'rgba(15,23,42,0.55)',
+      border: '1px solid rgba(148,163,184,0.18)',
+      borderRadius: '16px',
       display: 'flex',
       flexDirection: 'column' as const,
-      gap: '12px'
+      gap: '14px',
+      boxShadow: '0 18px 35px rgba(15, 23, 42, 0.22)',
+      width: '100%'
     } as CSSProperties,
     settingRow: {
       display: 'flex',
-      alignItems: 'center',
+      alignItems: isMobile ? 'stretch' : 'center',
       gap: '12px',
-      flexWrap: 'wrap' as const
+      flexWrap: 'wrap' as const,
+      flexDirection: isMobile ? 'column' as const : 'row' as const
     } as CSSProperties,
     settingLabel: {
-      fontSize: '0.85rem',
-      fontWeight: 500,
-      minWidth: '100px'
+      fontSize: '0.92rem',
+      fontWeight: 600,
+      minWidth: isMobile ? 'auto' : '110px'
     } as CSSProperties,
     select: {
-      padding: '8px 12px',
-      borderRadius: '8px',
-      border: '1px solid rgba(148,163,184,0.3)',
-      background: 'rgba(15,23,42,0.55)',
-      color: '#e2e8f0',
-      fontSize: '0.85rem',
-      cursor: 'pointer'
+      padding: '10px 14px',
+      borderRadius: '10px',
+      border: '1px solid rgba(148,163,184,0.25)',
+      background: 'rgba(15,23,42,0.65)',
+      color: '#f1f5f9',
+      fontSize: '0.9rem',
+      cursor: 'pointer',
+      transition: 'border 0.2s ease, box-shadow 0.2s ease',
+      boxShadow: 'inset 0 0 0 rgba(148,163,184,0)',
+      outline: 'none',
+      width: isMobile ? '100%' : 'auto'
     } as CSSProperties,
     slider: {
       flex: 1,
-      minWidth: '120px'
+      minWidth: isMobile ? '100%' : '140px'
     } as CSSProperties,
     errorMessage: {
-      padding: '12px 16px',
-      background: 'rgba(248,113,113,0.15)',
-      border: '1px solid rgba(248,113,113,0.3)',
-      borderRadius: '8px',
-      color: '#fecaca',
-      fontSize: '0.85rem'
+      padding: '14px 18px',
+      background: 'rgba(248,113,113,0.18)',
+      border: '1px solid rgba(248,113,113,0.28)',
+      borderRadius: '12px',
+      color: '#ffe4e6',
+      fontSize: '0.9rem'
     } as CSSProperties
   }
   
   const buttonStyle = (isActive: boolean): CSSProperties => ({
-    padding: '8px 14px',
-    borderRadius: '8px',
-    border: '1px solid rgba(148,163,184,0.3)',
-    background: isActive ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.5)',
-    color: isActive ? '#86efac' : 'rgba(226,232,240,0.8)',
-    fontSize: isMobile ? '0.75rem' : '0.85rem',
+    padding: '10px 16px',
+    borderRadius: '10px',
+    border: '1px solid rgba(148,163,184,0.25)',
+    background: isActive ? 'rgba(45,212,191,0.25)' : 'rgba(30,41,59,0.55)',
+    color: isActive ? '#99f6e4' : 'rgba(226,232,240,0.85)',
+    fontSize: isMobile ? '0.82rem' : '0.9rem',
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    fontWeight: 500
+    transition: 'all 0.25s',
+    fontWeight: 600,
+    boxShadow: isActive ? '0 8px 20px rgba(45,212,191,0.2)' : 'none',
+    width: isMobile ? '100%' : 'auto',
+    textAlign: 'center' as const
   })
   
   return (
@@ -386,7 +501,8 @@ export default function VoiceChat() {
         }
       `}</style>
       
-      {/* Header */}
+      <div style={styles.contentWrapper}>
+        {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <button
@@ -437,6 +553,20 @@ export default function VoiceChat() {
           >
             ✕
           </button>
+        </div>
+      )}
+      
+      {/* Loading Indicator */}
+      {isInitializingSession && (
+        <div style={{
+          padding: '12px 16px',
+          background: 'rgba(59,130,246,0.2)',
+          color: '#93c5fd',
+          textAlign: 'center',
+          fontSize: '0.9rem',
+          borderBottom: '1px solid rgba(59,130,246,0.3)'
+        }}>
+          ⏳ Initializing chat session...
         </div>
       )}
       
@@ -613,24 +743,37 @@ export default function VoiceChat() {
           onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          disabled={isProcessing || isSynthesizing || isTranscribing}
+          disabled={isProcessing || isSynthesizing || isTranscribing || isInitializingSession}
           style={{
             ...styles.talkButton,
-            opacity: isProcessing || isSynthesizing || isTranscribing ? 0.6 : 1,
-            cursor: isProcessing || isSynthesizing || isTranscribing ? 'not-allowed' : 'pointer'
+            opacity: isProcessing || isSynthesizing || isTranscribing || isInitializingSession ? 0.6 : 1,
+            cursor: isProcessing || isSynthesizing || isTranscribing || isInitializingSession ? 'not-allowed' : 'pointer'
           }}
-          title="Hold to record, release to send"
+          title={isInitializingSession ? "Initializing session..." : "Hold to record, release to send"}
         >
-          {isRecording ? '🎤' : '💬'}
+          {isRecording ? '🎤' : isInitializingSession ? '⏳' : '💬'}
         </button>
         
         {/* Quick Actions */}
         <div style={{
           display: 'flex',
-          gap: '8px',
-          justifyContent: 'center',
-          flexWrap: 'wrap' as const
+          gap: isMobile ? '8px' : '12px',
+          justifyContent: isMobile ? 'flex-start' : 'center',
+          alignItems: isMobile ? 'stretch' : 'center',
+          flexWrap: isMobile ? 'nowrap' as const : 'wrap' as const,
+          flexDirection: isMobile ? 'column' as const : 'row' as const
         }}>
+          {isPlaying && (
+            <button
+              onClick={() => {
+                stopTTS()
+                setPlayingMessageId(null)
+              }}
+              style={buttonStyle(true)}
+            >
+              ⏹️ Stop Audio
+            </button>
+          )}
           <button
             onClick={() => {
               setMessages([])
@@ -655,6 +798,7 @@ export default function VoiceChat() {
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   )

@@ -101,6 +101,13 @@ async def synthesize(request: TTSSynthesisRequest) -> TTSSynthesisResponse:
         
         # Parse and validate response
         data = response.json()
+        
+        logger.info(f"[TTS] Raw response keys: {list(data.keys())}")
+        logger.info(f"[TTS] audio_base64 length: {len(data.get('audio_base64', ''))}")
+        logger.info(f"[TTS] audio_base64 first 50 chars: {str(data.get('audio_base64', ''))[:50]}")
+        logger.info(f"[TTS] audio_sample_rate: {data.get('audio_sample_rate')}")
+        logger.info(f"[TTS] audio_duration_seconds: {data.get('audio_duration_seconds')}")
+        
         result = TTSSynthesisResponse(**data)
         
         logger.info(

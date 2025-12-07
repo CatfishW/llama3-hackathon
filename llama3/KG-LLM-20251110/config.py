@@ -13,8 +13,8 @@ LLM_CONFIG = {
 
 # Subgraph Retriever Configuration
 RETRIEVER_CONFIG = {
-    "max_subgraph_size": 50,  # Maximum number of nodes in subgraph
-    "max_hops": 2,  # Maximum distance from seed entities
+    "max_subgraph_size": 500,  # Maximum number of nodes in subgraph
+    "max_hops": 10,  # Maximum distance from seed entities
     "min_relevance_score": 0.3,  # Minimum relevance threshold
 }
 

@@ -1,0 +1,78 @@
+{
+  "timestamp": "2025-11-15T16:48:43.591572",
+  "num_samples": 5,
+  "accuracy": 60.0,
+  "avg_confidence": 0.778,
+  "avg_path_time": 0.07445940971374512,
+  "avg_answer_time": 1.764969539642334,
+  "results": [
+    {
+      "question": "what does jamaican people speak",
+      "gold_answers": [
+        "Jamaican English",
+        "Jamaican Creole English Language"
+      ],
+      "predicted_answer": "Jamaican people speak English",
+      "confidence": 0.44,
+      "correct": false,
+      "path_time": 0.34684038162231445,
+      "answer_time": 2.5587105751037598,
+      "num_paths": 10,
+      "top_path": "Traves Smikle --[nationality]--> Jamaica"
+    },
+    {
+      "question": "what did james k polk do before he was president",
+      "gold_answers": [
+        "United States Representative",
+        "Governor of Tennessee",
+        "Speaker of the United States House of Representatives"
+      ],
+      "predicted_answer": "Served in Congress and as governor",
+      "confidence": 0.75,
+      "correct": false,
+      "path_time": 0.006016254425048828,
+      "answer_time": 1.611222267150879,
+      "num_paths": 3,
+      "top_path": "President of the United States --[equivalent_type]--> US President"
+    },
+    {
+      "question": "who plays ken barlow in coronation street",
+      "gold_answers": [
+        "William Roache"
+      ],
+      "predicted_answer": "William Roache",
+      "confidence": 0.9,
+      "correct": true,
+      "path_time": 0.00568699836730957,
+      "answer_time": 1.3174588680267334,
+      "num_paths": 8,
+      "top_path": "0x14x0x --[honored_for]--> Coronation Street"
+    },
+    {
+      "question": "where is jamarcus russell from",
+      "gold_answers": [
+        "Mobile"
+      ],
+      "predicted_answer": "Mobile, Alabama",
+      "confidence": 0.85,
+      "correct": true,
+      "path_time": 0.006627082824707031,
+      "answer_time": 1.9933602809906006,
+      "num_paths": 10,
+      "top_path": "Area code 251 --[contains]--> Mobile"
+    },
+    {
+      "question": "where was george washington carver from",
+      "gold_answers": [
+        "Diamond"
+      ],
+      "predicted_answer": "Diamond, Missouri",
+      "confidence": 0.95,
+      "correct": true,
+      "path_time": 0.007126331329345703,
+      "answer_time": 1.3440957069396973,
+      "num_paths": 10,
+      "top_path": "Epilepsy --[risk_factors]--> Male"
+    }
+  ]
+}

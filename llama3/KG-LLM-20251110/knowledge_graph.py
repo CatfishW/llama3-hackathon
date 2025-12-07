@@ -19,7 +19,7 @@ def get_global_entity_name_map() -> Dict[str, str]:
     
     if not _GLOBAL_MAP_LOADED:
         _GLOBAL_MAP_LOADED = True
-        mapping_file = "data/webqsp/entity_name_map.json"
+        mapping_file = "data/entities_names.json"
         mapping_path = Path(mapping_file)
         
         if mapping_path.exists():
@@ -75,7 +75,8 @@ class KnowledgeGraph:
         self.entities: Dict[str, Entity] = {}
         self.relations: List[Relation] = []
         self.graph = nx.MultiDiGraph()  # Directed multigraph
-        self.entity_name_map: Dict[str, str] = {}  # kb_id -> human-readable name mapping
+        self.entity_name_map: Dict[str, str] = {}  # kb_id -> human-readable name mapping (local to this KG)
+        self.sample_entity_name_map: Dict[str, str] = {}  # Sample-specific entity name map from answers
         
     def add_entity(self, entity: Entity):
         """Add entity to knowledge graph."""
@@ -232,7 +233,7 @@ class KnowledgeGraph:
         except nx.NetworkXNoPath:
             return []
     
-    def load_entity_name_map(self, mapping_file: str = "data/webqsp/entity_name_map.json"):
+    def load_entity_name_map(self, mapping_file: str = "data/entities_names.json"):
         """
         Load entity name mapping from JSON file.
         Uses global cache if loading from default location.
@@ -241,7 +242,7 @@ class KnowledgeGraph:
             mapping_file: Path to entity name mapping JSON file
         """
         # Use global cache for default file
-        if mapping_file == "data/webqsp/entity_name_map.json":
+        if mapping_file == "data/entities_names.json":
             self.entity_name_map = get_global_entity_name_map()
         else:
             # Load custom mapping file
@@ -261,8 +262,8 @@ class KnowledgeGraph:
         """Convert knowledge graph to readable text format with entity name mapping.
         
         Automatically uses the global entity name map (loaded once, shared across all instances).
-        Uses entity_name_map (kb_id -> text) if available for human-readable names.
-        Falls back to entity.name for entities not in the mapping.
+        Only shows entities that have a mapping in the name map.
+        Only shows relations between mapped entities.
         """
         lines = []
         
@@ -271,27 +272,24 @@ class KnowledgeGraph:
         
         entity_name_map = self.entity_name_map
         
-        def get_entity_display_name(entity_id: str) -> str:
-            """Get display name for entity, using mapping if available."""
-            if entity_id in entity_name_map:
-                return entity_name_map[entity_id]
-            entity = self.entities.get(entity_id)
-            return entity.name if entity else entity_id
+        # Build set of mapped entity IDs
+        mapped_entity_ids = set()
         
         lines.append("Entities:")
         for entity in self.entities.values():
-            display_name = get_entity_display_name(entity.id)
-            # Show mapped name if different from entity.name
-            if entity.id in entity_name_map and display_name != entity.name:
-                lines.append(f"  - {display_name} [kb_id: {entity.id}] ({entity.type})")
-            else:
-                lines.append(f"  - {entity.name} ({entity.type})")
+            # Only include entities that have a mapping
+            if entity.id in entity_name_map:
+                display_name = entity_name_map[entity.id]
+                lines.append(f"  - {display_name} ({entity.type})")
+                mapped_entity_ids.add(entity.id)
         
         lines.append("\nRelations:")
         for relation in self.relations:
-            head_name = get_entity_display_name(relation.head)
-            tail_name = get_entity_display_name(relation.tail)
-            lines.append(f"  - {head_name} --[{relation.relation}]--> {tail_name}")
+            # Only include relations where both entities are mapped
+            if relation.head in entity_name_map and relation.tail in entity_name_map:
+                head_name = entity_name_map[relation.head]
+                tail_name = entity_name_map[relation.tail]
+                lines.append(f"  - {head_name} --[{relation.relation}]--> {tail_name}")
         
         return "\n".join(lines)
     

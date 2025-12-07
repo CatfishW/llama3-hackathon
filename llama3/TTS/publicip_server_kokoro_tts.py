@@ -114,6 +114,18 @@ Examples:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level (default: INFO, env: TTS_BROKER_LOG_LEVEL)"
     )
+    parser.add_argument(
+        "--ssl-cert",
+        type=str,
+        default=os.getenv("SERVER_SSL_CERT", None),
+        help="SSL certificate file for HTTPS (env: SERVER_SSL_CERT)"
+    )
+    parser.add_argument(
+        "--ssl-key",
+        type=str,
+        default=os.getenv("SERVER_SSL_KEY", None),
+        help="SSL private key file for HTTPS (env: SERVER_SSL_KEY)"
+    )
     
     return parser.parse_args()
 
@@ -129,6 +141,8 @@ REMOTE_TTS_URL = f"http://{REMOTE_TTS_HOST}:{REMOTE_TTS_PORT}"
 REQUEST_TIMEOUT = args.timeout
 BROKER_HOST = args.host
 BROKER_PORT = args.port
+SERVER_SSL_CERT = args.ssl_cert
+SERVER_SSL_KEY = args.ssl_key
 
 # Logging setup
 logging.basicConfig(
@@ -399,19 +413,40 @@ async def broker_status() -> Dict[str, object]:
 if __name__ == "__main__":
     import uvicorn
 
+    # Determine if SSL is enabled
+    ssl_enabled = SERVER_SSL_CERT and SERVER_SSL_KEY
+    protocol = "https" if ssl_enabled else "http"
+
     print("\n" + "="*70)
     print("Kokoro TTS Broker Server Configuration")
     print("="*70)
-    print(f"  Broker listening on:      {BROKER_HOST}:{BROKER_PORT}")
+    print(f"  Broker listening on:      {protocol}://{BROKER_HOST}:{BROKER_PORT}")
     print(f"  Remote TTS server:        {REMOTE_TTS_URL}")
     print(f"  Request timeout:          {REQUEST_TIMEOUT}s")
     print(f"  Log level:                {LOG_LEVEL_NAME}")
+    print(f"  SSL enabled:              {ssl_enabled}")
+    if ssl_enabled:
+        print(f"  SSL certificate:          {SERVER_SSL_CERT}")
+        print(f"  SSL key:                  {SERVER_SSL_KEY}")
     print("="*70 + "\n")
     
     logger.info(
-        f"Starting Kokoro TTS Broker Server on {BROKER_HOST}:{BROKER_PORT}\n"
+        f"Starting Kokoro TTS Broker Server on {protocol}://{BROKER_HOST}:{BROKER_PORT}\n"
         f"Forwarding requests to TTS server at {REMOTE_TTS_URL}"
     )
+    
+    # Build SSL kwargs if certificates are provided
+    ssl_kwargs = {}
+    if ssl_enabled:
+        ssl_kwargs = {
+            "ssl_certfile": SERVER_SSL_CERT,
+            "ssl_keyfile": SERVER_SSL_KEY,
+        }
+    else:
+        logger.warning(
+            "Running without HTTPS. Browsers on HTTPS pages will block requests. "
+            "Use --ssl-cert and --ssl-key to enable HTTPS."
+        )
     
     uvicorn.run(
         "publicip_server_kokoro_tts:app",
@@ -419,5 +454,6 @@ if __name__ == "__main__":
         port=BROKER_PORT,
         workers=1,
         reload=False,
-        log_level=LOG_LEVEL_NAME.lower()
+        log_level=LOG_LEVEL_NAME.lower(),
+        **ssl_kwargs
     )

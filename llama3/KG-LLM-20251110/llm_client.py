@@ -77,6 +77,63 @@ class LLMClient:
             print(f"Error calling LLM: {e}")
             raise
     
+    def batch_chat(
+        self,
+        batch_messages: List[List[Dict[str, str]]],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_cache: bool = True
+    ) -> List[str]:
+        """
+        Send multiple chat completion requests in parallel.
+        
+        Args:
+            batch_messages: List of message lists for batch processing
+            temperature: Sampling temperature (override config)
+            max_tokens: Max tokens to generate (override config)
+            use_cache: Whether to use cached responses
+            
+        Returns:
+            List of generated text responses
+        """
+        results = []
+        cache_hits = 0
+        
+        for messages in batch_messages:
+            # Check cache first
+            if use_cache and self.cache is not None:
+                cache_key = str(messages)
+                if cache_key in self.cache:
+                    results.append(self.cache[cache_key])
+                    cache_hits += 1
+                    continue
+            
+            # Make request
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature or self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                content = response.choices[0].message.content
+                
+                # Cache response
+                if use_cache and self.cache is not None:
+                    cache_key = str(messages)
+                    self.cache[cache_key] = content
+                
+                results.append(content)
+                
+            except Exception as e:
+                print(f"Error calling LLM in batch: {e}")
+                results.append(f"Error: {str(e)}")
+        
+        if SYSTEM_CONFIG["verbose"] and cache_hits > 0:
+            print(f"  [Batch: {cache_hits}/{len(batch_messages)} cache hits]")
+        
+        return results
+    
     def chat_stream(
         self,
         messages: List[Dict[str, str]],

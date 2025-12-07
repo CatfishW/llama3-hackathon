@@ -3,6 +3,8 @@
 from webqsp_loader import WebQSPLoader
 from eperm_system import EPERMSystem
 from llm_client import LLMClient
+from evidence_path_finder_nonllm import NonLLMEvidencePathFinder
+from batch_inference_processor import BatchInferenceProcessor, BatchResult
 import time
 import unicodedata
 import re
@@ -436,9 +438,10 @@ def analyze_matching_results(results: list, show_mismatches: bool = True):
             _flexible_match(r['predicted_answer'], r['gold_answers'], verbose=True)
 
 
-def test_eperm_with_webqsp(num_samples: int = 3, max_kg_size: int = 200, 
+def test_eperm_with_webqsp(num_samples: int = 3, max_kg_size: int = 1000, 
                            checkpoint_interval: int = None, resume_from_checkpoint: str = None,
-                           use_pure_llm: bool = False):
+                           use_pure_llm: bool = False, batch_size: int = 1,
+                           use_nonllm_paths: bool = False):
     """
     Test EPERM system with WebQSP data with real-time accuracy and checkpointing.
     
@@ -448,8 +451,15 @@ def test_eperm_with_webqsp(num_samples: int = 3, max_kg_size: int = 200,
         checkpoint_interval: Save checkpoint every N samples (None = no checkpointing)
         resume_from_checkpoint: Path to checkpoint to resume from
         use_pure_llm: If True, use pure LLM without KG paths (baseline comparison)
+        batch_size: Number of samples to process in parallel (for batched inference)
+        use_nonllm_paths: If True, use non-LLM evidence path finder instead of LLM-based
     """
-    mode_name = "Pure LLM (No KG)" if use_pure_llm else "EPERM System"
+    if use_pure_llm:
+        mode_name = "Pure LLM (No KG)"
+    elif use_nonllm_paths:
+        mode_name = "EPERM System (Non-LLM Paths)"
+    else:
+        mode_name = "EPERM System (LLM Paths)"
     print("\n" + "="*70)
     print(f"{mode_name} - WebQSP Integration Test")
     print("="*70)
@@ -477,157 +487,264 @@ def test_eperm_with_webqsp(num_samples: int = 3, max_kg_size: int = 200,
     )
     print(f"✓ Loaded {len(qa_dataset)} samples")
     
-    # Initialize LLM client if using pure LLM mode
+    # Initialize LLM client and path finder
     llm_client = None
+    path_finder = None
+    
     if use_pure_llm:
         print("\nInitializing LLM client for pure LLM mode...")
         llm_client = LLMClient()
         print("✓ LLM client ready")
+    elif use_nonllm_paths:
+        print("\nInitializing non-LLM evidence path finder...")
+        path_finder = NonLLMEvidencePathFinder()
+        print("✓ Non-LLM path finder ready")
+        print("Initializing LLM client for answer generation...")
+        llm_client = LLMClient()
+        print("✓ LLM client ready")
+    else:
+        print("\nInitializing LLM-based evidence path finder...")
+        llm_client = LLMClient()
+        print("✓ LLM client ready")
+    
+    # Initialize batch processor if batch_size > 1
+    batch_processor = None
+    if batch_size > 1 and not use_pure_llm:
+        batch_processor = BatchInferenceProcessor(batch_size=batch_size, verbose=True)
+        print(f"\n✓ Batch processing enabled (batch_size={batch_size})")
     
     # Test each sample with EPERM or pure LLM
     results = tracker.results  # Use tracker's results list
     
-    for i, qa_item in enumerate(qa_dataset, 1):
-        sample_num = start_idx + i  # Adjust for resumed checkpoints
-        print(f"\n{'='*70}")
-        print(f"Test {i}/{len(qa_dataset)}")
-        print(f"{'='*70}")
-        print(f"ID: {qa_item['id']}")
-        print(f"Question: {qa_item['question']}")
-        print(f"Gold Answers: {', '.join(qa_item['answers'])}")
-        if not use_pure_llm:
-            print(f"KG Size: {qa_item['kg_stats']['num_entities']} entities, "
-                  f"{qa_item['kg_stats']['num_relations']} relations")
+    # If using batch processing, process in batches
+    if batch_processor and not use_pure_llm:
+        print("\n" + "="*70)
+        print("Processing samples in batches...")
+        print("="*70)
         
-        try:
-            start_time = time.time()
+        for batch_start_idx in range(0, len(qa_dataset), batch_size):
+            batch_end_idx = min(batch_start_idx + batch_size, len(qa_dataset))
+            qa_batch = qa_dataset[batch_start_idx:batch_end_idx]
             
-            if use_pure_llm:
-                # Pure LLM mode - no KG paths
-                print("\nRunning pure LLM (no KG)...")
-                answer_text, confidence, reasoning = test_pure_llm(
-                    qa_item['question'],
-                    llm_client
-                )
-                
-                elapsed_time = time.time() - start_time
-                
-                # Check if answer matches
-                correct = _flexible_match(answer_text, qa_item['answers'])
-                
-                print(f"\n{'='*70}")
-                print(f"RESULT:")
-                print(f"  Predicted: {answer_text}")
-                print(f"  Confidence: {confidence:.3f}")
-                print(f"  Gold: {', '.join(qa_item['answers'])}")
-                print(f"  Match: {'✓ CORRECT' if correct else '✗ INCORRECT'}")
-                print(f"  Time: {elapsed_time:.2f}s")
-                
-                result = {
-                    'question': qa_item['question'],
-                    'gold_answers': qa_item['answers'],
-                    'predicted_answer': answer_text,
-                    'confidence': confidence,
-                    'correct': correct,
-                    'time': elapsed_time,
-                    'num_evidence_paths': 0  # No paths in pure LLM mode
-                }
-                tracker.add_result(result)
-                
-            else:
-                # EPERM mode with KG paths
-                # Initialize EPERM with this sample's KG
+            try:
                 system = EPERMSystem()
-                system.kg = qa_item['kg']
-                system.retriever = None  # Skip retrieval, use full KG
                 
-                # For WebQSP, we already have the subgraph, so we can directly
-                # use the evidence path finder and answer predictor
-                print("\nRunning EPERM pipeline...")
-                
-                # Find evidence paths
-                evidence_paths = system.path_finder.find_evidence_paths(
-                    qa_item['question'],
-                    qa_item['kg']
+                # Process batch
+                batch_results, batch_metrics = batch_processor.process_batch(
+                    qa_batch,
+                    system,
+                    llm_client,
+                    _flexible_match,
+                    _normalize_text
                 )
-                # qa_item['entity_name_map']
-                # {'m.0135nr': 'Lightning rod', 'm.01zh8g': 'Glass harmonica', 'm.013cqs': 'Bifocals', 'm.029mmz': 'Franklin stove'}
-                # [EvidencePath(path=[('m.0cbq1', 'freebase.valuenotation.is_reviewed', 'm.04m8')], score=0.0, reasoning="This path is completely irrelevant to the question about Ben Franklin's inventions. The relationship 'freebase.valuenotation.is_reviewed' doesn't connect to any information about inventions or creative works, and the entities 0cbq1 and 04m8 appear to be database identifiers rather than meaningful concepts related to Franklin's innovations."), EvidencePath(path=[('m.07cbs', 'freebase.valuenotation.is_reviewed', 'm.04m8')], score=0.0, reasoning="This path is completely irrelevant to the question about Ben Franklin's inventions. The path appears to be about a Freebase review notation, which has no connection to Franklin's inventions or his life work.")]
-
                 
-                if not evidence_paths:
-                    print("  ⚠ No evidence paths found")
+                # Convert BatchResult to tracker results format
+                for batch_result in batch_results:
+                    tracker.add_result({
+                        'question': batch_result.question,
+                        'gold_answers': batch_result.gold_answers,
+                        'predicted_answer': batch_result.predicted_answer,
+                        'confidence': batch_result.confidence,
+                        'correct': batch_result.correct,
+                        'time': batch_result.processing_time,
+                        'num_evidence_paths': batch_result.num_evidence_paths,
+                        'error': batch_result.error
+                    })
+                
+                # Update sample count
+                sample_num = start_idx + batch_end_idx
+                
+                # Show progress
+                current_result = {
+                    'question': batch_results[-1].question,
+                    'predicted_answer': batch_results[-1].predicted_answer,
+                    'correct': batch_results[-1].correct
+                }
+                tracker.print_progress(sample_num, start_idx + len(qa_dataset), current_result)
+                
+                # Checkpoint if needed
+                if checkpoint_interval:
+                    tracker.checkpoint_results(checkpoint_interval)
+                    
+            except Exception as e:
+                print(f"\n✗ Error processing batch: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                # Skip this batch and continue
+                continue
+        
+        # Print batch statistics
+        batch_processor.print_batch_statistics()
+    
+    # Single-item processing (for pure LLM or small batches)
+    else:
+        for i, qa_item in enumerate(qa_dataset, 1):
+            sample_num = start_idx + i  # Adjust for resumed checkpoints
+            print(f"\n{'='*70}")
+            print(f"Test {i}/{len(qa_dataset)}")
+            print(f"{'='*70}")
+            print(f"ID: {qa_item['id']}")
+            print(f"Question: {qa_item['question']}")
+            print(f"Gold Answers: {', '.join(qa_item['answers'])}")
+            if not use_pure_llm:
+                print(f"KG Size: {qa_item['kg_stats']['num_entities']} entities, "
+                      f"{qa_item['kg_stats']['num_relations']} relations")
+            
+            try:
+                start_time = time.time()
+                
+                if use_pure_llm:
+                    # Pure LLM mode - no KG paths
+                    print("\nRunning pure LLM (no KG)...")
+                    answer_text, confidence, reasoning = test_pure_llm(
+                        qa_item['question'],
+                        llm_client
+                    )
+                    
+                    elapsed_time = time.time() - start_time
+                    
+                    # Check if answer matches
+                    correct = _flexible_match(answer_text, qa_item['answers'])
+                    
+                    print(f"\n{'='*70}")
+                    print(f"RESULT:")
+                    print(f"  Predicted: {answer_text}")
+                    print(f"  Confidence: {confidence:.3f}")
+                    print(f"  Gold: {', '.join(qa_item['answers'])}")
+                    print(f"  Match: {'✓ CORRECT' if correct else '✗ INCORRECT'}")
+                    print(f"  Time: {elapsed_time:.2f}s")
+                    
                     result = {
                         'question': qa_item['question'],
                         'gold_answers': qa_item['answers'],
-                        'predicted_answer': "No answer found",
-                        'confidence': 0.0,
-                        'correct': False,
-                        'time': time.time() - start_time
+                        'predicted_answer': answer_text,
+                        'confidence': confidence,
+                        'correct': correct,
+                        'time': elapsed_time,
+                        'num_evidence_paths': 0  # No paths in pure LLM mode
                     }
                     tracker.add_result(result)
                     
-                    # Show real-time progress
-                    tracker.print_progress(sample_num, start_idx + len(qa_dataset), result)
+                else:
+                    # EPERM mode with KG paths
+                    # Initialize EPERM with this sample's KG
+                    system = EPERMSystem()
+                    system.kg = qa_item['kg']
+                    system.retriever = None  # Skip retrieval, use full KG
                     
-                    # Checkpoint if needed
-                    if checkpoint_interval:
-                        tracker.checkpoint_results(checkpoint_interval)
+                    # For WebQSP, we already have the subgraph, so we can directly
+                    # use the evidence path finder and answer predictor
+                    print("\nRunning EPERM pipeline...")
                     
-                    continue
+                    # Find evidence paths (using non-LLM or LLM path finder)
+                    if use_nonllm_paths:
+                        print("  Finding paths (non-LLM)...")
+                        evidence_paths = path_finder.find_evidence_paths(
+                            qa_item['question'],
+                            qa_item['kg']
+                        )
+                    else:
+                        print("  Finding paths (LLM-based)...")
+                        evidence_paths = system.path_finder.find_evidence_paths(
+                            qa_item['question'],
+                            qa_item['kg']
+                        )
+                    
+                    if not evidence_paths:
+                        print("  ⚠ No evidence paths found, using LLM fallback...")
+                        
+                        # Fallback: use pure LLM prediction
+                        answer_text, confidence, reasoning = test_pure_llm(
+                            qa_item['question'],
+                            llm_client
+                        )
+                        
+                        elapsed_time = time.time() - start_time
+                        correct = _flexible_match(answer_text, qa_item['answers'])
+                        
+                        print(f"\n{'='*70}")
+                        print(f"RESULT (LLM Fallback):")
+                        print(f"  Predicted: {answer_text}")
+                        print(f"  Confidence: {confidence:.3f}")
+                        print(f"  Gold: {', '.join(qa_item['answers'])}")
+                        print(f"  Match: {'✓ CORRECT' if correct else '✗ INCORRECT'}")
+                        print(f"  Time: {elapsed_time:.2f}s")
+                        print(f"  Evidence Paths: 0 (used LLM fallback)")
+                        
+                        result = {
+                            'question': qa_item['question'],
+                            'gold_answers': qa_item['answers'],
+                            'predicted_answer': answer_text,
+                            'confidence': confidence,
+                            'correct': correct,
+                            'time': elapsed_time,
+                            'num_evidence_paths': 0,
+                            'used_fallback': True
+                        }
+                        tracker.add_result(result)
+                        
+                        # Show real-time progress
+                        tracker.print_progress(sample_num, start_idx + len(qa_dataset), result)
+                        
+                        # Checkpoint if needed
+                        if checkpoint_interval:
+                            tracker.checkpoint_results(checkpoint_interval)
+                        
+                        continue
+                    
+                    # Predict answer
+                    answer = system.answer_predictor.predict(
+                        qa_item['question'],
+                        evidence_paths,
+                        qa_item['kg']
+                    )
+                    
+                    elapsed_time = time.time() - start_time
+                    
+                    # Check if answer matches any gold answer (flexible matching)
+                    correct = _flexible_match(answer.answer, qa_item['answers'])
+                    
+                    print(f"\n{'='*70}")
+                    print(f"RESULT:")
+                    print(f"  Predicted: {answer.answer}")
+                    print(f"  Confidence: {answer.confidence:.3f}")
+                    print(f"  Gold: {', '.join(qa_item['answers'])}")
+                    print(f"  Match: {'✓ CORRECT' if correct else '✗ INCORRECT'}")
+                    print(f"  Time: {elapsed_time:.2f}s")
+                    print(f"  Evidence Paths: {len(answer.supporting_paths)}")
+                    
+                    if answer.supporting_paths and len(answer.supporting_paths) > 0:
+                        print(f"\n  Top Evidence Path:")
+                        top_path = answer.supporting_paths[0]
+                        print(f"    {top_path.to_text(qa_item['kg'])}")
+                        print(f"    Score: {top_path.score:.3f}")
+                    
+                    result = {
+                        'question': qa_item['question'],
+                        'gold_answers': qa_item['answers'],
+                        'predicted_answer': answer.answer,
+                        'confidence': answer.confidence,
+                        'correct': correct,
+                        'time': elapsed_time,
+                        'num_evidence_paths': len(answer.supporting_paths)
+                    }
+                    tracker.add_result(result)
                 
-                # Predict answer
-                answer = system.answer_predictor.predict(
-                    qa_item['question'],
-                    evidence_paths,
-                    qa_item['kg']
-                )
+                # Show real-time progress
+                tracker.print_progress(sample_num, start_idx + len(qa_dataset), result)
                 
-                elapsed_time = time.time() - start_time
+                # Checkpoint if needed
+                if checkpoint_interval:
+                    tracker.checkpoint_results(checkpoint_interval)
                 
-                # Check if answer matches any gold answer (flexible matching)
-                correct = _flexible_match(answer.answer, qa_item['answers'])
-                
-                print(f"\n{'='*70}")
-                print(f"RESULT:")
-                print(f"  Predicted: {answer.answer}")
-                print(f"  Confidence: {answer.confidence:.3f}")
-                print(f"  Gold: {', '.join(qa_item['answers'])}")
-                print(f"  Match: {'✓ CORRECT' if correct else '✗ INCORRECT'}")
-                print(f"  Time: {elapsed_time:.2f}s")
-                print(f"  Evidence Paths: {len(answer.supporting_paths)}")
-                
-                if answer.supporting_paths and len(answer.supporting_paths) > 0:
-                    print(f"\n  Top Evidence Path:")
-                    top_path = answer.supporting_paths[0]
-                    print(f"    {top_path.to_text(qa_item['kg'])}")
-                    print(f"    Score: {top_path.score:.3f}")
+            except Exception as e:
+                print(f"\n✗ Error processing sample: {e}")
+                import traceback
+                traceback.print_exc()
                 
                 result = {
                     'question': qa_item['question'],
-                    'gold_answers': qa_item['answers'],
-                    'predicted_answer': answer.answer,
-                    'confidence': answer.confidence,
-                    'correct': correct,
-                    'time': elapsed_time,
-                    'num_evidence_paths': len(answer.supporting_paths)
-                }
-                tracker.add_result(result)
-            
-            # Show real-time progress
-            tracker.print_progress(sample_num, start_idx + len(qa_dataset), result)
-            
-            # Checkpoint if needed
-            if checkpoint_interval:
-                tracker.checkpoint_results(checkpoint_interval)
-            
-        except Exception as e:
-            print(f"\n✗ Error processing sample: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            result = {
-                'question': qa_item['question'],
                 'gold_answers': qa_item['answers'],
                 'predicted_answer': "ERROR",
                 'confidence': 0.0,
@@ -806,7 +923,7 @@ def test_single_sample_detailed():
     qa_dataset = loader.create_qa_dataset(
         "data/webqsp/train_simple.json",
         num_samples=1,
-        max_kg_size=150  # Smaller for detailed analysis
+        max_kg_size=15000000  # Smaller for detailed analysis
     )
     
     qa_item = qa_dataset[0]
@@ -867,8 +984,8 @@ if __name__ == "__main__":
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Test EPERM or Pure LLM on WebQSP")
-    parser.add_argument('--mode', type=str, default='eperm', choices=['eperm', 'pure-llm', 'both'],
-                        help='Test mode: eperm (with KG), pure-llm (no KG), or both (comparison)')
+    parser.add_argument('--mode', type=str, default='eperm', choices=['eperm', 'pure-llm', 'nonllm', 'both'],
+                        help='Test mode: eperm (LLM paths), pure-llm (no KG), nonllm (non-LLM paths), or both')
     parser.add_argument('--num_samples', type=int, default=20000,
                         help='Number of samples to test')
     parser.add_argument('--max_kg_size', type=int, default=100,
@@ -877,6 +994,14 @@ if __name__ == "__main__":
                         help='Checkpoint interval (0 = no checkpointing)')
     parser.add_argument('--resume', type=str, default=None,
                         help='Resume from checkpoint file')
+    parser.add_argument('--batch_size', type=int, default=1,
+                        help='Batch size for inference (1 = no batching, >1 = parallel inference)')
+    parser.add_argument('--use-nonllm-paths', action='store_true',
+                        help='Use non-LLM evidence path finder')
+    parser.add_argument('--enable-batching', action='store_true',
+                        help='Force enable batch processing even with batch_size=1')
+    parser.add_argument('--batch_benchmark', action='store_true',
+                        help='Run batch size benchmark (tests 1, 2, 4, 8, 16)')
     
     args = parser.parse_args()
     
@@ -885,7 +1010,14 @@ if __name__ == "__main__":
     print("="*70)
     print(f"Mode: {args.mode}")
     print(f"Samples: {args.num_samples}")
+    print(f"Max KG size: {args.max_kg_size}")
+    print(f"Batch size: {args.batch_size}")
+    print(f"Use non-LLM paths: {args.use_nonllm_paths}")
+    print(f"Enable batching: {args.enable_batching}")
     print(f"Checkpoint interval: {args.checkpoint_interval if args.checkpoint_interval > 0 else 'disabled'}")
+    
+    if args.batch_benchmark:
+        print(f"Batch size benchmark: Enabled (will test multiple batch sizes)")
     
     try:
         # Test 1: Single sample detailed
@@ -894,10 +1026,61 @@ if __name__ == "__main__":
         
         checkpoint_interval = args.checkpoint_interval if args.checkpoint_interval > 0 else None
         
+        # Handle batch size benchmark mode
+        if args.batch_benchmark:
+            print("\n\n" + "="*70)
+            print("BATCH SIZE BENCHMARK")
+            print("="*70)
+            
+            batch_sizes = [1, 2, 4, 8, 16]
+            benchmark_results = {}
+            
+            for batch_size in batch_sizes:
+                print(f"\n>>> Testing batch_size={batch_size}")
+                try:
+                    results, tracker = test_eperm_with_webqsp(
+                        num_samples=args.num_samples,
+                        max_kg_size=args.max_kg_size,
+                        checkpoint_interval=None,  # No checkpointing during benchmark
+                        resume_from_checkpoint=None,
+                        use_pure_llm=False,
+                        batch_size=batch_size,
+                        use_nonllm_paths=args.use_nonllm_paths
+                    )
+                    
+                    stats = tracker.get_stats()
+                    benchmark_results[batch_size] = {
+                        'accuracy': (sum(1 for r in results if r['correct']) / len(results) * 100) if results else 0,
+                        'avg_time': stats['avg_time'],
+                        'items_per_second': len(results) / stats['elapsed_time'] if stats['elapsed_time'] > 0 else 0,
+                        'total_time': stats['elapsed_time']
+                    }
+                    
+                except Exception as e:
+                    print(f"  Error: {e}")
+                    benchmark_results[batch_size] = {'error': str(e)}
+            
+            # Print benchmark summary
+            print("\n\n" + "="*70)
+            print("BENCHMARK SUMMARY")
+            print("="*70)
+            print(f"\n{'Batch Size':<12} {'Accuracy':<12} {'Avg Time':<12} {'Items/sec':<12} {'Total Time':<12}")
+            print("-" * 60)
+            for batch_size in batch_sizes:
+                if batch_size in benchmark_results:
+                    r = benchmark_results[batch_size]
+                    if 'error' not in r:
+                        print(f"{batch_size:<12} {r['accuracy']:>10.1f}% {r['avg_time']:>10.2f}s "
+                              f"{r['items_per_second']:>10.2f} {r['total_time']:>10.2f}s")
+                    else:
+                        print(f"{batch_size:<12} ERROR: {r['error']}")
+            print("="*70)
+            sys.exit(0)
+        
         if args.mode == 'both':
             # Run both modes for comparison
             print("\n\n" + "="*70)
-            print("COMPARISON MODE: Pure LLM vs EPERM")
+            print("COMPARISON MODE: Pure LLM vs LLM Paths vs Non-LLM Paths")
             print("="*70)
             
             print("\n>>> PHASE 1: Pure LLM (No KG) <<<")
@@ -909,31 +1092,43 @@ if __name__ == "__main__":
                 use_pure_llm=True
             )
             
-            print("\n>>> PHASE 2: EPERM (With KG) <<<")
+            print("\n>>> PHASE 2: EPERM (LLM Paths) <<<")
             results_eperm, tracker_eperm = test_eperm_with_webqsp(
                 num_samples=args.num_samples,
                 max_kg_size=args.max_kg_size,
                 checkpoint_interval=checkpoint_interval,
-                resume_from_checkpoint=None,  # Don't resume for second phase
-                use_pure_llm=False
+                resume_from_checkpoint=None,
+                use_pure_llm=False,
+                use_nonllm_paths=False
+            )
+            
+            print("\n>>> PHASE 3: EPERM (Non-LLM Paths) <<<")
+            results_nonllm, tracker_nonllm = test_eperm_with_webqsp(
+                num_samples=args.num_samples,
+                max_kg_size=args.max_kg_size,
+                checkpoint_interval=checkpoint_interval,
+                resume_from_checkpoint=None,
+                use_pure_llm=False,
+                use_nonllm_paths=True
             )
             
             # Compare results
             print("\n\n" + "="*70)
-            print("COMPARISON SUMMARY")
+            print("COMPARISON SUMMARY: All Three Modes")
             print("="*70)
             
             stats_llm = tracker_llm.get_stats()
             stats_eperm = tracker_eperm.get_stats()
+            stats_nonllm = tracker_nonllm.get_stats()
             
-            print(f"\n{'Metric':<25} {'Pure LLM':<15} {'EPERM':<15} {'Improvement':<15}")
+            print(f"\n{'Metric':<25} {'Pure LLM':<15} {'LLM Paths':<15} {'Non-LLM Paths':<15}")
             print("-" * 70)
-            print(f"{'Accuracy':<25} {stats_llm['accuracy']:>6.2f}% {stats_eperm['accuracy']:>12.2f}% {(stats_eperm['accuracy'] - stats_llm['accuracy']):>+10.2f}%")
-            print(f"{'Avg Confidence':<25} {stats_llm['avg_confidence']:>6.3f} {stats_eperm['avg_confidence']:>17.3f} {(stats_eperm['avg_confidence'] - stats_llm['avg_confidence']):>+10.3f}")
-            print(f"{'Avg Time/Sample':<25} {stats_llm['avg_time']:>6.2f}s {stats_eperm['avg_time']:>16.2f}s {(stats_eperm['avg_time'] - stats_llm['avg_time']):>+9.2f}s")
+            print(f"{'Accuracy':<25} {stats_llm['accuracy']:>6.2f}% {stats_eperm['accuracy']:>12.2f}% {stats_nonllm['accuracy']:>14.2f}%")
+            print(f"{'Avg Confidence':<25} {stats_llm['avg_confidence']:>6.3f} {stats_eperm['avg_confidence']:>17.3f} {stats_nonllm['avg_confidence']:>19.3f}")
+            print(f"{'Avg Time/Sample':<25} {stats_llm['avg_time']:>6.2f}s {stats_eperm['avg_time']:>16.2f}s {stats_nonllm['avg_time']:>19.2f}s")
             
-            results = results_eperm
-            tracker = tracker_eperm
+            results = results_nonllm
+            tracker = tracker_nonllm
             
         elif args.mode == 'pure-llm':
             # Pure LLM mode
@@ -949,10 +1144,10 @@ if __name__ == "__main__":
                 use_pure_llm=True
             )
             
-        else:
-            # EPERM mode (default)
+        elif args.mode == 'nonllm':
+            # Non-LLM paths mode
             print("\n\n" + "="*70)
-            print("TEST: EPERM (With KG) Mode")
+            print("TEST: EPERM (Non-LLM Paths) Mode")
             print("="*70)
             
             results, tracker = test_eperm_with_webqsp(
@@ -960,7 +1155,26 @@ if __name__ == "__main__":
                 max_kg_size=args.max_kg_size,
                 checkpoint_interval=checkpoint_interval,
                 resume_from_checkpoint=args.resume,
-                use_pure_llm=False
+                use_pure_llm=False,
+                use_nonllm_paths=True,
+                batch_size=args.batch_size
+            )
+            
+        else:
+            # EPERM mode with LLM paths (default)
+            path_type = "Non-LLM Paths" if args.use_nonllm_paths else "LLM Paths"
+            print("\n\n" + "="*70)
+            print(f"TEST: EPERM ({path_type}) Mode")
+            print("="*70)
+            
+            results, tracker = test_eperm_with_webqsp(
+                num_samples=args.num_samples,
+                max_kg_size=args.max_kg_size,
+                checkpoint_interval=checkpoint_interval,
+                resume_from_checkpoint=args.resume,
+                use_pure_llm=False,
+                use_nonllm_paths=args.use_nonllm_paths,
+                batch_size=args.batch_size
             )
         
         # Analyze matching results
