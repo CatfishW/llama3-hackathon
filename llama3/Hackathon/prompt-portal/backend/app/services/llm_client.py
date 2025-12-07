@@ -250,11 +250,19 @@ class LLMClient:
         
         logger.info(f"Initializing LLM client: {self.server_url} (backend: {self.backend_type})")
         
+        # Prepare base URL for OpenAI client
+        # vLLM and most OpenAI-compatible servers expect the base_url to include /v1
+        # llama.cpp also uses /v1 endpoints, so we need to ensure /v1 is in the URL
+        base_url = self.server_url
+        if not base_url.endswith("/v1") and not base_url.endswith("/v1/"):
+            base_url = f"{base_url}/v1"
+            logger.info(f"Added /v1 suffix to base URL: {base_url}")
+        
         # Initialize OpenAI client with LLM server as base URL when available
         if _OPENAI_AVAILABLE and OpenAI is not None:
             # Note: api_key is required by OpenAI client
             self.client = OpenAI(
-                base_url=self.server_url,
+                base_url=base_url,
                 api_key=self.api_key,
                 timeout=self.timeout
             )
@@ -316,9 +324,15 @@ class LLMClient:
         if self.backend_type == "auto":
             self.backend_type = self._detect_backend_type()
         
+        # Prepare base URL - ensure /v1 suffix for OpenAI-compatible APIs
+        base_url = self.server_url
+        if not base_url.endswith("/v1") and not base_url.endswith("/v1/"):
+            base_url = f"{base_url}/v1"
+            logger.info(f"Added /v1 suffix to base URL: {base_url}")
+        
         if _OPENAI_AVAILABLE and OpenAI is not None:
             self.client = OpenAI(
-                base_url=self.server_url,
+                base_url=base_url,
                 api_key=self.api_key,
                 timeout=self.timeout
             )
