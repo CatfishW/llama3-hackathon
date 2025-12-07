@@ -2,6 +2,7 @@
 debug_info.log
 debug_info_*.log
 assets/
+llama.cpp/
 # Python cache
 __pycache__/
 *.py[cod]
