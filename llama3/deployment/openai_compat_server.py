@@ -49,7 +49,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, List, Union
 
 import httpx
 from dotenv import load_dotenv
@@ -157,7 +157,7 @@ async def verify_auth(request: Request) -> None:
 # ---------- Schemas ----------
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: Union[str, List[Any]]
 
 
 class ChatCompletionRequest(BaseModel):
@@ -189,15 +189,17 @@ class CompletionRequest(BaseModel):
 
 
 # ---------- llama.cpp Client Helpers ----------
-def _truncate_messages(messages: list[dict[str, str]], max_chars: int) -> list[dict[str, str]]:
+def _truncate_messages(messages: list[dict[str, Any]], max_chars: int) -> list[dict[str, Any]]:
     """Truncate conversation history to fit within context limit.
     
     Strategy: Keep system message (first) + most recent messages.
+    Multimodal messages (content is a list) are not truncated.
     """
     if not messages:
         return messages
     
-    total_chars = sum(len(m.get("content", "")) for m in messages)
+    # Calculate total chars, treating multimodal content as 0 chars (not truncatable)
+    total_chars = sum(len(m.get("content", "")) if isinstance(m.get("content"), str) else 0 for m in messages)
     if total_chars <= max_chars:
         return messages
     
@@ -210,21 +212,27 @@ def _truncate_messages(messages: list[dict[str, str]], max_chars: int) -> list[d
         system_msg = messages[0]
         other_msgs = messages[1:]
     
-    # Calculate available space
-    system_chars = len(system_msg.get("content", "")) if system_msg else 0
+    # Calculate available space (multimodal content counts as 0)
+    system_content = system_msg.get("content", "") if system_msg else ""
+    system_chars = len(system_content) if isinstance(system_content, str) else 0
     available = max_chars - system_chars
     
     # Keep most recent messages that fit
     kept = []
     for msg in reversed(other_msgs):
-        msg_chars = len(msg.get("content", ""))
+        content = msg.get("content")
+        # Multimodal messages (list content) are always kept without truncation
+        if isinstance(content, list):
+            kept.insert(0, msg)
+            continue
+        msg_chars = len(content) if content else 0
         if available >= msg_chars:
             kept.insert(0, msg)
             available -= msg_chars
         else:
             # Truncate this message if it's the last user message and nothing else fits
-            if not kept and msg.get("role") == "user":
-                truncated_content = msg["content"][:available - 100] + "\n...[truncated]"
+            if not kept and msg.get("role") == "user" and isinstance(content, str):
+                truncated_content = content[:available - 100] + "\n...[truncated]"
                 kept.insert(0, {"role": msg["role"], "content": truncated_content})
             break
     
@@ -233,16 +241,21 @@ def _truncate_messages(messages: list[dict[str, str]], max_chars: int) -> list[d
     return result
 
 
-def _serialize_messages(messages: list[Any]) -> list[dict[str, str]]:
-    """Convert messages to plain dicts for JSON serialization."""
+def _serialize_messages(messages: list[Any]) -> list[dict[str, Any]]:
+    """Convert messages to plain dicts for JSON serialization.
+    
+    Preserves content as-is (string or list for multimodal).
+    """
     result = []
     for msg in messages:
         if isinstance(msg, dict):
-            result.append({"role": msg.get("role", ""), "content": msg.get("content", "")})
+            result.append({"role": msg.get("role", ""), "content": msg.get("content")})
         elif hasattr(msg, "model_dump"):
             result.append(msg.model_dump())
         else:
-            result.append({"role": str(getattr(msg, "role", "")), "content": str(getattr(msg, "content", ""))})
+            # Fallback for other object types - preserve content type
+            content = getattr(msg, "content", "")
+            result.append({"role": str(getattr(msg, "role", "")), "content": content})
     return result
 
 
