@@ -203,6 +203,12 @@ class LLMClient:
     HTTP client for LLM inference using OpenAI-compatible API.
     Supports llama.cpp server, vLLM, and other OpenAI-compatible endpoints.
     Now supports multi-model configuration with dynamic API switching.
+    
+    Backend Types:
+        - "auto": Auto-detect based on server response/URL
+        - "llama.cpp": Use llama.cpp-specific parameters (enable_thinking, etc.)
+        - "vllm": Use vLLM-compatible parameters (no extra_body)
+        - "openai": Use standard OpenAI API parameters
     """
     
     def __init__(
@@ -213,7 +219,8 @@ class LLMClient:
         default_top_p: float = 0.9,
         default_max_tokens: int = 512,
         skip_thinking: bool = True,
-        api_key: str = "not-needed"
+        api_key: str = "not-needed",
+        backend_type: str = "auto"
     ):
         """
         Initialize LLM client.
@@ -224,8 +231,9 @@ class LLMClient:
             default_temperature: Default sampling temperature
             default_top_p: Default top-p sampling
             default_max_tokens: Default max tokens to generate
-            skip_thinking: Disable thinking mode (adds /no_think directive)
+            skip_thinking: Disable thinking mode (adds /no_think directive for llama.cpp)
             api_key: API key for authentication (default: "not-needed")
+            backend_type: Backend type - "auto", "llama.cpp", "vllm", or "openai"
         """
         self.server_url = server_url.rstrip('/')
         self.timeout = timeout
@@ -234,8 +242,13 @@ class LLMClient:
         self.default_max_tokens = default_max_tokens
         self.skip_thinking = skip_thinking
         self.api_key = api_key
+        self.backend_type = backend_type
         
-        logger.info(f"Initializing LLM client: {self.server_url}")
+        # Auto-detect backend type from URL if set to "auto"
+        if self.backend_type == "auto":
+            self.backend_type = self._detect_backend_type()
+        
+        logger.info(f"Initializing LLM client: {self.server_url} (backend: {self.backend_type})")
         
         # Initialize OpenAI client with LLM server as base URL when available
         if _OPENAI_AVAILABLE and OpenAI is not None:
@@ -258,16 +271,50 @@ class LLMClient:
         else:
             logger.info("LLM client initialized successfully")
     
-    def update_config(self, server_url: str, api_key: str):
+    def _detect_backend_type(self) -> str:
+        """
+        Auto-detect backend type from server URL patterns.
+        
+        Returns:
+            Detected backend type: "llama.cpp", "vllm", or "openai"
+        """
+        url_lower = self.server_url.lower()
+        
+        # Check for common vLLM patterns
+        if "vllm" in url_lower or ":8000" in url_lower:
+            logger.info("Auto-detected vLLM backend from URL pattern")
+            return "vllm"
+        
+        # Check for OpenAI API
+        if "api.openai.com" in url_lower:
+            logger.info("Auto-detected OpenAI backend from URL")
+            return "openai"
+        
+        # Check for common llama.cpp patterns (port 8080 is common for llama.cpp)
+        if ":8080" in url_lower or "llama" in url_lower:
+            logger.info("Auto-detected llama.cpp backend from URL pattern")
+            return "llama.cpp"
+        
+        # Default to vllm as it's the most common OpenAI-compatible server
+        logger.info("Could not auto-detect backend, defaulting to vllm (OpenAI-compatible)")
+        return "vllm"
+    
+    def update_config(self, server_url: str, api_key: str, backend_type: str = "auto"):
         """
         Update client configuration for a different model.
         
         Args:
             server_url: New API base URL
             api_key: New API key
+            backend_type: Backend type - "auto", "llama.cpp", "vllm", or "openai"
         """
         self.server_url = server_url.rstrip('/')
         self.api_key = api_key
+        self.backend_type = backend_type
+        
+        # Auto-detect if needed
+        if self.backend_type == "auto":
+            self.backend_type = self._detect_backend_type()
         
         if _OPENAI_AVAILABLE and OpenAI is not None:
             self.client = OpenAI(
@@ -275,7 +322,7 @@ class LLMClient:
                 api_key=self.api_key,
                 timeout=self.timeout
             )
-            logger.info(f"Updated LLM client configuration: {self.server_url}")
+            logger.info(f"Updated LLM client configuration: {self.server_url} (backend: {self.backend_type})")
         else:
             logger.warning("OpenAI package not available, cannot update client")
     
@@ -333,20 +380,20 @@ class LLMClient:
         try:
             start_time = time.time()
             
-            # Prepare extra body parameters for llama.cpp
-            extra_body = {
-                "enable_thinking": not self.skip_thinking
-            }
-            
-            # Build API call parameters
+            # Build API call parameters (compatible with all backends)
             api_params = {
                 "model": model,
                 "messages": messages,
                 "temperature": temperature,
                 "top_p": top_p,
                 "max_tokens": max_tokens,
-                "extra_body": extra_body
             }
+            
+            # Add llama.cpp-specific extra_body parameters only for that backend
+            if self.backend_type == "llama.cpp":
+                api_params["extra_body"] = {
+                    "enable_thinking": not self.skip_thinking
+                }
             
             # Add tools if provided (for function calling)
             if tools:
@@ -429,21 +476,21 @@ class LLMClient:
         try:
             start_time = time.time()
             
-            # Prepare extra body parameters for llama.cpp
-            extra_body = {
-                "enable_thinking": not self.skip_thinking
-            }
-            
-            # Build API call parameters
+            # Build API call parameters (compatible with all backends)
             api_params = {
                 "model": model,
                 "messages": messages,
                 "temperature": temperature,
                 "top_p": top_p,
                 "max_tokens": max_tokens,
-                "extra_body": extra_body,
                 "stream": True  # Enable streaming
             }
+            
+            # Add llama.cpp-specific extra_body parameters only for that backend
+            if self.backend_type == "llama.cpp":
+                api_params["extra_body"] = {
+                    "enable_thinking": not self.skip_thinking
+                }
             
             # Add tools if provided (for function calling)
             if tools:
@@ -772,11 +819,22 @@ def init_llm_service(
     top_p: float = 0.9,
     max_tokens: int = 512,
     skip_thinking: bool = True,
-    max_history_tokens: int = 10000
+    max_history_tokens: int = 10000,
+    backend_type: str = "auto"
 ):
     """
     Initialize the global LLM service.
     Should be called once during application startup.
+    
+    Args:
+        server_url: URL of the LLM server
+        timeout: Request timeout in seconds
+        temperature: Default sampling temperature
+        top_p: Default top-p sampling
+        max_tokens: Default max tokens to generate
+        skip_thinking: Disable thinking mode for llama.cpp
+        max_history_tokens: Maximum tokens to keep in conversation history
+        backend_type: Backend type - "auto", "llama.cpp", "vllm", or "openai"
     """
     global _llm_client, _session_manager
     
@@ -786,7 +844,8 @@ def init_llm_service(
         default_temperature=temperature,
         default_top_p=top_p,
         default_max_tokens=max_tokens,
-        skip_thinking=skip_thinking
+        skip_thinking=skip_thinking,
+        backend_type=backend_type
     )
     
     _session_manager = SessionManager(
@@ -832,6 +891,15 @@ def get_llm_client_for_user(user_model_name: Optional[str] = None) -> LLMClient:
         model_config = models[0]
     
     # Create a new client with the model's configuration
+    # Determine backend type from provider or use auto-detection
+    provider = getattr(model_config, 'provider', 'openai').lower()
+    if provider == 'vllm' or 'vllm' in model_config.apiBase.lower():
+        backend_type = 'vllm'
+    elif provider == 'llama.cpp' or 'llama' in model_config.apiBase.lower():
+        backend_type = 'llama.cpp'
+    else:
+        backend_type = 'auto'
+    
     client = LLMClient(
         server_url=model_config.apiBase,
         api_key=model_config.apiKey,
@@ -839,7 +907,8 @@ def get_llm_client_for_user(user_model_name: Optional[str] = None) -> LLMClient:
         default_temperature=0.6,
         default_top_p=0.9,
         default_max_tokens=512,
-        skip_thinking=True
+        skip_thinking=True,
+        backend_type=backend_type
     )
     
     return client

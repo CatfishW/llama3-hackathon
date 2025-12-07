@@ -81,7 +81,7 @@ SSL_CLIENT_KEY = os.getenv("SSL_CLIENT_KEY", None)
 SERVER_SSL_CERT = os.getenv("SERVER_SSL_CERT", None)
 SERVER_SSL_KEY = os.getenv("SERVER_SSL_KEY", None)
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
-SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+SERVER_PORT = int(os.getenv("SERVER_PORT", "25565"))
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

@@ -93,9 +93,10 @@ def startup_event():
             top_p=settings.LLM_TOP_P,
             max_tokens=settings.LLM_MAX_TOKENS,
             skip_thinking=settings.LLM_SKIP_THINKING,
-            max_history_tokens=settings.LLM_MAX_HISTORY_TOKENS
+            max_history_tokens=settings.LLM_MAX_HISTORY_TOKENS,
+            backend_type=settings.LLM_BACKEND_TYPE
         )
-        logger.info(f"LLM service initialized with server: {settings.LLM_SERVER_URL}")
+        logger.info(f"LLM service initialized with server: {settings.LLM_SERVER_URL} (backend: {settings.LLM_BACKEND_TYPE})")
     else:
         logger.warning(f"Unknown LLM_COMM_MODE: {comm_mode}. Defaulting to MQTT.")
         start_mqtt()

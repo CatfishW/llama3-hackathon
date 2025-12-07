@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 512
     LLM_SKIP_THINKING: bool = True
     LLM_MAX_HISTORY_TOKENS: int = 10000
+    LLM_BACKEND_TYPE: str = "auto"  # "auto", "llama.cpp", "vllm" - controls backend-specific parameters
 
     # Voice Chat - SST (Speech-to-Text) Configuration
     SST_BROKER_URL: str = "http://173.61.35.162:25567"

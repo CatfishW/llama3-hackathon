@@ -64,8 +64,8 @@ Examples:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("BROKER_PORT", "9082")),
-        help="Port for broker server to listen on (default: 9082, env: BROKER_PORT)"
+        default=int(os.getenv("BROKER_PORT", "25567")),
+        help="Port for broker server to listen on (default: 25567, env: BROKER_PORT)"
     )
     parser.add_argument(
         "--host",
