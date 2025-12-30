@@ -61,8 +61,8 @@ from pydantic import BaseModel, ConfigDict, Field
 load_dotenv()
 
 # ---------- Configuration ----------
-LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen3-30b-a3b-instruct")
+LLAMA_BASE_URL = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8888").rstrip("/")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen3-vl-30b-a3b-instruct")
 API_KEYS = [k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()]
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "300"))
 CONNECT_TIMEOUT = float(os.getenv("CONNECT_TIMEOUT", "30"))
@@ -81,7 +81,7 @@ SSL_CLIENT_KEY = os.getenv("SSL_CLIENT_KEY", None)
 SERVER_SSL_CERT = os.getenv("SERVER_SSL_CERT", None)
 SERVER_SSL_KEY = os.getenv("SERVER_SSL_KEY", None)
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
-SERVER_PORT = int(os.getenv("SERVER_PORT", "25565"))
+SERVER_PORT = 28888
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -155,9 +155,39 @@ async def verify_auth(request: Request) -> None:
 
 
 # ---------- Schemas ----------
+class ToolFunction(BaseModel):
+    """Function definition for a tool."""
+    name: str
+    description: str | None = None
+    parameters: dict[str, Any] | None = None
+
+
+class Tool(BaseModel):
+    """Tool definition (OpenAI format)."""
+    type: str = "function"
+    function: ToolFunction
+
+
+class ToolCallFunction(BaseModel):
+    """Function call within a tool call."""
+    name: str
+    arguments: str  # JSON string of arguments
+
+
+class ToolCall(BaseModel):
+    """Tool call in assistant message."""
+    id: str
+    type: str = "function"
+    function: ToolCallFunction
+
+
 class ChatMessage(BaseModel):
+    """Chat message with optional tool call support."""
     role: str
-    content: Union[str, List[Any]]
+    content: Union[str, List[Any], None] = None
+    tool_calls: list[ToolCall] | None = None
+    tool_call_id: str | None = None  # For tool response messages
+    name: str | None = None  # Function name for tool responses
 
 
 class ChatCompletionRequest(BaseModel):
@@ -172,6 +202,10 @@ class ChatCompletionRequest(BaseModel):
     n: int = 1
     presence_penalty: float | None = None
     stream: bool = False
+    # Tool calling support
+    tools: list[Tool] | None = None
+    tool_choice: str | dict[str, Any] | None = None  # "auto", "none", "required", or {"type": "function", "function": {"name": "..."}}
+    parallel_tool_calls: bool | None = None
 
 
 class CompletionRequest(BaseModel):
@@ -245,17 +279,49 @@ def _serialize_messages(messages: list[Any]) -> list[dict[str, Any]]:
     """Convert messages to plain dicts for JSON serialization.
     
     Preserves content as-is (string or list for multimodal).
+    Handles tool calls and tool responses.
     """
     result = []
     for msg in messages:
         if isinstance(msg, dict):
-            result.append({"role": msg.get("role", ""), "content": msg.get("content")})
+            serialized = {"role": msg.get("role", ""), "content": msg.get("content")}
+            # Preserve tool-related fields
+            if msg.get("tool_calls"):
+                serialized["tool_calls"] = msg["tool_calls"]
+            if msg.get("tool_call_id"):
+                serialized["tool_call_id"] = msg["tool_call_id"]
+            if msg.get("name"):
+                serialized["name"] = msg["name"]
+            result.append(serialized)
         elif hasattr(msg, "model_dump"):
-            result.append(msg.model_dump())
+            dumped = msg.model_dump(exclude_none=True)
+            result.append(dumped)
         else:
             # Fallback for other object types - preserve content type
             content = getattr(msg, "content", "")
-            result.append({"role": str(getattr(msg, "role", "")), "content": content})
+            serialized = {"role": str(getattr(msg, "role", "")), "content": content}
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                serialized["tool_calls"] = [tc.model_dump() if hasattr(tc, "model_dump") else tc for tc in msg.tool_calls]
+            if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                serialized["tool_call_id"] = msg.tool_call_id
+            if hasattr(msg, "name") and msg.name:
+                serialized["name"] = msg.name
+            result.append(serialized)
+    return result
+
+
+def _serialize_tools(tools: list[Any] | None) -> list[dict[str, Any]] | None:
+    """Serialize tools to plain dicts."""
+    if not tools:
+        return None
+    result = []
+    for tool in tools:
+        if isinstance(tool, dict):
+            result.append(tool)
+        elif hasattr(tool, "model_dump"):
+            result.append(tool.model_dump(exclude_none=True))
+        else:
+            result.append({"type": "function", "function": tool})
     return result
 
 
@@ -273,6 +339,10 @@ def _build_llama_payload(payload: dict[str, Any], is_chat: bool, stream: bool) -
             "stream": stream,
             "n": payload.get("n", 1),
             "repeat_penalty": payload.get("presence_penalty"),
+            # Tool calling support
+            "tools": _serialize_tools(payload.get("tools")),
+            "tool_choice": payload.get("tool_choice"),
+            "parallel_tool_calls": payload.get("parallel_tool_calls"),
         }
     else:
         mapped = {
@@ -289,37 +359,65 @@ def _build_llama_payload(payload: dict[str, Any], is_chat: bool, stream: bool) -
     return {k: v for k, v in mapped.items() if v is not None}
 
 
-def _extract_text_from_response(result: dict[str, Any], is_chat: bool) -> str:
-    """Extract text content from llama.cpp response."""
+def _extract_response_data(result: dict[str, Any], is_chat: bool) -> tuple[str | None, list[dict] | None, str | None]:
+    """Extract content, tool_calls, and finish_reason from llama.cpp response.
+    
+    Returns: (content, tool_calls, finish_reason)
+    """
     if is_chat:
-        return (
-            result.get("content")
-            or result.get("message", {}).get("content")
-            or result.get("choices", [{}])[0].get("message", {}).get("content")
-            or ""
-        )
-    return (
+        # Try to get from choices first (OpenAI format)
+        choices = result.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+            content = message.get("content")
+            tool_calls = message.get("tool_calls")
+            finish_reason = choices[0].get("finish_reason", "stop")
+            return content, tool_calls, finish_reason
+        
+        # Fallback to direct fields (llama.cpp format)
+        content = result.get("content") or result.get("message", {}).get("content")
+        tool_calls = result.get("tool_calls") or result.get("message", {}).get("tool_calls")
+        finish_reason = result.get("finish_reason", "stop")
+        return content, tool_calls, finish_reason
+    
+    # Non-chat completions
+    content = (
         result.get("content")
         or result.get("text")
         or result.get("choices", [{}])[0].get("text")
         or ""
     )
+    return content, None, "stop"
 
 
-def _extract_text_from_chunk(obj: dict[str, Any], is_chat: bool) -> str:
-    """Extract text from a streaming chunk."""
+def _extract_chunk_data(obj: dict[str, Any], is_chat: bool) -> tuple[str | None, list[dict] | None, str | None]:
+    """Extract content, tool_calls delta, and finish_reason from a streaming chunk.
+    
+    Returns: (content, tool_calls, finish_reason)
+    """
     if is_chat:
-        return (
-            obj.get("content")
-            or obj.get("choices", [{}])[0].get("delta", {}).get("content")
-            or ""
-        )
-    return (
+        choices = obj.get("choices", [])
+        if choices:
+            delta = choices[0].get("delta", {})
+            content = delta.get("content")
+            tool_calls = delta.get("tool_calls")
+            finish_reason = choices[0].get("finish_reason")
+            return content, tool_calls, finish_reason
+        
+        # Fallback to direct content
+        content = obj.get("content")
+        tool_calls = obj.get("tool_calls")
+        finish_reason = obj.get("finish_reason")
+        return content, tool_calls, finish_reason
+    
+    # Non-chat
+    content = (
         obj.get("content")
         or obj.get("text")
         or obj.get("choices", [{}])[0].get("text")
         or ""
     )
+    return content, None, None
 
 
 async def _stream_upstream(
@@ -328,10 +426,14 @@ async def _stream_upstream(
     model: str,
     is_chat: bool,
 ) -> AsyncGenerator[bytes, None]:
-    """Stream responses from llama.cpp and convert to OpenAI SSE format."""
+    """Stream responses from llama.cpp and convert to OpenAI SSE format.
+    
+    Handles both text content and tool calls in streaming responses.
+    """
     start_time = time.time()
     id_prefix = "chatcmpl" if is_chat else "cmpl"
     object_type = "chat.completion.chunk" if is_chat else "text_completion.chunk"
+    accumulated_finish_reason = None
     
     try:
         async with http_client.stream("POST", url, json=payload) as response:
@@ -347,10 +449,12 @@ async def _stream_upstream(
                 data = line.removeprefix("data: ").strip()
                 if data == "[DONE]":
                     if is_chat:
+                        # Send final chunk with finish_reason
+                        final_reason = accumulated_finish_reason or "stop"
                         done_chunk = {
                             "id": f"{id_prefix}-{int(start_time)}",
                             "object": object_type,
-                            "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+                            "choices": [{"delta": {}, "index": 0, "finish_reason": final_reason}],
                         }
                         yield f"data: {json.dumps(done_chunk)}\n\n".encode()
                     yield b"data: [DONE]\n\n"
@@ -358,24 +462,39 @@ async def _stream_upstream(
 
                 try:
                     obj = json.loads(data)
-                    text = _extract_text_from_chunk(obj, is_chat)
+                    content, tool_calls, finish_reason = _extract_chunk_data(obj, is_chat)
+                    if finish_reason:
+                        accumulated_finish_reason = finish_reason
                 except json.JSONDecodeError:
-                    text = data
+                    content = data
+                    tool_calls = None
+                    finish_reason = None
 
                 if is_chat:
+                    # Build delta with content and/or tool_calls
+                    delta = {}
+                    if content:
+                        delta["content"] = content
+                    if tool_calls:
+                        delta["tool_calls"] = tool_calls
+                    
+                    # Skip empty deltas unless we have a finish_reason
+                    if not delta and not finish_reason:
+                        continue
+                    
                     chunk = {
                         "id": f"{id_prefix}-{int(start_time)}",
                         "object": object_type,
                         "created": int(start_time),
                         "model": model,
-                        "choices": [{"delta": {"content": text}, "index": 0, "finish_reason": None}],
+                        "choices": [{"delta": delta, "index": 0, "finish_reason": finish_reason}],
                     }
                 else:
                     chunk = {
                         "id": f"{id_prefix}-{int(start_time)}",
                         "object": object_type,
                         "model": model,
-                        "choices": [{"text": text, "index": 0, "finish_reason": None}],
+                        "choices": [{"text": content or "", "index": 0, "finish_reason": finish_reason}],
                     }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
 
@@ -484,14 +603,25 @@ async def chat_completions(req: ChatCompletionRequest, _: None = Depends(verify_
         logger.error(f"Upstream error {e.response.status_code}: {error_body}")
         raise HTTPException(status_code=e.response.status_code, detail=f"Upstream error: {error_body}")
 
-    text = _extract_text_from_response(result, is_chat=True)
+    content, tool_calls, finish_reason = _extract_response_data(result, is_chat=True)
+    
+    # Build the response message
+    message: dict[str, Any] = {"role": "assistant"}
+    if content is not None:
+        message["content"] = content
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+        # When there are tool calls, finish_reason should be "tool_calls"
+        if finish_reason == "stop":
+            finish_reason = "tool_calls"
+    
     return {
         "id": f"chatcmpl-{int(time.time())}",
         "object": "chat.completion",
         "created": int(time.time()),
         "model": model,
         "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}
+            {"index": 0, "message": message, "finish_reason": finish_reason}
         ],
         "usage": result.get("usage", {}),
     }
@@ -525,13 +655,13 @@ async def completions(req: CompletionRequest, _: None = Depends(verify_auth)):
         logger.error(f"Upstream error {e.response.status_code}: {error_body}")
         raise HTTPException(status_code=e.response.status_code, detail=f"Upstream error: {error_body}")
 
-    text = _extract_text_from_response(result, is_chat=False)
+    content, _, finish_reason = _extract_response_data(result, is_chat=False)
     return {
         "id": f"cmpl-{int(time.time())}",
         "object": "text_completion",
         "created": int(time.time()),
         "model": model,
-        "choices": [{"text": text, "index": 0, "finish_reason": "stop"}],
+        "choices": [{"text": content or "", "index": 0, "finish_reason": finish_reason or "stop"}],
         "usage": result.get("usage", {}),
     }
 

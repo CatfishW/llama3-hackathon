@@ -21,7 +21,14 @@ except Exception:  # pragma: no cover - graceful degradation in minimal envs
         pass
     OpenAI = None  # type: ignore
     _OPENAI_AVAILABLE = False
+    OpenAI = None  # type: ignore
+    _OPENAI_AVAILABLE = False
 import threading
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +326,62 @@ class LLMClient:
         logger.info("Could not auto-detect backend, defaulting to vllm (OpenAI-compatible)")
         return "vllm"
     
+def detect_model_from_url(base_url: str, api_key: str = "not-needed") -> Optional[str]:
+    """
+    Auto-detect model name by querying the /v1/models endpoint.
+    
+    Args:
+        base_url: Base URL of the LLM server
+        api_key: API key for authentication
+        
+    Returns:
+        First available model name, or None if detection failed
+    """
+    if httpx is None:
+        logger.warning("httpx not installed, cannot auto-detect model")
+        return None
+
+    try:
+        # Ensure base_url ends with /v1/models or correct path
+        # If input is http://host:port, we might need to append /v1 if missing, 
+        # but pure /models is standard for some, /v1/models for others.
+        # The client code logic was:
+        # self._base_url = self.server_url
+        # if not self._base_url.endswith("/v1") ... append /v1
+        # models_url = f"{self._base_url}/models"
+        
+        # We replicate that logic here for safety
+        clean_url = base_url.rstrip('/')
+        if not clean_url.endswith("/v1"):
+             clean_url = f"{clean_url}/v1"
+             
+        models_url = f"{clean_url}/models"
+        logger.info(f"Querying models endpoint: {models_url}")
+        
+        headers = {"accept": "application/json"}
+        if api_key and api_key != "not-needed":
+            headers["Authorization"] = f"Bearer {api_key}"
+        
+        with httpx.Client(timeout=10) as client:
+            response = client.get(models_url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        
+        # Parse response - vLLM returns {"object": "list", "data": [...]}
+        if "data" in data and len(data["data"]) > 0:
+            model_id = data["data"][0].get("id")
+            if model_id:
+                logger.info(f"Found model from /v1/models: {model_id}")
+                return model_id
+        
+        logger.warning("No models found in /v1/models response")
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Failed to auto-detect model name: {e}")
+        return None
+
+
     def _detect_model_name(self) -> Optional[str]:
         """
         Auto-detect model name by querying the /v1/models endpoint.
@@ -326,31 +389,7 @@ class LLMClient:
         Returns:
             First available model name, or None if detection failed
         """
-        try:
-            import httpx
-            
-            # Query the models endpoint
-            models_url = f"{self._base_url}/models"
-            logger.info(f"Querying models endpoint: {models_url}")
-            
-            with httpx.Client(timeout=10) as client:
-                response = client.get(models_url, headers={"accept": "application/json"})
-                response.raise_for_status()
-                data = response.json()
-            
-            # Parse response - vLLM returns {"object": "list", "data": [...]}
-            if "data" in data and len(data["data"]) > 0:
-                model_id = data["data"][0].get("id")
-                if model_id:
-                    logger.info(f"Found model from /v1/models: {model_id}")
-                    return model_id
-            
-            logger.warning("No models found in /v1/models response")
-            return None
-            
-        except Exception as e:
-            logger.warning(f"Failed to auto-detect model name: {e}")
-            return None
+        return detect_model_from_url(self.server_url, self.api_key)
     
     def update_config(self, server_url: str, api_key: str, backend_type: str = "auto"):
         """

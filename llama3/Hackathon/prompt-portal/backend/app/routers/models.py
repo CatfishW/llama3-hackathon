@@ -14,6 +14,7 @@ import logging
 from ..deps import get_current_user, get_db
 from ..models_config import get_models_manager, ModelConfig
 from ..models import User
+from ..services.llm_client import detect_model_from_url
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class ModelCreateRequest(BaseModel):
     model_config = {"protected_namespaces": ()}
     name: str = Field(..., description="Display name for the model")
     provider: str = Field(..., description="Provider (e.g., openai, anthropic)")
-    model: str = Field(..., description="Model identifier for API calls")
+    model: Optional[str] = Field(None, description="Model identifier for API calls (optional, auto-detected from URL if empty)")
     apiBase: str = Field(..., description="API base URL")
     apiKey: str = Field(..., description="API key for authentication")
     description: Optional[str] = Field(None, description="Model description")
@@ -253,6 +254,21 @@ async def add_custom_model(
                 detail=f"Model '{request.name}' already exists. Use update endpoint to modify it."
             )
         
+        # Auto-detect model if not provided
+        if not request.model:
+            detected_model = detect_model_from_url(request.apiBase, request.apiKey)
+            if detected_model:
+                request.model = detected_model
+                logger.info(f"Auto-detected model '{detected_model}' for custom model '{request.name}'")
+            else:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Could not auto-detect model from URL. Please specify model name manually."
+                )
+
+        # Set default maxTokens to 5000 if not specified
+        max_tokens = request.maxTokens if request.maxTokens is not None else 5000
+
         # Create new model configuration
         new_model = ModelConfig(
             name=request.name,
@@ -262,7 +278,7 @@ async def add_custom_model(
             apiKey=request.apiKey,
             description=request.description,
             features=request.features or [],
-            maxTokens=request.maxTokens,
+            maxTokens=max_tokens,
             supportsFunctions=request.supportsFunctions,
             supportsVision=request.supportsVision
         )
