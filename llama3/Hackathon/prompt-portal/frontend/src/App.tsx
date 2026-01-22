@@ -22,10 +22,8 @@ import PrivateRoute from './components/PrivateRoute'
 import AnnouncementPopup from './components/AnnouncementPopup'
 import { useAuth } from './auth/AuthContext'
 import { TemplateProvider } from './contexts/TemplateContext'
-import { CompletionProvider } from './completion/CompletionProvider'
 import WebGame from './pages/WebGame'
 import ChatStudio from './pages/ChatStudio'
-import VoiceChat from './pages/VoiceChat'
 import { announcementsAPI } from './api'
 
 export default function App() {
@@ -71,22 +69,32 @@ export default function App() {
   
   const appStyle = {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    color: 'white',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    background: '#0f172a', // Slate 950
+    color: '#f8fafc',
+    fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
     display: 'flex',
-    flexDirection: 'column' as const
+    flexDirection: 'column' as const,
+    position: 'relative' as const,
+    overflow: 'hidden'
   }
 
-  const contentStyle = {
-    flex: 1,
-    padding: user ? '0' : '0' // No padding for homepage, some for other pages
+  const blobStyle: any = {
+    position: 'absolute',
+    width: '500px',
+    height: '500px',
+    background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%)',
+    borderRadius: '50%',
+    zIndex: 0,
+    pointerEvents: 'none'
   }
 
   return (
     <div style={appStyle}>
-      <TemplateProvider>
-        <CompletionProvider>
+      <div style={{ ...blobStyle, top: '-10%', right: '-5%' }} />
+      <div style={{ ...blobStyle, bottom: '10%', left: '-10%', background: 'radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 70%)' }} />
+      
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <TemplateProvider>
           {/* Show announcements for logged-in users */}
           {user && announcements.length > 0 && (
             <AnnouncementPopup 
@@ -179,11 +187,6 @@ export default function App() {
               </div>
             </PrivateRoute>
           } />
-          <Route path="/voice-chat" element={
-            <PrivateRoute>
-              <VoiceChat />
-            </PrivateRoute>
-          } />
           <Route path="/templates/view/:id" element={
             <PrivateRoute>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -258,8 +261,8 @@ export default function App() {
           } />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
-        </CompletionProvider>
       </TemplateProvider>
+      </div>
     </div>
   )
 }

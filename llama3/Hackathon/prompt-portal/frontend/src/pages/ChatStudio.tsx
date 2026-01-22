@@ -1,7 +1,37 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Send, 
+  Trash2, 
+  RotateCcw, 
+  Download, 
+  Plus, 
+  MoreVertical, 
+  Copy, 
+  Check, 
+  MessageSquare, 
+  Settings, 
+  Image as ImageIcon, 
+  FileText, 
+  Mic, 
+  MicOff,
+  Edit2,
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  X,
+  Menu,
+  Sparkles,
+  Zap,
+  Clock,
+  Layout,
+  User,
+  PanelLeftClose,
+  PanelLeftOpen
+} from 'lucide-react'
 import { chatbotAPI, drivingStatsAPI } from '../api'
 import { useTemplates } from '../contexts/TemplateContext'
-import { TabCompletionTextarea } from '../completion/TabCompletionInput'
+import { useWebSpeech } from '../hooks/useWebSpeech'
 
 // Hook to detect mobile and handle responsive behavior
 const useIsMobile = () => {
@@ -90,69 +120,74 @@ function ThinkingProcess({ thinking }: { thinking: string }) {
   if (!thinking || !thinking.trim()) return null
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
       style={{
-        maxWidth: isMobile ? '90%' : '70%',
+        maxWidth: isMobile ? '95%' : '85%',
         alignSelf: 'flex-start',
-        marginBottom: '8px',
-        borderRadius: '12px',
+        marginBottom: '12px',
+        borderRadius: '16px',
         overflow: 'hidden',
-        border: '1px solid rgba(168, 85, 247, 0.3)',
-        background: 'rgba(168, 85, 247, 0.08)',
+        border: '1px solid rgba(168, 85, 247, 0.2)',
+        background: 'rgba(168, 85, 247, 0.05)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
       }}
     >
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         style={{
           width: '100%',
-          padding: '10px 14px',
+          padding: '12px 16px',
           background: 'transparent',
           border: 'none',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          color: 'rgba(168, 85, 247, 0.9)',
+          gap: '10px',
+          color: 'rgba(192, 132, 252, 0.9)',
           fontSize: '0.85rem',
-          fontWeight: 500,
-          transition: 'color 0.2s',
+          fontWeight: 600,
+          transition: 'all 0.2s',
           justifyContent: 'space-between',
         }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(196, 181, 253, 0.95)'
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(168, 85, 247, 0.9)'
-        }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '0.9rem' }}>
-            {isExpanded ? '▼' : '▶'}
-          </span>
-          <span>💭 Thinking Process</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Brain size={16} />
+          <span>Thinking Process</span>
         </div>
+        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
 
-      {isExpanded && (
-        <div
-          style={{
-            padding: '0 14px 12px 14px',
-            borderTop: '1px solid rgba(168, 85, 247, 0.2)',
-            background: 'rgba(168, 85, 247, 0.04)',
-            fontSize: '0.8rem',
-            lineHeight: '1.6',
-            color: 'rgba(226, 232, 240, 0.85)',
-            maxHeight: '300px',
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-          }}
-        >
-          {thinking}
-        </div>
-      )}
-    </div>
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            <div
+              style={{
+                padding: '0 16px 16px 16px',
+                borderTop: '1px solid rgba(168, 85, 247, 0.1)',
+                background: 'rgba(168, 85, 247, 0.02)',
+                fontSize: '0.8rem',
+                lineHeight: '1.7',
+                color: 'rgba(226, 232, 240, 0.8)',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: '"Fira Code", "JetBrains Mono", monospace',
+              }}
+            >
+              {thinking}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
 
@@ -274,50 +309,56 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <div
           key={`code-${idx}`}
           style={{
-            background: 'rgba(0,0,0,0.4)',
-            border: '1px solid rgba(148,163,184,0.2)',
-            borderRadius: '8px',
-            padding: '12px',
-            margin: '8px 0',
+            background: 'rgba(15, 23, 42, 0.8)',
+            border: '1px solid rgba(148,163,184,0.15)',
+            borderRadius: '12px',
+            padding: '16px',
+            margin: '12px 0',
             overflowX: 'auto',
-            position: 'relative'
+            position: 'relative',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
           }}
         >
           <div style={{ 
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '6px'
+            marginBottom: '10px'
           }}>
             <div style={{ 
-              fontSize: '0.7rem', 
-              color: 'rgba(148,163,184,0.7)', 
-              fontWeight: 600,
-              textTransform: 'uppercase'
+              fontSize: '0.75rem', 
+              color: 'rgba(148,163,184,0.8)', 
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
             }}>
               {match.language}
             </div>
             <button
               onClick={() => copyToClipboard(match.content, idx)}
               style={{
-                background: copiedIndex === idx ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
-                border: `1px solid ${copiedIndex === idx ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
-                borderRadius: '6px',
-                padding: '4px 8px',
-                fontSize: '0.65rem',
+                background: copiedIndex === idx ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.08)',
+                border: `1px solid ${copiedIndex === idx ? 'rgba(34,197,94,0.3)' : 'rgba(148,163,184,0.2)'}`,
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '0.7rem',
                 color: copiedIndex === idx ? '#86efac' : 'rgba(226,232,240,0.8)',
                 cursor: 'pointer',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
-              {copiedIndex === idx ? '✓ Copied' : 'Copy'}
+              {copiedIndex === idx ? <Check size={12} /> : <Copy size={12} />}
+              {copiedIndex === idx ? 'Copied' : 'Copy'}
             </button>
           </div>
           <pre style={{ 
             margin: 0, 
-            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-            fontSize: '0.8rem',
-            lineHeight: '1.5',
+            fontFamily: '"Fira Code", "JetBrains Mono", monospace',
+            fontSize: '0.85rem',
+            lineHeight: '1.6',
             color: '#e2e8f0',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all'
@@ -333,7 +374,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     // Add remaining text with markdown rendering
     if (lastIndex < content.length) {
       const textSegment = content.substring(lastIndex)
-      // Check if the remaining text is JSON-like (starts with { or [ and ends with } or ])
+      // Check if the remaining text is JSON-like
       const trimmed = textSegment.trim()
       const isJsonLike = (trimmed.startsWith('{') && trimmed.endsWith('}')) || 
                          (trimmed.startsWith('[') && trimmed.endsWith(']'))
@@ -344,48 +385,54 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           <div
             key="json-block"
             style={{
-              background: 'rgba(0,0,0,0.4)',
-              border: '1px solid rgba(148,163,184,0.2)',
-              borderRadius: '8px',
-              padding: '12px',
-              margin: '8px 0',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(148,163,184,0.15)',
+              borderRadius: '12px',
+              padding: '16px',
+              margin: '12px 0',
               overflowX: 'auto',
-              position: 'relative'
+              position: 'relative',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
             }}
           >
             <div style={{ 
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '6px'
+              marginBottom: '10px'
             }}>
               <div style={{ 
-                fontSize: '0.7rem', 
-                color: 'rgba(148,163,184,0.7)', 
-                fontWeight: 600,
-                textTransform: 'uppercase'
+                fontSize: '0.75rem', 
+                color: 'rgba(148,163,184,0.8)', 
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}>
                 JSON
               </div>
               <button
                 onClick={() => copyToClipboard(trimmed, 'json')}
                 style={{
-                  background: copiedIndex === 'json' ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)',
-                  border: `1px solid ${copiedIndex === 'json' ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '0.65rem',
+                  background: copiedIndex === 'json' ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.08)',
+                  border: `1px solid ${copiedIndex === 'json' ? 'rgba(34,197,94,0.3)' : 'rgba(148,163,184,0.2)'}`,
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '0.7rem',
                   color: copiedIndex === 'json' ? '#86efac' : 'rgba(226,232,240,0.8)',
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
               >
-                {copiedIndex === 'json' ? '✓ Copied' : 'Copy'}
+                {copiedIndex === 'json' ? <Check size={12} /> : <Copy size={12} />}
+                {copiedIndex === 'json' ? 'Copied' : 'Copy'}
               </button>
             </div>
             <pre style={{ 
               margin: 0, 
-              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontFamily: '"Fira Code", "JetBrains Mono", monospace',
               fontSize: '0.85rem',
               lineHeight: '1.6',
               color: '#e2e8f0',
@@ -415,113 +462,64 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
     lines.forEach((line, lineIdx) => {
       if (!line.trim()) {
-        // Empty line
-        elements.push(
-          <div key={`empty-${lineIdx}`} style={{ height: '0.5em' }}>
-            &nbsp;
-          </div>
-        )
+        elements.push(<div key={`empty-${lineIdx}`} style={{ height: '0.8em' }}>&nbsp;</div>)
         return
       }
 
-      // Check for heading (## or ### etc.)
+      // Heading
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
       if (headingMatch) {
         const level = headingMatch[1].length
-        const text = headingMatch[2]
-        const headingSizes: Record<number, number> = { 1: 1.5, 2: 1.3, 3: 1.1, 4: 1, 5: 0.95, 6: 0.9 }
+        const hText = headingMatch[2]
+        const headingSizes: Record<number, string> = { 1: '1.6rem', 2: '1.4rem', 3: '1.2rem', 4: '1.1rem', 5: '1rem', 6: '0.9rem' }
         elements.push(
           <div
             key={`heading-${lineIdx}`}
             style={{
-              fontSize: `${headingSizes[level]}rem`,
-              fontWeight: 700,
-              marginTop: '12px',
-              marginBottom: '8px',
-              color: '#f1f5f9'
+              fontSize: headingSizes[level],
+              fontWeight: 800,
+              marginTop: '1.5rem',
+              marginBottom: '0.8rem',
+              color: '#f8fafc',
+              letterSpacing: '-0.025em'
             }}
           >
-            {renderInlineFormatting(text)}
+            {renderInlineFormatting(hText)}
           </div>
         )
         return
       }
 
-      // Check for bullet list items
+      // Bullet points
       const bulletMatch = line.match(/^[\s]*[-*]\s+(.+)$/)
       if (bulletMatch) {
-        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
         elements.push(
           <div
             key={`bullet-${lineIdx}`}
             style={{
-              marginLeft: `${indent * 0.5 + 8}px`,
-              display: 'flex',
-              gap: '8px',
-              marginBottom: '4px'
+              paddingLeft: '1.5rem',
+              position: 'relative',
+              marginBottom: '0.5rem',
+              lineHeight: '1.6'
             }}
           >
-            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '16px' }}>•</span>
-            <span>{renderInlineFormatting(bulletMatch[1])}</span>
+            <span style={{ position: 'absolute', left: '0.5rem', color: '#6366f1' }}>•</span>
+            {renderInlineFormatting(bulletMatch[1])}
           </div>
         )
         return
       }
 
-      // Check for numbered list items
-      const numberedMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/)
-      if (numberedMatch) {
-        const indent = line.match(/^(\s*)/)?.[1]?.length || 0
-        elements.push(
-          <div
-            key={`numbered-${lineIdx}`}
-            style={{
-              marginLeft: `${indent * 0.5 + 8}px`,
-              display: 'flex',
-              gap: '8px',
-              marginBottom: '4px'
-            }}
-          >
-            <span style={{ color: 'rgba(148,163,184,0.8)', minWidth: '24px' }}>
-              {numberedMatch[1]}.
-            </span>
-            <span>{renderInlineFormatting(numberedMatch[2])}</span>
-          </div>
-        )
-        return
-      }
-
-      // Check for blockquote
-      const quoteMatch = line.match(/^>\s+(.+)$/)
-      if (quoteMatch) {
-        elements.push(
-          <div
-            key={`quote-${lineIdx}`}
-            style={{
-              borderLeft: '3px solid rgba(94,234,212,0.5)',
-              paddingLeft: '12px',
-              marginLeft: '4px',
-              marginBottom: '8px',
-              color: 'rgba(226,232,240,0.8)',
-              fontStyle: 'italic'
-            }}
-          >
-            {renderInlineFormatting(quoteMatch[1])}
-          </div>
-        )
-        return
-      }
-
-      // Regular paragraph with copy button
+      // Paragraph
       elements.push(
         <div
           key={`paragraph-${lineIdx}`}
           style={{
+            marginBottom: '0.75rem',
+            lineHeight: '1.7',
             display: 'flex',
             alignItems: 'flex-start',
-            gap: '8px',
-            marginBottom: '4px',
-            paddingRight: '8px'
+            gap: '12px'
           }}
           className="copy-line-container"
         >
@@ -530,23 +528,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           </div>
           <button
             onClick={() => copyToClipboard(line, `line-${lineIdx}`)}
-            title="Copy this line"
-            style={{
-              background: copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.05)',
-              border: `1px solid ${copiedIndex === `line-${lineIdx}` ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.15)'}`,
-              borderRadius: '4px',
-              padding: '2px 6px',
-              fontSize: '0.6rem',
-              color: copiedIndex === `line-${lineIdx}` ? '#86efac' : 'rgba(226,232,240,0.6)',
-              cursor: 'pointer',
-              flexShrink: 0,
-              marginTop: '2px',
-              opacity: 0,
-              transition: 'all 0.2s'
-            }}
             className="copy-line-btn"
+            style={{
+              opacity: 0,
+              background: 'rgba(148,163,184,0.1)',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '4px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              color: copiedIndex === `line-${lineIdx}` ? '#86efac' : 'rgba(148,163,184,0.6)'
+            }}
           >
-            {copiedIndex === `line-${lineIdx}` ? '✓' : '📋'}
+            {copiedIndex === `line-${lineIdx}` ? <Check size={14} /> : <Copy size={14} />}
           </button>
         </div>
       )
@@ -556,54 +550,32 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
   
   const renderInlineFormatting = (text: string) => {
-    // Handle bold, italic, and inline code
     const parts: (string | JSX.Element)[] = []
-    
-    // Pattern to match **bold**, *italic*, and `code` in order of precedence
     const pattern = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)/g
-    
     let lastIndex = 0
     let match
     
     while ((match = pattern.exec(text)) !== null) {
-      // Add text before match
       if (match.index > lastIndex) {
         parts.push(text.substring(lastIndex, match.index))
       }
       
       if (match[1]) {
-        // Bold
-        parts.push(
-          <strong
-            key={`bold-${match.index}`}
-            style={{ fontWeight: 700, color: '#f1f5f9' }}
-          >
-            {match[2]}
-          </strong>
-        )
+        parts.push(<strong key={`bold-${match.index}`} style={{ fontWeight: 700, color: '#f8fafc' }}>{match[2]}</strong>)
       } else if (match[3]) {
-        // Italic
-        parts.push(
-          <em
-            key={`italic-${match.index}`}
-            style={{ fontStyle: 'italic', color: 'rgba(226,232,240,0.95)' }}
-          >
-            {match[4]}
-          </em>
-        )
+        parts.push(<em key={`italic-${match.index}`} style={{ fontStyle: 'italic', color: 'rgba(241, 245, 249, 0.9)' }}>{match[4]}</em>)
       } else if (match[5]) {
-        // Inline code
         parts.push(
           <code
             key={`inline-${match.index}`}
             style={{
-              background: 'rgba(0,0,0,0.3)',
+              background: 'rgba(30, 41, 59, 0.5)',
               padding: '2px 6px',
-              borderRadius: '4px',
-              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-              fontSize: '0.85em',
-              border: '1px solid rgba(148,163,184,0.2)',
-              color: '#a1e8ff'
+              borderRadius: '6px',
+              fontFamily: 'monospace',
+              fontSize: '0.9em',
+              border: '1px solid rgba(148, 163, 184, 0.1)',
+              color: '#38bdf8'
             }}
           >
             {match[6]}
@@ -614,7 +586,6 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       lastIndex = match.index + match[0].length
     }
     
-    // Add remaining text
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex))
     }
@@ -622,19 +593,36 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     return parts.length > 0 ? parts : text
   }
 
-  // Extract thinking process if it exists
-  const { thinking, cleanContent } = extractThinkingProcess(message.content)
+  const { thinking } = extractThinkingProcess(message.content)
 
   return (
-    <>
+    <motion.div
+      initial={{ opacity: 0, y: 15, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}
+    >
       {thinking && message.role === 'assistant' && <ThinkingProcess thinking={thinking} />}
-      <div style={{ maxWidth: isMobile ? '90%' : '70%', padding: '14px 18px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
-        <div style={{ fontSize: message.role === 'system' ? '0.75rem' : '0.85rem', lineHeight: '1.6' }}>
+      <div 
+        style={{ 
+          maxWidth: isMobile ? '92%' : '80%', 
+          padding: '16px 20px', 
+          borderRadius: message.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '8px', 
+          boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+          ...style 
+        }}
+      >
+        <div style={{ fontSize: message.role === 'system' ? '0.8rem' : '0.95rem', lineHeight: '1.7', color: '#e2e8f0' }}>
           {renderContent()}
         </div>
-        <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', color: 'rgba(226,232,240,0.8)' }}>{timestamp}</div>
+        <div style={{ fontSize: '0.7rem', alignSelf: 'flex-end', opacity: 0.6, fontWeight: 500 }}>
+          {timestamp}
+        </div>
       </div>
-    </>
+    </motion.div>
   )
 }
 
@@ -669,6 +657,19 @@ export default function ChatStudio() {
   const [consensusMessageCount, setConsensusMessageCount] = useState<number>(0)
   const [lastPlayerOption, setLastPlayerOption] = useState<string>('')
   const [lastAgentOption, setLastAgentOption] = useState<string>('')
+
+  // Speech to Text Integration
+  const { isListening, startListening, stopListening, isSupported: speechSupported } = useWebSpeech({
+    onTranscript: (transcript) => {
+      setInputValue(prev => {
+        const space = prev && !prev.endsWith(' ') ? ' ' : ''
+        return prev + space + transcript
+      })
+    },
+    onError: (err) => {
+      setErrorMessage(`Speech recognition error: ${err}`)
+    }
+  })
 
   const selectedSession = useMemo(
     () => sessions.find(s => s.id === selectedSessionId) || null,
@@ -1387,103 +1388,171 @@ export default function ChatStudio() {
       )}
 
       {/* Sidebar - hidden on mobile by default */}
-      {(!isMobile || sidebarOpen) && (
-        <>
-          <aside style={sidebarStyle}>
-            <div style={{ flexShrink: 0, padding: '22px', paddingBottom: '12px' }}>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '10px', color: '#e0e7ff' }}>Chats</div>
-              <button
-                onClick={handleCreateSession}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(94,234,212,0.55)',
-                  background: 'linear-gradient(135deg, rgba(94,234,212,0.2), rgba(20,184,166,0.15))',
-                  color: '#bef264',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                + New Chat
-              </button>
-            </div>
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: '12px', 
-              overflowY: 'auto', 
-              overflowX: 'hidden',
-              padding: '0 22px 22px 22px',
-              flex: 1,
-              minHeight: 0
-            }}>
-              {loadingSessions && <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading sessions…</div>}
-              {!loadingSessions && !sessions.length && (
-                <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No chats yet. Create your first session to begin.</div>
-              )}
-              {sessions.map(session => (
-                <div
-                  key={session.id}
-                  onClick={() => {
-                    handleSelectSession(session.id)
-                    if (isMobile) setSidebarOpen(false)
-                  }}
+      <AnimatePresence>
+        {(!isMobile || sidebarOpen) && (
+          <>
+            <motion.aside
+              initial={isMobile ? { x: '-100%' } : { width: 280 }}
+              animate={isMobile ? { x: 0 } : { width: sidebarOpen ? 280 : 0 }}
+              exit={isMobile ? { x: '-100%' } : { width: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              style={sidebarStyle}
+            >
+              <div style={{ flexShrink: 0, padding: '24px', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.2rem', fontWeight: 700, color: '#f8fafc' }}>
+                    <MessageSquare size={20} className="text-indigo-400" />
+                    <span>Chats</span>
+                  </div>
+                  {!isMobile && (
+                    <button 
+                      onClick={() => setSidebarOpen(!sidebarOpen)}
+                      style={{ background: 'transparent', border: 'none', color: 'rgba(148,163,184,0.7)', cursor: 'pointer' }}
+                    >
+                      <PanelLeftClose size={18} />
+                    </button>
+                  )}
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleCreateSession}
                   style={{
-                    padding: '12px 14px',
+                    width: '100%',
+                    padding: '12px',
                     borderRadius: '12px',
-                    border: selectedSessionId === session.id ? '2px solid rgba(129,140,248,0.6)' : '1px solid rgba(148,163,184,0.2)',
-                    background: selectedSessionId === session.id ? 'rgba(79,70,229,0.15)' : 'rgba(15, 23, 42, 0.4)',
+                    border: '1px solid rgba(99, 102, 241, 0.4)',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(129, 140, 248, 0.1))',
+                    color: '#e0e7ff',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px'
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.1)'
                   }}
                 >
-                  <div style={{ fontWeight: 600, color: '#e2e8f0', wordBreak: 'break-word' }}>{session.title}</div>
-                  {session.last_message_preview && (
-                    <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {session.last_message_preview}
-                    </div>
-                  )}
-                  <div style={{ fontSize: '0.7rem', color: 'rgba(148,163,184,0.75)' }}>
-                    {new Date(session.updated_at).toLocaleDateString()} · {session.message_count} messages
+                  <Plus size={18} />
+                  New Chat
+                </motion.button>
+              </div>
+
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '8px', 
+                overflowY: 'auto', 
+                padding: '0 16px 24px 16px',
+                flex: 1
+              }}>
+                {loadingSessions ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>
+                      <RotateCcw size={20} />
+                    </motion.div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteSession(session.id)
-                    }}
-                    style={{
-                      alignSelf: 'flex-end',
-                      padding: '4px 8px',
-                      fontSize: '0.7rem',
-                      background: 'transparent',
-                      border: '1px solid rgba(248,113,113,0.45)',
-                      color: 'rgba(248,113,113,0.9)',
-                      borderRadius: '8px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
-          </aside>
-          {isMobile && sidebarOpen && (
-            <div 
-              onClick={() => setSidebarOpen(false)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.4)',
-                zIndex: 30
-              }}
-            />
-          )}
-        </>
-      )}
+                ) : sessions.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                    No conversations yet.
+                  </div>
+                ) : (
+                  sessions.map(session => (
+                    <motion.div
+                      key={session.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      whileHover={{ background: 'rgba(255,255,255,0.05)' }}
+                      onClick={() => {
+                        handleSelectSession(session.id)
+                        if (isMobile) setSidebarOpen(false)
+                      }}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        background: selectedSessionId === session.id ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                        border: '1px solid',
+                        borderColor: selectedSessionId === session.id ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'all 0.2s ease',
+                        group: true
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                        <div style={{ 
+                          fontWeight: 600, 
+                          color: selectedSessionId === session.id ? '#fff' : '#cbd5e1',
+                          fontSize: '0.9rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '85%'
+                        }}>
+                          {session.title}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id)
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'rgba(248, 113, 113, 0.4)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            transition: 'color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(248, 113, 113, 0.9)'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(248, 113, 113, 0.4)'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      
+                      {session.last_message_preview && (
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'rgba(148, 163, 184, 0.6)', 
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis', 
+                          whiteSpace: 'nowrap',
+                          marginBottom: '4px'
+                        }}>
+                          {session.last_message_preview}
+                        </div>
+                      )}
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.65rem', color: 'rgba(100, 116, 139, 0.6)' }}>
+                        <Clock size={10} />
+                        <span>{new Date(session.updated_at).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span>{session.message_count} msgs</span>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </motion.aside>
+            {isMobile && sidebarOpen && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSidebarOpen(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(4px)',
+                  zIndex: 30
+                }}
+              />
+            )}
+          </>
+        )}
+      </AnimatePresence>
 
       <main style={mainStyle}>
         {errorMessage && (
@@ -1494,58 +1563,101 @@ export default function ChatStudio() {
 
         {selectedSession && sessionDraft ? (
           <>
-            <div style={{ padding: isMobile ? '12px 16px' : '18px 24px', borderBottom: '1px solid rgba(148,163,184,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'center' : 'flex-start', gap: '10px', flexDirection: isMobile ? 'row' : 'row', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: isMobile ? 1 : 'unset', minWidth: 0 }}>
-                <input
-                  value={sessionDraft.title}
-                  onChange={(e) => {
-                    setSessionDraft({ ...sessionDraft, title: e.target.value })
-                    setDraftDirtyFlag(true);
-                  }}
-                  style={{
-                    fontSize: isMobile ? '1.1rem' : '1.4rem',
-                    fontWeight: 600,
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#e2e8f0',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                />
-                {!isMobile && <div style={{ fontSize: '0.75rem', color: 'rgba(148,163,184,0.7)' }}>Session ID: {selectedSession.session_key}</div>}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
-                <button
-                  onClick={handleCopyLast}
-                  disabled={!hasAssistantMessage}
-                  style={{
-                    ...actionButtonStyle,
-                    opacity: hasAssistantMessage ? 1 : 0.5,
-                    cursor: hasAssistantMessage ? 'pointer' : 'default',
-                    fontSize: isMobile ? '0.65rem' : '0.75rem',
-                    padding: isMobile ? '6px 10px' : '8px 14px'
-                  }}
-                >
-                  {isMobile ? 'Copy' : 'Copy Reply'}
-                </button>
-                <button onClick={handleExport} style={{...actionButtonStyle, fontSize: isMobile ? '0.65rem' : '0.75rem', padding: isMobile ? '6px 10px' : '8px 14px'}}>Export</button>
-                <button onClick={handleResetSession} style={{...actionButtonStyle, fontSize: isMobile ? '0.65rem' : '0.75rem', padding: isMobile ? '6px 10px' : '8px 14px'}}>Reset</button>
-                {!isMobile && (
-                  <>
-                    <button
-                      onClick={handleRegenerate}
-                      disabled={sending || !hasUserMessage}
-                      style={{
-                        ...actionButtonStyle,
-                        opacity: sending || !hasUserMessage ? 0.5 : 1,
-                        cursor: sending || !hasUserMessage ? 'default' : 'pointer'
+            <div style={{ padding: isMobile ? '16px' : '20px 32px', borderBottom: '1px solid rgba(148,163,184,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.15)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: 0 }}>
+                {isMobile && (
+                  <button 
+                    onClick={() => setSidebarOpen(true)}
+                    style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <Menu size={24} />
+                  </button>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      value={sessionDraft.title}
+                      onChange={(e) => {
+                        setSessionDraft({ ...sessionDraft, title: e.target.value })
+                        setDraftDirtyFlag(true);
                       }}
-                    >
-                      Regenerate
-                    </button>
-                    <button onClick={handleSaveDraft} disabled={!draftDirty} style={{ ...actionButtonStyle, border: '1px solid rgba(94,234,212,0.55)', color: '#bbf7d0', opacity: draftDirty ? 1 : 0.5 }}>Save</button>
-                  </>
+                      style={{
+                        fontSize: isMobile ? '1.1rem' : '1.25rem',
+                        fontWeight: 700,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#f8fafc',
+                        outline: 'none',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '100%'
+                      }}
+                    />
+                    <Edit2 size={14} style={{ opacity: 0.4 }} />
+                  </div>
+                  {!isMobile && (
+                    <div style={{ fontSize: '0.7rem', color: 'rgba(148,163,184,0.5)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Zap size={10} />
+                      <span>{selectedSession.session_key}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <motion.button
+                    whileHover={{ background: 'rgba(255,255,255,0.08)' }}
+                    onClick={handleCopyLast}
+                    disabled={!hasAssistantMessage}
+                    style={{ ...actionButtonStyle, opacity: hasAssistantMessage ? 1 : 0.3 }}
+                    title="Copy last response"
+                  >
+                    <Copy size={16} />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ background: 'rgba(255,255,255,0.08)' }}
+                    onClick={handleRegenerate}
+                    disabled={sending || !hasUserMessage}
+                    style={{ ...actionButtonStyle, opacity: sending || !hasUserMessage ? 0.3 : 1 }}
+                    title="Regenerate"
+                  >
+                    <RotateCcw size={16} />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ background: 'rgba(255,255,255,0.08)' }}
+                    onClick={handleExport}
+                    style={actionButtonStyle}
+                    title="Export chat"
+                  >
+                    <Download size={16} />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
+                    onClick={handleResetSession}
+                    style={{ ...actionButtonStyle, color: 'rgba(248, 113, 113, 0.6)' }}
+                    title="Reset session"
+                  >
+                    <RotateCcw size={16} />
+                  </motion.button>
+                </div>
+                
+                {!isMobile && (
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleSaveDraft} 
+                    disabled={!draftDirty} 
+                    style={{ 
+                      ...saveButtonStyle, 
+                      opacity: draftDirty ? 1 : 0.4,
+                      cursor: draftDirty ? 'pointer' : 'default'
+                    }}
+                  >
+                    <Check size={16} />
+                    Save
+                  </motion.button>
                 )}
               </div>
             </div>
@@ -1573,8 +1685,8 @@ export default function ChatStudio() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', display: 'flex', gap: isMobile ? '10px' : '18px', flexDirection: isMobile ? 'column' : 'row' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ borderTop: '1px solid rgba(148,163,184,0.1)', padding: isMobile ? '16px' : '24px 32px', background: 'rgba(15,23,42,0.2)' }}>
+              <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', gap: '16px', flexDirection: 'column' }}>
                 {/* Display thinking process from latest assistant message if it exists */}
                 {messages.length > 0 && (() => {
                   const lastAssistantMsg = [...messages].reverse().find(msg => msg.role === 'assistant')
@@ -1585,321 +1697,309 @@ export default function ChatStudio() {
                   return null
                 })()}
 
-                <textarea
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
-                    }
-                    // Shift+Enter allows newline naturally
-                  }}
-                  placeholder={sending ? 'Waiting for model response…' : 'Type your message… (Shift+Enter for newline)'}
-                  disabled={sending}
-                  rows={isMobile ? 2 : 3}
-                  style={{
-                    width: '100%',
-                    resize: 'vertical',
-                    background: 'rgba(15,23,42,0.55)',
-                    border: '1px solid rgba(129,140,248,0.35)',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    color: '#e2e8f0',
-                    fontSize: isMobile ? '0.9rem' : '1rem',
-                    fontFamily: 'inherit'
-                  }}
-                />
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  <input
-                    type="file"
-                    id="document-upload"
-                    accept=".pdf,.doc,.docx"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        handleDocumentUpload(e.target.files[0])
-                        e.target.value = '' // Reset input
-                      }
-                    }}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => document.getElementById('document-upload')?.click()}
-                    disabled={sending}
-                    style={{
-                      padding: isMobile ? '6px 10px' : '8px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: 'rgba(30,41,59,0.55)',
-                      color: 'rgba(226,232,240,0.85)',
-                      fontSize: '0.7rem',
-                      cursor: sending ? 'default' : 'pointer',
-                      opacity: sending ? 0.5 : 1,
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <i className="fas fa-file-pdf"></i>
-                    {isMobile ? 'Doc' : 'Upload Doc'}
-                  </button>
-
-                  <input
-                    type="file"
-                    id="image-upload"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        handleImageUpload(e.target.files[0])
-                        e.target.value = '' // Reset input
-                      }
-                    }}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => document.getElementById('image-upload')?.click()}
-                    disabled={sending}
-                    style={{
-                      padding: isMobile ? '6px 10px' : '8px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: 'rgba(30,41,59,0.55)',
-                      color: 'rgba(226,232,240,0.85)',
-                      fontSize: '0.7rem',
-                      cursor: sending ? 'default' : 'pointer',
-                      opacity: sending ? 0.5 : 1,
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <i className="fas fa-image"></i>
-                    {isMobile ? 'Img' : 'Upload Image'}
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px' }}>
-                <button
-                  onClick={() => handleSendMessage()}
-                  disabled={sending || !inputValue.trim()}
-                  style={{
-                    padding: isMobile ? '10px 14px' : '12px 18px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(129,140,248,0.65)',
-                    background: 'linear-gradient(135deg, rgba(129,140,248,0.35), rgba(79,70,229,0.35))',
-                    color: '#ede9fe',
-                    fontWeight: 600,
-                    cursor: sending || !inputValue.trim() ? 'default' : 'pointer',
-                    opacity: sending || !inputValue.trim() ? 0.6 : 1,
-                    fontSize: isMobile ? '0.8rem' : '1rem',
-                    flex: isMobile ? 1 : 'unset'
-                  }}
-                >
-                  {sending ? 'Sending…' : 'Send'}
-                </button>
-                <button
-                  onClick={() => setShowPromptEditor(prev => !prev)}
-                  style={{ ...actionButtonStyle, flex: isMobile ? 1 : 'unset' }}
-                >
-                  {showPromptEditor ? 'Hide' : 'Edit'}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', padding: isMobile ? '12px' : '18px 24px', background: 'rgba(15,23,42,0.35)', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: isMobile ? '40vh' : 'auto', overflowY: isMobile ? 'auto' : 'visible' }}>
-              <div style={{ display: 'flex', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>Temp ({sessionDraft.temperature ?? 'auto'})</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={sessionDraft.temperature ?? 0.6}
-                    onChange={(e) => {
-                      setSessionDraft({ ...sessionDraft, temperature: Number(e.target.value) })
-                      setDraftDirtyFlag(true);
-                    }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>Top-P ({sessionDraft.top_p ?? 'auto'})</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={sessionDraft.top_p ?? 0.9}
-                    onChange={(e) => {
-                      setSessionDraft({ ...sessionDraft, top_p: Number(e.target.value) })
-                      setDraftDirtyFlag(true);
-                    }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '140px' : '200px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>Max Tokens ({sessionDraft.max_tokens ?? 'auto'})</label>
-                  <input
-                    type="number"
-                    min="64"
-                    value={sessionDraft.max_tokens ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value ? Number(e.target.value) : null
-                      setSessionDraft({ ...sessionDraft, max_tokens: value })
-                      setDraftDirtyFlag(true);
-                    }}
-                    style={{
-                      background: 'rgba(15,23,42,0.55)',
-                      border: '1px solid rgba(148,163,184,0.25)',
-                      borderRadius: '8px',
-                      color: '#e2e8f0',
-                      padding: '8px',
-                      fontSize: isMobile ? '0.9rem' : '1rem'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>Preset Persona</label>
-                  <select
-                    value={sessionDraft.preset_key ?? ''}
-                    onChange={(e) => handlePresetApply(e.target.value)}
-                    style={{...selectStyle, fontSize: isMobile ? '0.9rem' : '1rem'}}
-                  >
-                    <option value="">Choose preset…</option>
-                    {presets.map(p => (
-                      <option key={p.key} value={p.key}>{p.title}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>My Prompt Template</label>
-                  <select
-                    value={sessionDraft.template_id ?? ''}
-                    onChange={(e) => handleTemplateChange(e.target.value ? Number(e.target.value) : null)}
-                    style={{...selectStyle, fontSize: isMobile ? '0.9rem' : '1rem'}}
-                  >
-                    <option value="">None</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id}>{t.title}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: isMobile ? '100%' : '220px', flex: isMobile ? 1 : 'unset' }}>
-                  <label style={labelStyle}>Driving Game Testing</label>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '10px',
-                    padding: '10px',
-                    background: drivingGameMode ? 'rgba(34,197,94,0.15)' : 'rgba(15,23,42,0.55)',
-                    border: `1px solid ${drivingGameMode ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.3)'}`,
-                    borderRadius: '10px',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={drivingGameMode}
-                      onChange={toggleDrivingGameMode}
-                      disabled={!sessionDraft?.template_id}
-                      style={{ cursor: sessionDraft?.template_id ? 'pointer' : 'not-allowed' }}
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <textarea
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleSendMessage()
+                        }
+                      }}
+                      placeholder={sending ? 'Thinking...' : 'Message AI Assistant...'}
+                      disabled={sending}
+                      rows={isMobile ? 2 : 3}
+                      style={{
+                        width: '100%',
+                        resize: 'none',
+                        background: 'rgba(15,23,42,0.6)',
+                        border: '1px solid rgba(129,140,248,0.2)',
+                        borderRadius: '16px',
+                        padding: '14px 45px 14px 14px',
+                        color: '#f1f5f9',
+                        fontSize: '0.95rem',
+                        fontFamily: 'inherit',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        transition: 'border-color 0.2s',
+                        outline: 'none'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(129,140,248,0.5)'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(129,140,248,0.2)'}
                     />
-                    <span style={{ 
-                      fontSize: isMobile ? '0.85rem' : '0.9rem', 
-                      color: drivingGameMode ? '#86efac' : 'rgba(226,232,240,0.85)',
-                      fontWeight: drivingGameMode ? 600 : 400
-                    }}>
-                      {drivingGameMode ? '🏁 Active' : 'Enable'}
-                    </span>
-                    {drivingGameMode && (
-                      <span style={{ 
-                        fontSize: '0.7rem', 
-                        color: 'rgba(148,163,184,0.85)',
-                        marginLeft: 'auto'
-                      }}>
-                        {drivingGameMessageCount} msgs
-                      </span>
+                    
+                    {speechSupported && (
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={isListening ? stopListening : startListening}
+                        style={{
+                          position: 'absolute',
+                          right: '12px',
+                          bottom: '12px',
+                          background: isListening ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                          border: 'none',
+                          color: isListening ? '#ef4444' : 'rgba(148,163,184,0.6)',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                      </motion.button>
                     )}
                   </div>
-                  {!sessionDraft?.template_id && (
-                    <span style={{ fontSize: '0.65rem', color: 'rgba(248,113,113,0.8)' }}>
-                      Select a template first
-                    </span>
-                  )}
-                </div>
-                {savingPrompt && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.75rem',
-                    color: '#94a3b8',
-                    padding: '0 8px',
-                    height: '36px'
-                  }}>
-                    <span style={{ display: 'inline-block', width: '4px', height: '4px', borderRadius: '50%', background: '#60a5fa', animation: 'pulse 2s infinite' }} />
-                    Saving…
-                  </div>
-                )}
-              </div>
 
-              {showPromptEditor && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <label style={labelStyle}>System Prompt</label>
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      backgroundColor: sessionDraft?.prompt_source === 'preset' ? 'rgba(34,197,94,0.2)' : sessionDraft?.prompt_source === 'template' ? 'rgba(59,130,246,0.2)' : 'rgba(107,114,128,0.2)',
-                      color: sessionDraft?.prompt_source === 'preset' ? '#86efac' : sessionDraft?.prompt_source === 'template' ? '#93c5fd' : '#d1d5db',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      {sessionDraft?.prompt_source === 'preset' ? '📌 Preset' : sessionDraft?.prompt_source === 'template' ? '📄 Template' : '✏️ Custom'}
-                    </span>
-                  </div>
-                  <textarea
-                    value={sessionDraft.system_prompt}
-                    onChange={(e) => {
-                      setSessionDraft(prev => prev ? { ...prev, system_prompt: e.target.value, preset_key: null, prompt_source: 'custom' } : prev)
-                      setDraftDirtyFlag(true);
-                    }}
-                    rows={isMobile ? 4 : 6}
+                  <motion.button
+                    whileHover={{ scale: 1.05, background: 'rgba(99, 102, 241, 0.9)' }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleSendMessage()}
+                    disabled={sending || !inputValue.trim()}
                     style={{
-                      width: '100%',
-                      background: 'rgba(15,23,42,0.55)',
-                      border: '1px solid rgba(129,140,248,0.3)',
-                      borderRadius: '10px',
-                      color: '#e2e8f0',
-                      padding: '12px',
-                      fontSize: '0.85rem'
-                    }}
-                  />
-                </div>
-              )}
-
-              {isMobile && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={handleRegenerate}
-                    disabled={sending || !hasUserMessage}
-                    style={{
-                      ...actionButtonStyle,
-                      opacity: sending || !hasUserMessage ? 0.5 : 1,
-                      cursor: sending || !hasUserMessage ? 'default' : 'pointer',
-                      flex: 1
+                      height: '48px',
+                      width: '48px',
+                      borderRadius: '14px',
+                      border: 'none',
+                      background: 'rgba(99, 102, 241, 0.8)',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: sending || !inputValue.trim() ? 'not-allowed' : 'pointer',
+                      opacity: sending || !inputValue.trim() ? 0.5 : 1,
+                      boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)'
                     }}
                   >
-                    Regenerate
-                  </button>
-                  <button onClick={handleSaveDraft} disabled={!draftDirty} style={{ ...actionButtonStyle, border: '1px solid rgba(94,234,212,0.55)', color: '#bbf7d0', opacity: draftDirty ? 1 : 0.5, flex: 1 }}>Save</button>
+                    {sending ? <RotateCcw size={20} className="animate-spin" /> : <Send size={20} />}
+                  </motion.button>
                 </div>
-              )}
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="file"
+                      id="document-upload"
+                      accept=".pdf,.doc,.docx"
+                      onChange={(e) => e.target.files?.[0] && handleDocumentUpload(e.target.files[0])}
+                      style={{ display: 'none' }}
+                    />
+                    <motion.button
+                      whileHover={{ background: 'rgba(255,255,255,0.08)' }}
+                      onClick={() => document.getElementById('document-upload')?.click()}
+                      disabled={sending}
+                      style={iconButtonStyle}
+                    >
+                      <FileText size={16} />
+                      <span style={{ fontSize: '0.8rem' }}>Document</span>
+                    </motion.button>
+
+                    <input
+                      type="file"
+                      id="image-upload"
+                      accept="image/*"
+                      onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+                      style={{ display: 'none' }}
+                    />
+                    <motion.button
+                      whileHover={{ background: 'rgba(255,255,255,0.08)' }}
+                      onClick={() => document.getElementById('image-upload')?.click()}
+                      disabled={sending}
+                      style={iconButtonStyle}
+                    >
+                      <ImageIcon size={16} />
+                      <span style={{ fontSize: '0.8rem' }}>Image</span>
+                    </motion.button>
+                  </div>
+
+                  <motion.button
+                    whileHover={{ color: '#fff', background: 'rgba(255,255,255,0.05)' }}
+                    onClick={() => setShowPromptEditor(prev => !prev)}
+                    style={{
+                      ...iconButtonStyle,
+                      color: showPromptEditor ? '#818cf8' : 'rgba(148,163,184,0.7)',
+                      background: showPromptEditor ? 'rgba(129, 140, 248, 0.1)' : 'transparent',
+                    }}
+                  >
+                    <Settings size={16} />
+                    <span style={{ fontSize: '0.8rem' }}>Settings</span>
+                  </motion.button>
+                </div>
+              </div>
             </div>
+
+            <AnimatePresence>
+              {showPromptEditor && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  style={{ borderTop: '1px solid rgba(148,163,184,0.1)', background: 'rgba(15,23,42,0.3)', overflow: 'hidden' }}
+                >
+                  <div style={{ padding: isMobile ? '16px' : '24px 32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <label style={labelStyle}>Temperature</label>
+                          <span style={{ fontSize: '0.8rem', color: '#818cf8', fontWeight: 600 }}>{sessionDraft.temperature ?? 0.6}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={sessionDraft.temperature ?? 0.6}
+                          onChange={(e) => {
+                            setSessionDraft({ ...sessionDraft, temperature: Number(e.target.value) })
+                            setDraftDirtyFlag(true);
+                          }}
+                          style={{ accentColor: '#6366f1', height: '4px' }}
+                        />
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <label style={labelStyle}>Top-P</label>
+                          <span style={{ fontSize: '0.8rem', color: '#818cf8', fontWeight: 600 }}>{sessionDraft.top_p ?? 0.9}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={sessionDraft.top_p ?? 0.9}
+                          onChange={(e) => {
+                            setSessionDraft({ ...sessionDraft, top_p: Number(e.target.value) })
+                            setDraftDirtyFlag(true);
+                          }}
+                          style={{ accentColor: '#6366f1', height: '4px' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={labelStyle}>Max Tokens</label>
+                        <input
+                          type="number"
+                          min="64"
+                          value={sessionDraft.max_tokens ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value ? Number(e.target.value) : null
+                            setSessionDraft({ ...sessionDraft, max_tokens: value })
+                            setDraftDirtyFlag(true);
+                          }}
+                          style={selectStyle}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={labelStyle}>Preset Persona</label>
+                        <select
+                          value={sessionDraft.preset_key ?? ''}
+                          onChange={(e) => handlePresetApply(e.target.value)}
+                          style={selectStyle}
+                        >
+                          <option value="">Choose preset…</option>
+                          {presets.map(p => (
+                            <option key={p.key} value={p.key}>{p.title}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={labelStyle}>Template</label>
+                        <select
+                          value={sessionDraft.template_id ?? ''}
+                          onChange={(e) => handleTemplateChange(e.target.value ? Number(e.target.value) : null)}
+                          style={selectStyle}
+                        >
+                          <option value="">None</option>
+                          {templates.map(t => (
+                            <option key={t.id} value={t.id}>{t.title}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={labelStyle}>Driving Game Test</label>
+                        <div 
+                          onClick={sessionDraft?.template_id ? toggleDrivingGameMode : undefined}
+                          style={{ 
+                            ...selectStyle,
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '12px',
+                            background: drivingGameMode ? 'rgba(34,197,94,0.1)' : 'rgba(15,23,42,0.4)',
+                            borderColor: drivingGameMode ? 'rgba(34,197,94,0.4)' : 'rgba(148,163,184,0.2)',
+                            opacity: sessionDraft?.template_id ? 1 : 0.5,
+                            cursor: sessionDraft?.template_id ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          {drivingGameMode ? <Check size={18} className="text-green-500" /> : <Layout size={18} />}
+                          <span style={{ fontSize: '0.9rem', color: drivingGameMode ? '#86efac' : '#cbd5e1' }}>
+                            {drivingGameMode ? 'Game Mode Active' : 'Enable Game Mode'}
+                          </span>
+                          {drivingGameMode && (
+                            <div style={{ marginLeft: 'auto', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(34,197,94,0.2)', color: '#86efac' }}>
+                              {drivingGameMessageCount} msg
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={labelStyle}>System Prompt</label>
+                        <span style={{
+                          fontSize: '0.65rem',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: sessionDraft?.prompt_source === 'preset' ? 'rgba(34,197,94,0.1)' : 'rgba(99,102,241,0.1)',
+                          color: sessionDraft?.prompt_source === 'preset' ? '#86efac' : '#818cf8',
+                          fontWeight: 700,
+                          textTransform: 'uppercase'
+                        }}>
+                          {sessionDraft?.prompt_source}
+                        </span>
+                      </div>
+                      <textarea
+                        value={sessionDraft.system_prompt}
+                        onChange={(e) => {
+                          setSessionDraft(prev => prev ? { ...prev, system_prompt: e.target.value, preset_key: null, prompt_source: 'custom' } : prev)
+                          setDraftDirtyFlag(true);
+                        }}
+                        rows={isMobile ? 4 : 6}
+                        style={{
+                          ...selectStyle,
+                          width: '100%',
+                          resize: 'vertical',
+                          minHeight: '100px',
+                          fontFamily: 'inherit',
+                          lineHeight: '1.6'
+                        }}
+                      />
+                    </div>
+                    
+                    {isMobile && (
+                      <motion.button 
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSaveDraft} 
+                        disabled={!draftDirty} 
+                        style={{ ...saveButtonStyle, width: '100%', justifyContent: 'center' }}
+                      >
+                        <Check size={18} />
+                        Save Changes
+                      </motion.button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </>
         ) : (
           <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
@@ -2080,28 +2180,62 @@ export default function ChatStudio() {
 }
 
 const actionButtonStyle: CSSProperties = {
+  padding: '8px',
+  borderRadius: '8px',
+  border: 'none',
+  background: 'transparent',
+  color: 'rgba(148,163,184,0.7)',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'all 0.2s'
+}
+
+const iconButtonStyle: CSSProperties = {
   padding: '8px 14px',
   borderRadius: '10px',
-  border: '1px solid rgba(148,163,184,0.35)',
-  background: 'rgba(30,41,59,0.55)',
-  color: 'rgba(226,232,240,0.85)',
-  fontSize: '0.75rem',
-  cursor: 'pointer'
+  border: '1px solid rgba(148,163,184,0.15)',
+  background: 'rgba(255,255,255,0.03)',
+  color: 'rgba(148,163,184,0.8)',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  transition: 'all 0.2s'
+}
+
+const saveButtonStyle: CSSProperties = {
+  padding: '8px 16px',
+  borderRadius: '10px',
+  border: 'none',
+  background: '#6366f1',
+  color: 'white',
+  fontWeight: 600,
+  fontSize: '0.85rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)'
 }
 
 const labelStyle: CSSProperties = {
   fontSize: '0.75rem',
-  color: 'rgba(148,163,184,0.85)',
-  fontWeight: 600,
-  letterSpacing: '0.4px'
+  color: 'rgba(148,163,184,0.7)',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em'
 }
 
 const selectStyle: CSSProperties = {
-  background: 'rgba(15,23,42,0.55)',
-  border: '1px solid rgba(148,163,184,0.3)',
-  borderRadius: '10px',
-  padding: '10px',
-  color: '#e2e8f0'
+  background: 'rgba(15,23,42,0.4)',
+  border: '1px solid rgba(148,163,184,0.2)',
+  borderRadius: '12px',
+  padding: '10px 14px',
+  color: '#f1f5f9',
+  outline: 'none',
+  fontSize: '0.9rem',
+  cursor: 'pointer'
 }
 
 // Add pulse animation and copy button styles for saving indicator

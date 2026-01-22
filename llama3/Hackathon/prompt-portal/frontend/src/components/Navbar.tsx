@@ -204,23 +204,6 @@ export default function Navbar() {
                 Chat
               </Link>
               <Link
-                to="/voice-chat"
-                style={linkStyle(isActive('/voice-chat'))}
-                onMouseOver={(e) => {
-                  if (!isActive('/voice-chat')) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!isActive('/voice-chat')) {
-                    e.currentTarget.style.background = 'transparent'
-                  }
-                }}
-              >
-                <i className="fas fa-microphone" style={{ marginRight: '8px' }}></i>
-                Voice
-              </Link>
-              <Link
                 to="/leaderboard"
                 style={linkStyle(isActive('/leaderboard'))}
                 onMouseOver={(e) => {

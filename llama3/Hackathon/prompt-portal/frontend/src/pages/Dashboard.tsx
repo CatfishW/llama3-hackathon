@@ -1,4 +1,19 @@
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { 
+  FileCode, 
+  Play, 
+  Trophy, 
+  Plus, 
+  TrendingUp, 
+  Bullhorn, 
+  Crown, 
+  Cpu, 
+  Activity, 
+  Layers,
+  ArrowRight,
+  MessageSquare
+} from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -6,232 +21,235 @@ export default function Dashboard() {
   const { user } = useAuth()
   const isMobile = useIsMobile()
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1, 
+      transition: { staggerChildren: 0.1 } 
+    }
+  }
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: { y: 0, opacity: 1 }
+  }
+
   const containerStyle = {
     maxWidth: '1200px',
     margin: '0 auto',
-    padding: isMobile ? '24px 14px 64px' : '40px 20px'
-  }
-
-  const headerStyle = {
-    textAlign: 'center' as const,
-    marginBottom: isMobile ? '32px' : '50px'
+    padding: isMobile ? '24px 16px 80px' : '60px 24px'
   }
 
   const cardStyle = {
-    background: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '15px',
-    padding: '30px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    transition: 'all 0.3s ease',
-    cursor: 'pointer'
-  }
-
-  const gridStyle = {
-    display: 'grid',
-    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: isMobile ? '20px' : '30px',
-    marginBottom: isMobile ? '36px' : '50px'
-  }
-
-  const iconStyle = {
-    fontSize: '3rem',
-    marginBottom: '20px',
-    display: 'block'
+    background: 'rgba(30, 41, 59, 0.4)',
+    backdropFilter: 'blur(12px)',
+    borderRadius: '24px',
+    padding: '32px',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
   }
 
   const buttonStyle = {
-    background: 'rgba(78, 205, 196, 0.8)',
+    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
     color: 'white',
     padding: '12px 24px',
-    borderRadius: '25px',
+    borderRadius: '14px',
     textDecoration: 'none',
-    fontSize: '1rem',
-    fontWeight: '600',
+    fontSize: '0.95rem',
+    fontWeight: 600,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '8px',
-    transition: 'all 0.3s ease',
+    gap: '10px',
     border: 'none',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    marginTop: 'auto',
+    width: 'fit-content',
+    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)'
   }
 
   return (
-    <div style={containerStyle}>
-      <div style={headerStyle}>
-  <h1 style={{ fontSize: isMobile ? '2.2rem' : '3rem', fontWeight: '700', marginBottom: '20px', lineHeight: 1.15 }}>
-          Welcome back, {user?.email}! 👋
+    <motion.div 
+      style={containerStyle}
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.div variants={itemVariants} style={{ textAlign: 'center', marginBottom: '60px' }}>
+        <h1 style={{ fontSize: isMobile ? '2.2rem' : '3.5rem', fontWeight: 800, marginBottom: '24px', letterSpacing: '-0.025em', color: '#f8fafc' }}>
+          Welcome, <span className="text-indigo-400">{user?.email?.split('@')[0]}</span>! <motion.span animate={{ rotate: [0, 20, 0] }} transition={{ repeat: Infinity, duration: 2 }}>👋</motion.span>
         </h1>
-  <p style={{ fontSize: isMobile ? '1rem' : '1.2rem', opacity: '0.8', maxWidth: '680px', margin: '0 auto', lineHeight: 1.45 }}>
-          Ready to create amazing prompt templates for the LAM Maze Game? 
-          Manage your templates, monitor performance, and climb the leaderboard!
+        <p style={{ fontSize: isMobile ? '1.1rem' : '1.25rem', color: '#94a3b8', maxWidth: '750px', margin: '0 auto', lineHeight: 1.6 }}>
+          Engineer the perfect prompt, orchestrate AI agents, and dominate the maze. 
+          Your central hub for prompt engineering and LAM orchestration.
         </p>
+      </motion.div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(340px, 1fr))',
+        gap: '24px',
+        marginBottom: '60px'
+      }}>
+        <motion.div variants={itemVariants}>
+          <Link to="/templates" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <motion.div 
+              style={cardStyle}
+              whileHover={{ y: -8, borderColor: 'rgba(99, 102, 241, 0.4)', background: 'rgba(30, 41, 59, 0.6)' }}
+            >
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+                <FileCode size={28} className="text-indigo-400" />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', marginBottom: '16px', fontWeight: 700, color: '#f1f5f9' }}>
+                Manage Templates
+              </h3>
+              <p style={{ color: '#94a3b8', lineHeight: 1.6, marginBottom: '32px', fontSize: '1rem' }}>
+                Architect complex system instructions. Design prompt chains that empower 
+                agents to solve intricate spatial puzzles.
+              </p>
+              <div style={buttonStyle}>
+                <Plus size={18} />
+                Create New
+              </div>
+            </motion.div>
+          </Link>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Link to="/chat" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <motion.div 
+              style={cardStyle}
+              whileHover={{ y: -8, borderColor: 'rgba(34, 197, 94, 0.4)', background: 'rgba(30, 41, 59, 0.6)' }}
+            >
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+                <MessageSquare size={28} className="text-green-400" />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', marginBottom: '16px', fontWeight: 700, color: '#f1f5f9' }}>
+                Chat Studio
+              </h3>
+              <p style={{ color: '#94a3b8', lineHeight: 1.6, marginBottom: '32px', fontSize: '1rem' }}>
+                Interact directly with Large Action Models. Test your personas, 
+                debug reasoning, and refine conversational flow in real-time.
+              </p>
+              <div style={{ ...buttonStyle, background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', boxShadow: '0 4px 12px rgba(34, 197, 94, 0.2)' }}>
+                <Play size={18} />
+                Open Studio
+              </div>
+            </motion.div>
+          </Link>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Link to="/leaderboard" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <motion.div 
+              style={cardStyle}
+              whileHover={{ y: -8, borderColor: 'rgba(245, 158, 11, 0.4)', background: 'rgba(30, 41, 59, 0.6)' }}
+            >
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(245, 158, 11, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+                <Trophy size={28} className="text-amber-400" />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', marginBottom: '16px', fontWeight: 700, color: '#f1f5f9' }}>
+                Global Rankings
+              </h3>
+              <p style={{ color: '#94a3b8', lineHeight: 1.6, marginBottom: '32px', fontSize: '1rem' }}>
+                Analyze cross-platform performance metrics. Track how your 
+                engineering strategies stack up against the best in the arena.
+              </p>
+              <div style={{ ...buttonStyle, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.2)' }}>
+                <TrendingUp size={18} />
+                View Rankings
+              </div>
+            </motion.div>
+          </Link>
+        </motion.div>
       </div>
 
-      <div style={gridStyle}>
-        <Link to="/templates" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={cardStyle}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)'
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          >
-            <i className="fas fa-file-code" style={{ ...iconStyle, fontSize: isMobile ? '2.4rem' : '3rem' }}></i>
-            <h3 style={{ fontSize: isMobile ? '1.3rem':'1.5rem', marginBottom: '15px', fontWeight: '600' }}>
-              Manage Templates
-            </h3>
-            <p style={{ opacity: '0.8', lineHeight: 1.5, marginBottom: '20px', fontSize: isMobile ? '.95rem':'1rem' }}>
-              Create, edit, and organize your prompt templates. Design intelligent prompts 
-              that guide AI agents through complex maze challenges.
-            </p>
-            <span style={buttonStyle}>
-              <i className="fas fa-plus"></i>
-              Create New Template
-            </span>
-          </div>
-        </Link>
-
-        <Link to="/play" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={cardStyle}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)'
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          >
-            <i className="fas fa-vial" style={{ ...iconStyle, fontSize: isMobile ? '2.4rem' : '3rem' }}></i>
-            <h3 style={{ fontSize: isMobile ? '1.3rem':'1.5rem', marginBottom: '15px', fontWeight: '600' }}>
-              Test & Monitor
-            </h3>
-            <p style={{ opacity: '0.8', lineHeight: 1.5, marginBottom: '20px', fontSize: isMobile ? '.95rem':'1rem' }}>
-              Test your templates in real-time and monitor MQTT communication. 
-              Watch your AI agents navigate mazes using your prompts.
-            </p>
-            <span style={buttonStyle}>
-              <i className="fas fa-play"></i>
-              Start Testing
-            </span>
-          </div>
-        </Link>
-
-        <Link to="/leaderboard" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={cardStyle}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)'
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          >
-            <i className="fas fa-trophy" style={{ ...iconStyle, fontSize: isMobile ? '2.4rem' : '3rem' }}></i>
-            <h3 style={{ fontSize: isMobile ? '1.3rem':'1.5rem', marginBottom: '15px', fontWeight: '600' }}>
-              Leaderboard
-            </h3>
-            <p style={{ opacity: '0.8', lineHeight: 1.5, marginBottom: '20px', fontSize: isMobile ? '.95rem':'1rem' }}>
-              See how your templates perform against others. Track scores, rankings, 
-              and discover the most effective prompt strategies.
-            </p>
-            <span style={buttonStyle}>
-              <i className="fas fa-chart-line"></i>
-              View Rankings
-            </span>
-          </div>
-        </Link>
-      </div>
-
-      {/* Admin Section - Only for admin user */}
       {user?.email === '1819409756@qq.com' && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(240, 147, 251, 0.2) 0%, rgba(245, 87, 108, 0.2) 100%)',
-          backdropFilter: 'blur(10px)',
-          borderRadius: '15px',
-          padding: isMobile ? '28px 20px' : '35px',
-          border: '2px solid rgba(245, 87, 108, 0.5)',
-          marginBottom: isMobile ? '36px' : '50px',
-          boxShadow: '0 8px 32px rgba(245, 87, 108, 0.3)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-            <i className="fas fa-crown" style={{ fontSize: '2rem', color: '#ffd700' }}></i>
-            <h2 style={{ fontSize: isMobile ? '1.6rem':'2rem', margin: 0, fontWeight: '600' }}>
-              Admin Panel
-            </h2>
+        <motion.div 
+          variants={itemVariants}
+          whileHover={{ scale: 1.01 }}
+          style={{
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: '28px',
+            padding: isMobile ? '32px 24px' : '48px',
+            border: '1px solid rgba(168, 85, 247, 0.3)',
+            marginBottom: '60px',
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            justifyContent: 'space-between',
+            gap: '32px'
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+              <Crown size={32} className="text-amber-400" />
+              <h2 style={{ fontSize: '2rem', margin: 0, fontWeight: 800, color: '#f8fafc' }}>
+                Administrator
+              </h2>
+            </div>
+            <p style={{ color: '#cbd5e1', fontSize: '1.1rem', lineHeight: 1.6, margin: 0 }}>
+              Broadcast mission critical updates and manage the LAM Maze ecosystem announcements.
+            </p>
           </div>
-          <p style={{ opacity: '0.9', marginBottom: '20px', fontSize: isMobile ? '.95rem':'1rem' }}>
-            Manage announcements and communicate important updates to all users.
-          </p>
           <Link 
             to="/admin/announcements"
             style={{
               ...buttonStyle,
-              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-              boxShadow: '0 4px 15px rgba(245, 87, 108, 0.4)'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)'
-              e.currentTarget.style.boxShadow = '0 6px 20px rgba(245, 87, 108, 0.5)'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = '0 4px 15px rgba(245, 87, 108, 0.4)'
+              background: 'linear-gradient(135deg, #f472b6 0%, #dc2626 100%)',
+              padding: '16px 32px',
+              fontSize: '1.1rem',
+              boxShadow: '0 8px 24px rgba(220, 38, 38, 0.3)'
             }}
           >
-            <i className="fas fa-bullhorn"></i>
-            Manage Announcements
+            <Bullhorn size={20} />
+            Manage Broadcasts
+            <ArrowRight size={20} />
           </Link>
-        </div>
+        </motion.div>
       )}
 
-      {/* Quick Stats Section */}
-      <div style={{
-        background: 'rgba(255, 255, 255, 0.1)',
-        backdropFilter: 'blur(10px)',
-        borderRadius: '15px',
-        padding: isMobile ? '28px 20px' : '40px',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
-        textAlign: 'center' as const
+      <motion.div variants={itemVariants} style={{
+        background: 'rgba(15, 23, 42, 0.3)',
+        borderRadius: '28px',
+        padding: isMobile ? '40px 24px' : '60px',
+        border: '1px solid rgba(255, 255, 255, 0.05)',
+        textAlign: 'center'
       }}>
-        <h2 style={{ fontSize: isMobile ? '1.6rem':'2rem', marginBottom: isMobile ? '20px':'30px', fontWeight: '600' }}>
-          Platform Overview
+        <h2 style={{ fontSize: '2.2rem', marginBottom: '48px', fontWeight: 800, color: '#f8fafc' }}>
+          Platform Infrastructure
         </h2>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? 'repeat(2, minmax(0,1fr))':'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: isMobile ? '18px':'30px'
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
+          gap: '40px'
         }}>
           <div>
-            <div style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', color: '#4ecdc4' }}>🎮</div>
-            <h4 style={{ fontSize: '1.2rem', margin: '10px 0', fontWeight: '600' }}>Interactive Gameplay</h4>
-            <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>Real-time maze navigation with AI assistance</p>
+            <Cpu size={40} className="text-indigo-400" style={{ margin: '0 auto 20px' }} />
+            <h4 style={{ fontSize: '1.2rem', color: '#f1f5f9', fontWeight: 700, marginBottom: '12px' }}>LAM Core</h4>
+            <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>High-fidelity action modeling engine</p>
           </div>
           <div>
-            <div style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', color: '#ff6b6b' }}>🤖</div>
-            <h4 style={{ fontSize: '1.2rem', margin: '10px 0', fontWeight: '600' }}>AI Agents</h4>
-            <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>DQN reinforcement learning integration</p>
+            <Activity size={40} className="text-green-400" style={{ margin: '0 auto 20px' }} />
+            <h4 style={{ fontSize: '1.2rem', color: '#f1f5f9', fontWeight: 700, marginBottom: '12px' }}>Real-time</h4>
+            <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>MQTT powered sub-50ms state sync</p>
           </div>
           <div>
-            <div style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', color: '#ffd93d' }}>📡</div>
-            <h4 style={{ fontSize: '1.2rem', margin: '10px 0', fontWeight: '600' }}>MQTT Communication</h4>
-            <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>Real-time state and hint exchange</p>
+            <Layers size={40} className="text-blue-400" style={{ margin: '0 auto 20px' }} />
+            <h4 style={{ fontSize: '1.2rem', color: '#f1f5f9', fontWeight: 700, marginBottom: '12px' }}>Multi-modal</h4>
+            <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>Vision and text reasoning integration</p>
           </div>
           <div>
-            <div style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', color: '#a8e6cf' }}>🏆</div>
-            <h4 style={{ fontSize: '1.2rem', margin: '10px 0', fontWeight: '600' }}>Competitive Scoring</h4>
-            <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>Performance-based leaderboard system</p>
+            <Crown size={40} className="text-amber-400" style={{ margin: '0 auto 20px' }} />
+            <h4 style={{ fontSize: '1.2rem', color: '#f1f5f9', fontWeight: 700, marginBottom: '12px' }}>Arena</h4>
+            <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>Competitive validation framework</p>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

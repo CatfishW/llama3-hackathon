@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api'
-import { TabCompletionInput } from '../completion/TabCompletionInput'
 
 type Message = {
   id: number
@@ -522,13 +521,12 @@ export default function Messages() {
               }}
             >
               <div style={{ display: 'flex', gap: '15px' }}>
-                <TabCompletionInput
+                <input
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                   placeholder="Type a message..."
-                  completionType="message"
                   style={{
                     flex: 1,
                     padding: '12px 16px',

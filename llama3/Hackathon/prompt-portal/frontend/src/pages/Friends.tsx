@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth/AuthContext'
-import { TabCompletionInput } from '../completion/TabCompletionInput'
 
 type Friend = {
   id: number
@@ -301,13 +300,12 @@ export default function Friends() {
           Find Friends
         </h3>
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-          <TabCompletionInput
+          <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
             placeholder="Search by email or name..."
-            completionType="search"
             style={{
               flex: 1,
               padding: '12px 16px',
