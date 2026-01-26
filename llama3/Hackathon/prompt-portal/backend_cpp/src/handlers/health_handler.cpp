@@ -25,10 +25,6 @@ crow::response HealthHandler::health_check() {
         {"timestamp", ss.str()},
         {"backend", "cpp"},
         {"version", "1.0.0"},
-        {"mqtt", {
-            {"connected", false},  // MQTT not implemented in C++ backend
-            {"note", "MQTT is not available in the C++ backend. Use SSE mode."}
-        }},
         {"issues", nullptr}
     };
     
@@ -37,4 +33,3 @@ crow::response HealthHandler::health_check() {
 
 } // namespace handlers
 } // namespace prompt_portal
-

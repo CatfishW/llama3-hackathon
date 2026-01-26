@@ -10,6 +10,14 @@ from pydantic import BaseModel, Field
 import json
 import os
 from pathlib import Path
+try:
+    import httpx
+except ImportError:
+    httpx = None
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class ModelConfig(BaseModel):
@@ -24,6 +32,8 @@ class ModelConfig(BaseModel):
     maxTokens: Optional[int] = Field(None, description="Maximum context/output tokens")
     supportsFunctions: Optional[bool] = Field(True, description="Supports function calling")
     supportsVision: Optional[bool] = Field(False, description="Supports vision/image inputs")
+    autoDetect: Optional[bool] = Field(False, description="Whether to auto-detect model name from endpoint")
+
 
 
 class ModelsConfigManager:
@@ -55,9 +65,13 @@ class ModelsConfigManager:
                 data = json.load(f)
                 models_data = data.get('models', [])
                 self.models = [ModelConfig(**model) for model in models_data]
+            
+            # Perform auto-detection for marked models
+            self.refresh_auto_detected_models()
         except Exception as e:
             print(f"Warning: Failed to load models config: {e}")
             self.models = self._get_default_models()
+            self.refresh_auto_detected_models()
     
     def _create_default_config(self):
         """Create default models.json configuration"""
@@ -74,49 +88,63 @@ class ModelsConfigManager:
         """Get default model configurations"""
         return [
             ModelConfig(
-                name="TangLLM",
-                provider="openai",
-                model="Qwen-VL-32B",
-                apiBase="http://173.61.35.162:25565/v1",
-                apiKey="sk-local-abc",
-                description="Local Qwen Vision-Language Model - 32B parameters with vision capabilities",
-                features=["Fast Response", "Vision Support", "Function Calling", "Local Hosting"],
-                maxTokens=32768,
+                name="AGAII Cloud MLLM (Vision)",
+                provider="vllm",
+                model="mllm",
+                apiBase="https://game.agaii.org/mllm/v1",
+                apiKey="not-needed",
+                description="AGAII Cloud MLLM - Advanced multi-modal model, no API key required",
+                features=["No API Key", "Vision Support", "Multi-modal", "Cloud Hosted"],
+                maxTokens=8192,
                 supportsFunctions=True,
-                supportsVision=True
+                supportsVision=True,
+                autoDetect=True
             ),
             ModelConfig(
-                name="MiniMax M2",
+                name="AGAII Cloud LLM",
+                provider="vllm",
+                model="Qwen/Qwen3-VL-8B-Instruct-FP8",
+                apiBase="https://game.agaii.org/llm",
+                apiKey="not-needed",
+                description="AGAII Cloud VLM - Qwen3 Vision-Language model, no API key required",
+                features=["No API Key", "Vision Support", "Function Calling", "Cloud Hosted"],
+                maxTokens=8192,
+                supportsFunctions=True,
+                supportsVision=True,
+                autoDetect=True
+            ),
+            ModelConfig(
+                name="DeepSeek V3.2 (NVIDIA)",
                 provider="openai",
-                model="minimax/minimax-m2:free",
-                apiBase="https://openrouter.ai/api/v1",
-                apiKey="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",
-                description="MiniMax M2 - Free tier via OpenRouter with strong performance",
-                features=["Free Tier", "Fast Response", "Function Calling", "Cloud-based"],
+                model="deepseek-ai/deepseek-v3.2",
+                apiBase="https://integrate.api.nvidia.com/v1",
+                apiKey="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",
+                description="NVIDIA Integrate API - DeepSeek V3.2",
+                features=["NVIDIA Integrate", "Cloud Hosted"],
                 maxTokens=8192,
                 supportsFunctions=True,
                 supportsVision=False
             ),
             ModelConfig(
-                name="Qwen3 Coder",
+                name="GPT OSS 120B (NVIDIA)",
                 provider="openai",
-                model="qwen/qwen3-coder:free",
-                apiBase="https://openrouter.ai/api/v1",
-                apiKey="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",
-                description="Qwen3 Coder - Specialized for code generation and understanding (Free)",
-                features=["Code Generation", "Free Tier", "Fast Response", "Function Calling"],
-                maxTokens=8192,
+                model="openai/gpt-oss-120b",
+                apiBase="https://integrate.api.nvidia.com/v1",
+                apiKey="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",
+                description="NVIDIA Integrate API - GPT OSS 120B",
+                features=["NVIDIA Integrate", "Streaming"],
+                maxTokens=4096,
                 supportsFunctions=True,
                 supportsVision=False
             ),
             ModelConfig(
-                name="Kat Coder Pro",
+                name="MiniMax M2 (NVIDIA)",
                 provider="openai",
-                model="kwaipilot/kat-coder-pro:free",
-                apiBase="https://openrouter.ai/api/v1",
-                apiKey="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",
-                description="Kat Coder Pro - Advanced coding assistant by Kuaishou (Free)",
-                features=["Advanced Coding", "Free Tier", "Fast Response", "Function Calling"],
+                model="minimaxai/minimax-m2",
+                apiBase="https://integrate.api.nvidia.com/v1",
+                apiKey="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",
+                description="NVIDIA Integrate API - MiniMax M2",
+                features=["NVIDIA Integrate", "Streaming"],
                 maxTokens=8192,
                 supportsFunctions=True,
                 supportsVision=False
@@ -161,6 +189,45 @@ class ModelsConfigManager:
         
         with open(self.config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
+
+    def refresh_auto_detected_models(self):
+        """Update model fields for models with autoDetect=True"""
+        for model_cfg in self.models:
+            if model_cfg.autoDetect:
+                detected = self.discover_model_name(model_cfg.apiBase, model_cfg.apiKey)
+                if detected and detected != model_cfg.model:
+                    logger.info(f"Auto-detected model '{detected}' for '{model_cfg.name}' (was '{model_cfg.model}')")
+                    model_cfg.model = detected
+                    self._save_config()
+
+    @staticmethod
+    def discover_model_name(api_base: str, api_key: str = "not-needed") -> Optional[str]:
+        """Query /v1/models to find the actual model ID"""
+        if httpx is None:
+            logger.warning("httpx not installed, cannot auto-detect model")
+            return None
+        try:
+            url = api_base.rstrip('/')
+            if not url.endswith('/v1'):
+                url = f"{url}/v1"
+            url = f"{url}/models"
+            
+            headers = {"accept": "application/json"}
+            if api_key and api_key != "not-needed":
+                headers["Authorization"] = f"Bearer {api_key}"
+                
+            # Use verify=False if needed for internal certs
+            with httpx.Client(timeout=10, verify=False) as client:
+                resp = client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models_data = data.get('data', [])
+                    if models_data:
+                        # Return the first model ID found
+                        return models_data[0].get('id')
+        except Exception as e:
+            logger.warning(f"Failed to discover model at {api_base}: {e}")
+        return None
 
 
 # Global instance

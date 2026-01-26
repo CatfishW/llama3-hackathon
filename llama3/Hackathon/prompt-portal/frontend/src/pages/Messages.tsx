@@ -1,33 +1,35 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../auth/AuthContext'
+
+type UserSummary = {
+  id: number
+  email: string
+  full_name?: string
+  display_name?: string
+  profile_picture?: string
+}
 
 type Message = {
   id: number
   sender_id: number
-  receiver_id: number
+  recipient_id: number
   content: string
   created_at: string
-  sender: {
-    id: number
-    email: string
-    display_name?: string
-    profile_picture?: string
-  }
+  sender?: UserSummary
+  recipient?: UserSummary
 }
 
 type Conversation = {
-  user_id: number
-  user_email: string
-  user_display_name?: string
-  user_profile_picture?: string
-  last_message?: string
-  last_message_at?: string
+  user: UserSummary
+  last_message?: Message | null
   unread_count: number
 }
 
 export default function Messages() {
   const { userId } = useParams<{ userId: string }>()
+  const { user } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
@@ -48,7 +50,7 @@ export default function Messages() {
   useEffect(() => {
     if (userId) {
       loadMessages(parseInt(userId))
-      connectWebSocket(parseInt(userId))
+      connectWebSocket()
     }
   }, [userId])
 
@@ -94,7 +96,7 @@ export default function Messages() {
       // Update conversation unread count
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.user_id === withUserId
+          conv.user.id === withUserId
             ? { ...conv, unread_count: 0 }
             : conv
         )
@@ -104,7 +106,7 @@ export default function Messages() {
     }
   }
 
-  function connectWebSocket(withUserId: number) {
+  function connectWebSocket() {
     wsRef.current?.close()
 
     const base = (import.meta as any).env?.VITE_WS_BASE || 'ws://localhost:8000'
@@ -114,32 +116,51 @@ export default function Messages() {
       return
     }
     
-    const ws = new WebSocket(`${base}/api/messages/ws/${withUserId}?token=${encodeURIComponent(token)}`)
+    const ws = new WebSocket(`${base}/ws/${encodeURIComponent(token)}`)
 
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      setMessages((prev) => [...prev, message])
+      let payload: any
+      try {
+        payload = JSON.parse(event.data)
+      } catch {
+        return
+      }
+
+      if (payload?.type !== 'new_message' || !payload?.message) {
+        return
+      }
+
+      const incoming: Message = payload.message
+      const activeUserId = parseInt(userId || '0')
+      const isActiveConversation = activeUserId === incoming.sender_id
+
+      if (isActiveConversation) {
+        setMessages((prev) => [...prev, incoming])
+        api.put(`/api/messages/mark-conversation-read/${incoming.sender_id}`).catch(() => undefined)
+      }
 
       // Update conversation list
       setConversations((prev) => {
+        const existing = prev.find((conv) => conv.user.id === incoming.sender_id)
+        if (!existing) {
+          loadConversations()
+          return prev
+        }
+
         const updated = prev.map((conv) =>
-          conv.user_id === message.sender_id
+          conv.user.id === incoming.sender_id
             ? {
                 ...conv,
-                last_message: message.content,
-                last_message_at: message.created_at,
-                unread_count:
-                  conv.user_id === parseInt(userId || '0')
-                    ? 0
-                    : conv.unread_count + 1,
+                last_message: incoming,
+                unread_count: isActiveConversation ? 0 : conv.unread_count + 1,
               }
             : conv
         )
 
         // Move conversation to top
-        const activeConv = updated.find((c) => c.user_id === message.sender_id)
+        const activeConv = updated.find((c) => c.user.id === incoming.sender_id)
         if (activeConv) {
-          return [activeConv, ...updated.filter((c) => c.user_id !== message.sender_id)]
+          return [activeConv, ...updated.filter((c) => c.user.id !== incoming.sender_id)]
         }
         return updated
       })
@@ -153,9 +174,29 @@ export default function Messages() {
 
     try {
       setSending(true)
-      await api.post('/api/messages/send', {
+      const res = await api.post('/api/messages/send', {
         recipient_id: parseInt(userId),
         content: newMessage.trim(),
+      })
+      const sent: Message = res.data
+      setMessages((prev) => [...prev, sent])
+      setConversations((prev) => {
+        const recipientId = parseInt(userId)
+        const existing = prev.find((conv) => conv.user.id === recipientId)
+        if (!existing) {
+          loadConversations()
+          return prev
+        }
+        const updated = prev.map((conv) =>
+          conv.user.id === recipientId
+            ? { ...conv, last_message: sent }
+            : conv
+        )
+        const activeConv = updated.find((c) => c.user.id === recipientId)
+        if (activeConv) {
+          return [activeConv, ...updated.filter((c) => c.user.id !== recipientId)]
+        }
+        return updated
       })
       setNewMessage('')
     } catch (e) {
@@ -222,7 +263,8 @@ export default function Messages() {
     wordBreak: 'break-word' as const,
   })
 
-  const currentConversation = conversations.find((c) => c.user_id === parseInt(userId || '0'))
+  const currentConversation = conversations.find((c) => c.user.id === parseInt(userId || '0'))
+  const currentUserId = user?.id
 
   return (
     <div style={containerStyle}>
@@ -290,8 +332,8 @@ export default function Messages() {
           ) : (
             conversations.map((conv) => (
               <Link
-                key={conv.user_id}
-                to={`/messages/${conv.user_id}`}
+                key={conv.user.id}
+                to={`/messages/${conv.user.id}`}
                 style={{
                   display: 'block',
                   padding: '15px 20px',
@@ -299,18 +341,18 @@ export default function Messages() {
                   color: 'inherit',
                   borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
                   background:
-                    conv.user_id === parseInt(userId || '0')
+                    conv.user.id === parseInt(userId || '0')
                       ? 'rgba(78, 205, 196, 0.2)'
                       : 'transparent',
                   transition: 'background 0.3s ease',
                 }}
                 onMouseOver={(e) => {
-                  if (conv.user_id !== parseInt(userId || '0')) {
+                  if (conv.user.id !== parseInt(userId || '0')) {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
                   }
                 }}
                 onMouseOut={(e) => {
-                  if (conv.user_id !== parseInt(userId || '0')) {
+                  if (conv.user.id !== parseInt(userId || '0')) {
                     e.currentTarget.style.background = 'transparent'
                   }
                 }}
@@ -321,8 +363,8 @@ export default function Messages() {
                       width: '45px',
                       height: '45px',
                       borderRadius: '50%',
-                      background: conv.user_profile_picture
-                        ? `url(${conv.user_profile_picture})`
+                      background: conv.user.profile_picture
+                        ? `url(${conv.user.profile_picture})`
                         : 'linear-gradient(45deg, #4ecdc4, #44a08d)',
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
@@ -334,7 +376,7 @@ export default function Messages() {
                       position: 'relative',
                     }}
                   >
-                    {!conv.user_profile_picture && <i className="fas fa-user"></i>}
+                    {!conv.user.profile_picture && <i className="fas fa-user"></i>}
                     {conv.unread_count > 0 && (
                       <div
                         style={{
@@ -366,10 +408,10 @@ export default function Messages() {
                         fontWeight: conv.unread_count > 0 ? '600' : '500',
                       }}
                     >
-                      {conv.user_display_name || conv.user_email}
+                      {conv.user.display_name || conv.user.full_name || conv.user.email}
                     </h4>
 
-                    {conv.last_message && (
+                    {conv.last_message?.content && (
                       <p
                         style={{
                           fontSize: '0.85rem',
@@ -380,11 +422,11 @@ export default function Messages() {
                           fontWeight: conv.unread_count > 0 ? '500' : 'normal',
                         }}
                       >
-                        {conv.last_message}
+                        {conv.last_message.content}
                       </p>
                     )}
 
-                    {conv.last_message_at && (
+                    {conv.last_message?.created_at && (
                       <p
                         style={{
                           fontSize: '0.75rem',
@@ -392,7 +434,7 @@ export default function Messages() {
                           marginTop: '2px',
                         }}
                       >
-                        {new Date(conv.last_message_at).toLocaleDateString()}
+                        {new Date(conv.last_message.created_at).toLocaleDateString()}
                       </p>
                     )}
                   </div>
@@ -423,8 +465,8 @@ export default function Messages() {
                     width: '45px',
                     height: '45px',
                     borderRadius: '50%',
-                    background: currentConversation.user_profile_picture
-                      ? `url(${currentConversation.user_profile_picture})`
+                    background: currentConversation.user.profile_picture
+                      ? `url(${currentConversation.user.profile_picture})`
                       : 'linear-gradient(45deg, #4ecdc4, #44a08d)',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -435,15 +477,15 @@ export default function Messages() {
                     fontSize: '1.2rem',
                   }}
                 >
-                  {!currentConversation.user_profile_picture && <i className="fas fa-user"></i>}
+                  {!currentConversation.user.profile_picture && <i className="fas fa-user"></i>}
                 </div>
 
                 <div>
                   <h3 style={{ fontSize: '1.3rem', marginBottom: '2px' }}>
-                    {currentConversation.user_display_name || currentConversation.user_email}
+                    {currentConversation.user.display_name || currentConversation.user.full_name || currentConversation.user.email}
                   </h3>
                   <p style={{ fontSize: '0.9rem', opacity: '0.7' }}>
-                    {currentConversation.user_email}
+                    {currentConversation.user.email}
                   </p>
                 </div>
               </div>
@@ -480,35 +522,36 @@ export default function Messages() {
                   </div>
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems:
-                        message.sender_id === parseInt(userId)
-                          ? 'flex-end'
-                          : 'flex-start',
-                      marginBottom: '15px',
-                    }}
-                  >
-                    <div style={messageStyle(message.sender_id !== parseInt(userId))}>
-                      <p style={{ margin: 0, lineHeight: '1.4' }}>{message.content}</p>
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          opacity: '0.7',
-                          marginTop: '5px',
-                          textAlign:
-                            message.sender_id !== parseInt(userId) ? 'right' : 'left',
-                        }}
-                      >
-                        {new Date(message.created_at).toLocaleTimeString()}
+                messages.map((message) => {
+                  const isOwn = currentUserId
+                    ? message.sender_id === currentUserId
+                    : message.sender_id !== parseInt(userId || '0')
+                  return (
+                    <div
+                      key={message.id}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: isOwn ? 'flex-end' : 'flex-start',
+                        marginBottom: '15px',
+                      }}
+                    >
+                      <div style={messageStyle(isOwn)}>
+                        <p style={{ margin: 0, lineHeight: '1.4' }}>{message.content}</p>
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            opacity: '0.7',
+                            marginTop: '5px',
+                            textAlign: isOwn ? 'right' : 'left',
+                          }}
+                        >
+                          {new Date(message.created_at).toLocaleTimeString()}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
               <div ref={messagesEndRef} />
             </div>

@@ -40,9 +40,8 @@ crow::response LeaderboardHandler::submit_maze_score(const crow::request& req) {
             return error_response(404, "Template not found");
         }
         
-        // Reject driving_game mode
-        if (mode == "driving_game") {
-            return error_response(400, "Use /api/leaderboard/driving-game/submit for driving game scores");
+        if (tmpl->id == 0) { // This is just a dummy check to avoid compiler warnings if tmpl is unused
+             // Template exists
         }
         
         if (mode != "lam" && mode != "manual") {
@@ -94,50 +93,6 @@ crow::response LeaderboardHandler::submit_maze_score(const crow::request& req) {
     }
 }
 
-crow::response LeaderboardHandler::submit_driving_score(const crow::request& req) {
-    try {
-        std::string auth_header = req.get_header_value("Authorization");
-        auto user = Auth::instance().get_current_user(auth_header);
-        
-        if (!user) {
-            return error_response(401, "Could not validate credentials");
-        }
-        
-        auto body = nlohmann::json::parse(req.body);
-        
-        int template_id = body.value("template_id", 0);
-        std::string session_id = body.value("session_id", "");
-        
-        // Validate template exists
-        auto tmpl = Database::instance().find_template_by_id(template_id);
-        if (!tmpl) {
-            return error_response(404, "Template not found");
-        }
-        
-        DrivingGameScore score;
-        score.user_id = user->id;
-        score.template_id = template_id;
-        score.session_id = session_id;
-        score.score = body.value("score", 0.0);
-        score.consensus_reached = true;
-        score.message_count = body.value("message_count", 0);
-        score.duration_seconds = body.value("duration_seconds", 0.0);
-        score.player_option = body.value("player_option", "");
-        score.agent_option = body.value("agent_option", "");
-        
-        DrivingGameScore result = Database::instance().create_driving_score(score);
-        
-        std::cout << "[Leaderboard] Driving game score submitted - User: " << user->id 
-                  << ", Score: " << result.score << std::endl;
-        
-        return json_response(201, result.to_json());
-        
-    } catch (const std::exception& e) {
-        std::cerr << "[Leaderboard] Submit driving score error: " << e.what() << std::endl;
-        return error_response(500, "Internal server error");
-    }
-}
-
 crow::response LeaderboardHandler::get_leaderboard(const crow::request& req) {
     try {
         // Parse query parameters
@@ -157,31 +112,17 @@ crow::response LeaderboardHandler::get_leaderboard(const crow::request& req) {
         
         nlohmann::json result = nlohmann::json::array();
         
-        if (mode == "driving_game") {
-            // Driving game leaderboard
-            auto entries = Database::instance().get_driving_leaderboard(limit, skip);
-            for (const auto& entry : entries) {
-                result.push_back(entry.to_json());
-            }
-            
-            int total = Database::instance().count_driving_scores();
-            crow::response res(200, result.dump());
-            res.set_header("Content-Type", "application/json");
-            res.set_header("X-Total-Count", std::to_string(total));
-            return res;
-        } else {
-            // Maze game leaderboard
-            auto entries = Database::instance().get_leaderboard(limit, skip, mode);
-            for (const auto& entry : entries) {
-                result.push_back(entry.to_json());
-            }
-            
-            int total = Database::instance().count_scores();
-            crow::response res(200, result.dump());
-            res.set_header("Content-Type", "application/json");
-            res.set_header("X-Total-Count", std::to_string(total));
-            return res;
+        // Maze game leaderboard
+        auto entries = Database::instance().get_leaderboard(limit, skip, mode);
+        for (const auto& entry : entries) {
+            result.push_back(entry.to_json());
         }
+        
+        int total = Database::instance().count_scores();
+        crow::response res(200, result.dump());
+        res.set_header("Content-Type", "application/json");
+        res.set_header("X-Total-Count", std::to_string(total));
+        return res;
         
     } catch (const std::exception& e) {
         std::cerr << "[Leaderboard] Get leaderboard error: " << e.what() << std::endl;

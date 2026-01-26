@@ -4,7 +4,7 @@ LLM Client Service for Prompt Portal
 This service provides a unified interface to communicate with LLM backends
 (llama.cpp, vLLM, etc.) using OpenAI-compatible API.
 
-Based on the architecture from llamacpp_mqtt_deploy.py but adapted for
+Based on the architecture from a llama.cpp deployment but adapted for
 direct HTTP communication within the web application.
 """
 
@@ -14,7 +14,7 @@ import time
 from typing import Dict, List, Optional
 try:
     # Optional dependency; server should still boot without it
-    from openai import OpenAI, OpenAIError  # type: ignore
+    from openai import OpenAI, OpenAIError, AsyncOpenAI  # type: ignore
     _OPENAI_AVAILABLE = True
 except Exception:  # pragma: no cover - graceful degradation in minimal envs
     class OpenAIError(Exception):
@@ -281,7 +281,7 @@ class LLMClient:
         timeout: int = 300,
         default_temperature: float = 0.6,
         default_top_p: float = 0.9,
-        default_max_tokens: int = 512,
+        default_max_tokens: int = 4096,
         skip_thinking: bool = True,
         api_key: str = "not-needed",
         backend_type: str = "auto",
@@ -333,9 +333,16 @@ class LLMClient:
                 api_key=self.api_key,
                 timeout=self.timeout
             )
+            from openai import AsyncOpenAI
+            self.async_client = AsyncOpenAI(
+                base_url=self._base_url,
+                api_key=self.api_key,
+                timeout=self.timeout
+            )
         else:
             # Degraded mode: no OpenAI client; generation calls will raise at runtime
             self.client = None
+            self.async_client = None
         
         # Auto-detect model name if not specified (for vLLM/OpenAI backends)
         if not self.default_model:
@@ -461,7 +468,7 @@ class LLMClient:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        model: str = "default",
+        model: Optional[str] = "default",
         tools: Optional[List[Dict]] = None,
         tool_choice: Optional[str] = "auto"
     ) -> str:
@@ -485,8 +492,8 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
-        # Resolve model name - use configured default if "default" is passed
-        actual_model = self.default_model if model == "default" else model
+        # Resolve model name - use configured default if "default" or None is passed
+        actual_model = self.default_model if (model == "default" or model is None) else model
         
         if self.client is None:
             raise RuntimeError("LLM client is not available on this server (openai not installed)")
@@ -552,6 +559,77 @@ class LLMClient:
             error_msg = f"Generation failed: {str(e)}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
+
+    async def agenerate(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = "default",
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = "auto"
+    ) -> str:
+        """Async version of generate using AsyncOpenAI"""
+        temperature = temperature if temperature is not None else self.default_temperature
+        top_p = top_p if top_p is not None else self.default_top_p
+        max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
+        actual_model = self.default_model if (model == "default" or model is None) else model
+
+        if self.async_client is None:
+            raise RuntimeError("Async LLM client is not available")
+        try:
+            start_time = time.time()
+            api_params = {
+                "model": actual_model,
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "stream": False
+            }
+            if self.backend_type == "llama.cpp":
+                api_params["extra_body"] = {"enable_thinking": not self.skip_thinking}
+            if tools:
+                api_params["tools"] = tools
+                api_params["tool_choice"] = tool_choice
+            
+            response = await self.async_client.chat.completions.create(**api_params)
+            
+            message = response.choices[0].message
+            
+            # Check if the response includes function calls
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                # Convert tool calls to JSON format that the game can understand
+                function_calls = []
+                for tool_call in message.tool_calls:
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                    except:
+                        args = tool_call.function.arguments
+                    function_calls.append({
+                        "name": tool_call.function.name,
+                        "arguments": args
+                    })
+                
+                # Return combined response with function calls
+                result = {
+                    "hint": message.content or "",
+                    "function_calls": function_calls
+                }
+                generated_text = json.dumps(result)
+            else:
+                generated_text = message.content or ""
+            
+            generation_time = time.time() - start_time
+            logger.info(f"Async generated response in {generation_time:.2f}s")
+            
+            return generated_text
+            
+        except Exception as e:
+            error_msg = f"Async generation failed: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
     
     def generate_stream(
         self,
@@ -559,7 +637,7 @@ class LLMClient:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        model: str = "default",
+        model: Optional[str] = "default",
         tools: Optional[List[Dict]] = None,
         tool_choice: Optional[str] = "auto"
     ):
@@ -583,8 +661,8 @@ class LLMClient:
         top_p = top_p if top_p is not None else self.default_top_p
         max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
         
-        # Resolve model name - use configured default if "default" is passed
-        actual_model = self.default_model if model == "default" else model
+        # Resolve model name - use configured default if "default" or None is passed
+        actual_model = self.default_model if (model == "default" or model is None) else model
         
         if self.client is None:
             yield "Error: LLM client is not available on this server (openai not installed)"
@@ -633,6 +711,57 @@ class LLMClient:
             yield f"Error: {error_msg}"
         except Exception as e:
             error_msg = f"Generation failed: {str(e)}"
+            logger.error(error_msg)
+            yield f"Error: {error_msg}"
+
+    async def agenerate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = "default",
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = "auto"
+    ):
+        """Async version of generate_stream using AsyncOpenAI"""
+        temperature = temperature if temperature is not None else self.default_temperature
+        top_p = top_p if top_p is not None else self.default_top_p
+        max_tokens = max_tokens if max_tokens is not None else self.default_max_tokens
+        actual_model = self.default_model if (model == "default" or model is None) else model
+
+        if self.async_client is None:
+            yield "Error: Async LLM client is not available"
+            return
+        try:
+            start_time = time.time()
+            api_params = {
+                "model": actual_model,
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "stream": True
+            }
+            if self.backend_type == "llama.cpp":
+                api_params["extra_body"] = {"enable_thinking": not self.skip_thinking}
+            if tools:
+                api_params["tools"] = tools
+                api_params["tool_choice"] = tool_choice
+            
+            stream = await self.async_client.chat.completions.create(**api_params)
+            
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        yield delta.content
+            
+            generation_time = time.time() - start_time
+            logger.info(f"Async streamed response in {generation_time:.2f}s")
+            
+        except Exception as e:
+            error_msg = f"Async generation failed: {str(e)}"
             logger.error(error_msg)
             yield f"Error: {error_msg}"
     
@@ -729,7 +858,9 @@ class SessionManager:
         max_tokens: Optional[int] = None,
         use_tools: bool = True,
         use_history: bool = True,
-        max_history_messages: Optional[int] = None
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None,
+        llm_client: Optional[LLMClient] = None
     ) -> str:
         """
         Process a user message and generate a response.
@@ -745,10 +876,15 @@ class SessionManager:
             use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
             max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt). 
                                  If not specified, uses self.max_history_messages.
+            model: Model name to use
+            llm_client: LLM client to use (overrides self.llm_client)
             
         Returns:
             Generated response (may include function calls)
         """
+        # Use provided client or default
+        client = llm_client if llm_client is not None else self.llm_client
+        
         # Determine effective max_history_messages
         effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
         
@@ -798,11 +934,12 @@ class SessionManager:
             # Use tools if requested (for maze game with function calling)
             tools = MAZE_GAME_TOOLS if use_tools else None
             
-            response = self.llm_client.generate(
+            response = client.generate(
                 messages=messages,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                model=model or "default",
                 tools=tools,
                 tool_choice="auto" if tools else None
             )
@@ -818,6 +955,71 @@ class SessionManager:
             error_msg = f"Error processing message: {str(e)}"
             logger.error(f"Session {session_id}: {error_msg}")
             raise
+
+    async def aprocess_message(
+        self,
+        session_id: str,
+        system_prompt: str,
+        user_message: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_tools: bool = False,
+        use_history: bool = True,
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None,
+        llm_client: Optional[LLMClient] = None
+    ) -> str:
+        """Async version of process_message"""
+        client = llm_client if llm_client is not None else self.llm_client
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
+        if use_history:
+            session = self.get_or_create_session(session_id, system_prompt)
+            session_lock = self.session_locks.get(session_id, threading.RLock())
+            
+            with session_lock:
+                session["dialog"].append({"role": "user", "content": user_message})
+                session["message_count"] += 1
+                if effective_max_history_messages is not None:
+                    non_system_messages = session["dialog"][1:]
+                    messages_to_keep = effective_max_history_messages * 2
+                    if len(non_system_messages) > messages_to_keep:
+                        session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+                else:
+                    max_messages = 20
+                    if len(session["dialog"]) > max_messages:
+                        session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+                messages = session["dialog"].copy()
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            session_lock = None
+        
+        try:
+            tools = MAZE_GAME_TOOLS if use_tools else None
+            response = await client.agenerate(
+                messages=messages,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                model=model or "default",
+                tools=tools,
+                tool_choice="auto" if tools else None
+            )
+            
+            if use_history and session_lock:
+                with session_lock:
+                    session["dialog"].append({"role": "assistant", "content": response})
+            
+            return response
+                
+        except Exception as e:
+            error_msg = f"Error in async message processing: {str(e)}"
+            logger.error(f"Session {session_id}: {error_msg}")
+            raise
     
     def process_message_stream(
         self,
@@ -828,7 +1030,9 @@ class SessionManager:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         use_tools: bool = False,  # Note: streaming with tools is complex, disabled by default
-        max_history_messages: Optional[int] = None
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None,
+        llm_client: Optional[LLMClient] = None
     ):
         """
         Process a user message and generate a streaming response.
@@ -842,10 +1046,15 @@ class SessionManager:
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools (not recommended for streaming)
             max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
+            model: Model name to use
+            llm_client: LLM client to use (overrides self.llm_client)
             
         Yields:
             Generated text chunks as they arrive
         """
+        # Use provided client or default
+        client = llm_client if llm_client is not None else self.llm_client
+
         # Determine effective max_history_messages
         effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
         
@@ -886,11 +1095,12 @@ class SessionManager:
             # Note: Streaming with tools/function calling is complex
             tools = MAZE_GAME_TOOLS if use_tools else None
             
-            for chunk in self.llm_client.generate_stream(
+            for chunk in client.generate_stream(
                 messages=messages,
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                model=model or "default",
                 tools=tools,
                 tool_choice="auto" if tools else None
             ):
@@ -903,6 +1113,62 @@ class SessionManager:
                 
         except Exception as e:
             error_msg = f"Error processing message: {str(e)}"
+            logger.error(f"Session {session_id}: {error_msg}")
+            yield f"\n\nError: {error_msg}"
+
+    async def aprocess_message_stream(
+        self,
+        session_id: str,
+        system_prompt: str,
+        user_message: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_tools: bool = False,
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None,
+        llm_client: Optional[LLMClient] = None
+    ):
+        """Async version of process_message_stream"""
+        client = llm_client if llm_client is not None else self.llm_client
+        effective_max_history_messages = max_history_messages if max_history_messages is not None else self.max_history_messages
+        
+        session = self.get_or_create_session(session_id, system_prompt)
+        session_lock = self.session_locks.get(session_id, threading.RLock())
+        
+        with session_lock:
+            session["dialog"].append({"role": "user", "content": user_message})
+            session["message_count"] += 1
+            if effective_max_history_messages is not None:
+                non_system_messages = session["dialog"][1:]
+                messages_to_keep = effective_max_history_messages * 2
+                if len(non_system_messages) > messages_to_keep:
+                    session["dialog"] = [session["dialog"][0]] + non_system_messages[-messages_to_keep:]
+            else:
+                max_messages = 20
+                if len(session["dialog"]) > max_messages:
+                    session["dialog"] = [session["dialog"][0]] + session["dialog"][-(max_messages-1):]
+            messages = session["dialog"].copy()
+        
+        full_response = ""
+        try:
+            tools = MAZE_GAME_TOOLS if use_tools else None
+            async for chunk in client.agenerate_stream(
+                messages=messages,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                model=model or "default",
+                tools=tools,
+                tool_choice="auto" if tools else None
+            ):
+                full_response += chunk
+                yield chunk
+            
+            with session_lock:
+                session["dialog"].append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            error_msg = f"Error in async stream processing: {str(e)}"
             logger.error(f"Session {session_id}: {error_msg}")
             yield f"\n\nError: {error_msg}"
     
@@ -933,7 +1199,7 @@ def init_llm_service(
     timeout: int = 300,
     temperature: float = 0.6,
     top_p: float = 0.9,
-    max_tokens: int = 512,
+    max_tokens: int = 4096,
     skip_thinking: bool = True,
     max_history_tokens: int = 10000,
     backend_type: str = "auto"
@@ -1022,9 +1288,10 @@ def get_llm_client_for_user(user_model_name: Optional[str] = None) -> LLMClient:
         timeout=300,
         default_temperature=0.6,
         default_top_p=0.9,
-        default_max_tokens=512,
+        default_max_tokens=4096,
         skip_thinking=True,
-        backend_type=backend_type
+        backend_type=backend_type,
+        default_model=model_config.model
     )
     
     return client

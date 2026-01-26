@@ -1,67 +1,70 @@
 """
 Unified LLM Service Interface
 
-This module provides a unified interface for LLM communication that works
-with both MQTT and SSE (Direct HTTP) modes. It abstracts the communication
-layer so routers can use the same API regardless of the underlying transport.
-
-Modes:
-- MQTT: Uses MQTT broker for communication with LLM service
-- SSE: Uses direct HTTP/SSE communication with llama.cpp server
+This module provides a unified interface for LLM communication over
+direct HTTP/SSE.
 """
 
 import logging
 from typing import Optional, Dict, List, Iterator
-from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-# Import based on communication mode
-_comm_mode = settings.LLM_COMM_MODE.lower()
-
-if _comm_mode == "sse":
-    from .llm_client import get_llm_client, get_session_manager, LLMClient, SessionManager
-    _use_sse = True
-else:
-    # MQTT mode - services are managed by mqtt.py
-    _use_sse = False
+from .llm_client import get_llm_client, get_session_manager, LLMClient, SessionManager
 
 
 class UnifiedLLMService:
     """
-    Unified interface for LLM communication.
-    Automatically uses MQTT or SSE based on configuration.
+    Unified interface for LLM communication (SSE-only).
     """
     
     def __init__(self):
-        self.mode = settings.LLM_COMM_MODE.lower()
-        logger.info(f"UnifiedLLMService initialized in {self.mode.upper()} mode")
+        self.mode = "sse"
+        self._client_cache: Dict[str, LLMClient] = {}
+        logger.info("UnifiedLLMService initialized in SSE mode")
     
     def is_sse_mode(self) -> bool:
         """Check if running in SSE mode"""
-        return self.mode == "sse"
+        return True
     
-    def is_mqtt_mode(self) -> bool:
-        """Check if running in MQTT mode"""
-        return self.mode == "mqtt"
-    
-    def get_llm_client(self) -> Optional["LLMClient"]:
+    def get_llm_client(self, model_name: Optional[str] = None) -> Optional["LLMClient"]:
         """
-        Get LLM client (SSE mode only).
-        Returns None in MQTT mode.
+        Get LLM client, optionally for a specific model configuration.
         """
-        if self.is_sse_mode():
+        if not model_name or model_name == "default":
             return get_llm_client()
-        return None
+        
+        # Check cache
+        if model_name in self._client_cache:
+            return self._client_cache[model_name]
+        
+        # Create new client for this model configuration
+        try:
+            from .llm_client import get_llm_client_for_user
+            client = get_llm_client_for_user(model_name)
+            self._client_cache[model_name] = client
+            return client
+        except Exception as e:
+            logger.error(f"Failed to create LLM client for model config {model_name}: {e}")
+            return get_llm_client()
     
     def get_session_manager(self) -> Optional["SessionManager"]:
         """
-        Get session manager (SSE mode only).
-        Returns None in MQTT mode.
+        Get session manager.
         """
-        if self.is_sse_mode():
-            return get_session_manager()
-        return None
+        return get_session_manager()
+
+    def _resolve_model_for_call(self, model: Optional[str]) -> Optional[str]:
+        if not model or model == "default":
+            return "default"
+        try:
+            from ..models_config import get_models_manager
+            models_manager = get_models_manager()
+            if models_manager.get_model_by_name(model):
+                return "default"
+        except Exception as e:
+            logger.warning(f"Failed to resolve model name '{model}': {e}")
+        return model
     
     def generate(
         self,
@@ -69,19 +72,19 @@ class UnifiedLLMService:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        model: str = "default",
+        model: Optional[str] = "default",
         tools: Optional[List[Dict]] = None,
         tool_choice: Optional[str] = "auto"
     ) -> str:
         """
-        Generate response (SSE mode only).
+        Generate response.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature
             top_p: Top-p sampling
             max_tokens: Maximum tokens to generate
-            model: Model name
+            model: Model name (config name)
             tools: Tool definitions for function calling
             tool_choice: Tool usage mode
             
@@ -89,24 +92,19 @@ class UnifiedLLMService:
             Generated response string
             
         Raises:
-            RuntimeError: If called in MQTT mode or service unavailable
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "generate() is only available in SSE mode. "
-                "In MQTT mode, use MQTT publish/subscribe directly."
-            )
-        
-        client = self.get_llm_client()
+        client = self.get_llm_client(model)
         if client is None:
             raise RuntimeError("LLM client not initialized")
         
+        model_for_call = self._resolve_model_for_call(model)
         return client.generate(
             messages=messages,
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            model=model,
+            model=model_for_call,
             tools=tools,
             tool_choice=tool_choice
         )
@@ -117,19 +115,19 @@ class UnifiedLLMService:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        model: str = "default",
+        model: Optional[str] = "default",
         tools: Optional[List[Dict]] = None,
         tool_choice: Optional[str] = "auto"
     ) -> Iterator[str]:
         """
-        Generate streaming response (SSE mode only).
+        Generate streaming response.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature
             top_p: Top-p sampling
             max_tokens: Maximum tokens to generate
-            model: Model name
+            model: Model name (config name)
             tools: Tool definitions for function calling
             tool_choice: Tool usage mode
             
@@ -137,27 +135,49 @@ class UnifiedLLMService:
             Generated text chunks
             
         Raises:
-            RuntimeError: If called in MQTT mode or service unavailable
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "generate_stream() is only available in SSE mode. "
-                "In MQTT mode, use MQTT publish/subscribe directly."
-            )
-        
-        client = self.get_llm_client()
+        client = self.get_llm_client(model)
         if client is None:
             raise RuntimeError("LLM client not initialized")
         
+        model_for_call = self._resolve_model_for_call(model)
         yield from client.generate_stream(
             messages=messages,
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            model=model,
+            model=model_for_call,
             tools=tools,
             tool_choice=tool_choice
         )
+    
+    async def agenerate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = "default",
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[str] = "auto"
+    ):
+        """Async version of generate_stream"""
+        client = self.get_llm_client(model)
+        if client is None:
+            raise RuntimeError("LLM client not initialized")
+        
+        model_for_call = self._resolve_model_for_call(model)
+        async for chunk in client.agenerate_stream(
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            model=model_for_call,
+            tools=tools,
+            tool_choice=tool_choice
+        ):
+            yield chunk
     
     def process_message(
         self,
@@ -169,10 +189,11 @@ class UnifiedLLMService:
         max_tokens: Optional[int] = None,
         use_tools: bool = True,
         use_history: bool = True,
-        max_history_messages: Optional[int] = None
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None
     ) -> str:
         """
-        Process a session-based message (SSE mode only).
+        Process a session-based message.
         
         Args:
             session_id: Session identifier
@@ -184,23 +205,21 @@ class UnifiedLLMService:
             use_tools: Whether to enable function calling tools
             use_history: Whether to maintain conversation history (disable for stateless calls like maze game)
             max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
+            model: Model name to use
             
         Returns:
             Generated response
             
         Raises:
-            RuntimeError: If called in MQTT mode or service unavailable
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "process_message() is only available in SSE mode. "
-                "In MQTT mode, use MQTT publish/subscribe directly."
-            )
-        
         session_manager = self.get_session_manager()
         if session_manager is None:
             raise RuntimeError("Session manager not initialized")
         
+        llm_client = self.get_llm_client(model)
+        
+        model_for_call = self._resolve_model_for_call(model)
         return session_manager.process_message(
             session_id=session_id,
             system_prompt=system_prompt,
@@ -210,7 +229,9 @@ class UnifiedLLMService:
             max_tokens=max_tokens,
             use_tools=use_tools,
             use_history=use_history,
-            max_history_messages=max_history_messages
+            max_history_messages=max_history_messages,
+            model=model_for_call,
+            llm_client=llm_client
         )
     
     def process_message_stream(
@@ -222,10 +243,11 @@ class UnifiedLLMService:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         use_tools: bool = False,
-        max_history_messages: Optional[int] = None
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None
     ) -> Iterator[str]:
         """
-        Process a session-based message with streaming (SSE mode only).
+        Process a session-based message with streaming.
         
         Args:
             session_id: Session identifier
@@ -236,23 +258,21 @@ class UnifiedLLMService:
             max_tokens: Maximum tokens
             use_tools: Whether to enable function calling tools
             max_history_messages: Maximum number of user/assistant message pairs to keep (excluding system prompt)
+            model: Model name to use
             
         Yields:
             Generated text chunks
             
         Raises:
-            RuntimeError: If called in MQTT mode or service unavailable
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "process_message_stream() is only available in SSE mode. "
-                "In MQTT mode, use MQTT publish/subscribe directly."
-            )
-        
         session_manager = self.get_session_manager()
         if session_manager is None:
             raise RuntimeError("Session manager not initialized")
         
+        llm_client = self.get_llm_client(model)
+        
+        model_for_call = self._resolve_model_for_call(model)
         yield from session_manager.process_message_stream(
             session_id=session_id,
             system_prompt=system_prompt,
@@ -261,12 +281,48 @@ class UnifiedLLMService:
             top_p=top_p,
             max_tokens=max_tokens,
             use_tools=use_tools,
-            max_history_messages=max_history_messages
+            max_history_messages=max_history_messages,
+            model=model_for_call,
+            llm_client=llm_client
         )
+    
+    async def aprocess_message_stream(
+        self,
+        session_id: str,
+        system_prompt: str,
+        user_message: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_tools: bool = False,
+        max_history_messages: Optional[int] = None,
+        model: Optional[str] = None
+    ):
+        """Async version of process_message_stream"""
+        session_manager = self.get_session_manager()
+        if session_manager is None:
+            raise RuntimeError("Session manager not initialized")
+        
+        llm_client = self.get_llm_client(model)
+        model_for_call = self._resolve_model_for_call(model)
+        
+        async for chunk in session_manager.aprocess_message_stream(
+            session_id=session_id,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            use_tools=use_tools,
+            max_history_messages=max_history_messages,
+            model=model_for_call,
+            llm_client=llm_client
+        ):
+            yield chunk
     
     def get_session_history(self, session_id: str) -> Optional[List[Dict[str, str]]]:
         """
-        Get session conversation history (SSE mode only).
+        Get session conversation history.
         
         Args:
             session_id: Session identifier
@@ -275,14 +331,8 @@ class UnifiedLLMService:
             List of messages or None if session not found
             
         Raises:
-            RuntimeError: If called in MQTT mode
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "get_session_history() is only available in SSE mode. "
-                "In MQTT mode, sessions are managed by the MQTT deployment service."
-            )
-        
         session_manager = self.get_session_manager()
         if session_manager is None:
             raise RuntimeError("Session manager not initialized")
@@ -291,20 +341,14 @@ class UnifiedLLMService:
     
     def clear_session(self, session_id: str):
         """
-        Clear a session's conversation history (SSE mode only).
+        Clear a session's conversation history.
         
         Args:
             session_id: Session identifier
             
         Raises:
-            RuntimeError: If called in MQTT mode
+            RuntimeError: If service unavailable
         """
-        if not self.is_sse_mode():
-            raise RuntimeError(
-                "clear_session() is only available in SSE mode. "
-                "In MQTT mode, sessions are managed by the MQTT deployment service."
-            )
-        
         session_manager = self.get_session_manager()
         if session_manager is None:
             raise RuntimeError("Session manager not initialized")

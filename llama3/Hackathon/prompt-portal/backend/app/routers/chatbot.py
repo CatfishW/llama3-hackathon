@@ -1,20 +1,30 @@
 import asyncio
+import logging
 import json
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import ChatMessage, ChatSession, PromptTemplate
-from ..mqtt import send_chat_message, publish_template_update
+from ..models import ChatMessage, ChatSession, PromptTemplate, User
+from ..models_config import get_models_manager
 
 router = APIRouter(prefix="/api/chatbot", tags=["chatbot"])
+logger = logging.getLogger(__name__)
+
+
+def _fallback_model_names(preferred: Optional[str]) -> List[str]:
+    models_manager = get_models_manager()
+    model_names = [model.name for model in models_manager.get_all_models()]
+    if preferred and preferred in model_names:
+        return [preferred] + [name for name in model_names if name != preferred]
+    return model_names
 
 
 DEFAULT_PROMPTS: List[schemas.ChatPresetOut] = [
@@ -147,6 +157,12 @@ async def create_session(
 
     system_prompt = payload.system_prompt or (template.content if template else _default_prompt())
     title = payload.title or (template.title if template else "New Chat")
+    
+    # Use selected_model from payload, or from user settings, or default
+    selected_model = payload.selected_model
+    if not selected_model:
+        db_user = db.query(User).filter(User.id == user.id).first()
+        selected_model = db_user.selected_model if db_user else "AGAII Cloud LLM"
 
     now = datetime.utcnow()
     session = ChatSession(
@@ -158,6 +174,7 @@ async def create_session(
         temperature=payload.temperature,
         top_p=payload.top_p,
         max_tokens=payload.max_tokens,
+        selected_model=selected_model,
         message_count=0,
         created_at=now,
         updated_at=now,
@@ -209,15 +226,12 @@ async def update_session(
     if payload.max_tokens is not None:
         session.max_tokens = payload.max_tokens
 
+    if payload.selected_model is not None:
+        session.selected_model = payload.selected_model
+
     session.updated_at = datetime.utcnow()
     
-    # If system_prompt changed, publish update (MQTT mode only)
-    from ..config import settings
-    if settings.LLM_COMM_MODE.lower() == "mqtt":
-        if payload.system_prompt is not None and (session.system_prompt or "") != (payload.system_prompt or ""):
-            publish_template_update(session.session_key, payload.system_prompt)
-    # Note: In SSE mode, system prompt is stored in session and used on next message
-    
+    # System prompt is stored in the session and applied on the next message.
     db.commit()
     db.refresh(session)
 
@@ -300,17 +314,7 @@ async def send_message(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> schemas.ChatMessageSendResponse:
-    # Check communication mode and connection health
     from ..config import settings
-    
-    # Only check MQTT connection in MQTT mode
-    if settings.LLM_COMM_MODE.lower() == "mqtt":
-        from ..mqtt import mqtt_client
-        if not mqtt_client or not mqtt_client.is_connected():
-            raise HTTPException(
-                status_code=503,
-                detail="LLM backend connection unavailable. Please try again in a moment."
-            )
     
     session = (
         db.query(ChatSession)
@@ -344,7 +348,10 @@ async def send_message(
         session_id=session.id,
         role="user",
         content=payload.content,
-        metadata_json=None,
+        metadata_json=json.dumps({
+            "image_urls": payload.image_urls,
+            "video_urls": payload.metadata.get("video_urls") if payload.metadata else None
+        }) if (payload.image_urls or (payload.metadata and payload.metadata.get("video_urls"))) else None,
         request_id=None,
         created_at=now,
     )
@@ -355,16 +362,16 @@ async def send_message(
     db.refresh(user_message)
     db.refresh(session)
 
-    # Handle message sending based on communication mode
-    if settings.LLM_COMM_MODE.lower() == "sse":
-        # SSE/Direct HTTP mode
-        try:
-            from ..services.llm_service import get_llm_service
-            llm_service = get_llm_service()
+    try:
+        from ..services.llm_service import get_llm_service
+        llm_service = get_llm_service()
 
-            # Vision path: if vision enabled and images provided, send multi-part user message
+        db_user = db.query(User).filter(User.id == user.id).first()
+        preferred_model = session.selected_model or (db_user.selected_model if db_user else None)
+        candidate_models = _fallback_model_names(preferred_model)
+
+        def call_model(model_name: Optional[str]) -> str:
             if settings.LLM_VISION_ENABLED and payload.image_urls:
-                # Construct messages list manually to include image parts
                 system_prompt_value = session.system_prompt or _default_prompt()
                 user_parts = [{"type": "text", "text": payload.content}]
                 for url in payload.image_urls:
@@ -373,79 +380,72 @@ async def send_message(
                     {"role": "system", "content": system_prompt_value},
                     {"role": "user", "content": user_parts},
                 ]
-                assistant_content = llm_service.generate(
+                return llm_service.generate(
                     messages=messages,
                     temperature=effective_temperature,
                     top_p=effective_top_p,
                     max_tokens=effective_max_tokens,
+                    model=model_name,
                     tools=None,
                     tool_choice="none"
                 )
-            else:
-                # Standard text-only processing (history enabled)
-                assistant_content = llm_service.process_message(
-                    session_id=session.session_key,
-                    system_prompt=session.system_prompt or _default_prompt(),
-                    user_message=payload.content,
-                    temperature=effective_temperature,
-                    top_p=effective_top_p,
-                    max_tokens=effective_max_tokens,
-                    use_tools=False  # Disable function calling for chatbot
-                )
 
-            response_payload = {
-                "content": assistant_content,
-                "request_id": f"sse-{uuid.uuid4().hex[:8]}",
-                "assistant_message": {
-                    "content": assistant_content
-                }
-            }
-
-        except RuntimeError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"LLM service error: {str(exc)}"
-            ) from exc
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to contact LLM backend: {str(exc)}"
-            ) from exc
-    else:
-        # MQTT mode (original behavior)
-        mqtt_payload = {
-            "sessionId": session.session_key,
-            "message": payload.content,
-        }
-        if session.system_prompt:
-            mqtt_payload["systemPrompt"] = session.system_prompt
-        if effective_temperature is not None:
-            mqtt_payload["temperature"] = effective_temperature
-        if effective_top_p is not None:
-            mqtt_payload["topP"] = effective_top_p
-        if effective_max_tokens is not None:
-            mqtt_payload["maxTokens"] = effective_max_tokens
-
-        try:
-            # Increased timeout to 90 seconds for LLM responses
-            response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
-        except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504,
-                detail="The AI model is taking longer than usual to respond. Please try again."
+            return llm_service.process_message(
+                session_id=session.session_key,
+                system_prompt=session.system_prompt or _default_prompt(),
+                user_message=payload.content,
+                temperature=effective_temperature,
+                top_p=effective_top_p,
+                max_tokens=effective_max_tokens,
+                use_tools=False,
+                model=model_name
             )
-        except RuntimeError as exc:
-            if "MQTT connection" in str(exc):
-                raise HTTPException(
-                    status_code=503,
-                    detail="LLM backend connection lost. Reconnecting... Please try again in a moment."
-                )
-            raise HTTPException(status_code=502, detail=f"Backend error: {str(exc)}") from exc
-        except Exception as exc:  # pragma: no cover - surface error to client
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to contact LLM backend. Please try again. Error: {str(exc)}"
-            ) from exc
+
+        assistant_content = ""
+        used_model: Optional[str] = None
+        last_error: Optional[Exception] = None
+        for model_name in candidate_models:
+            try:
+                assistant_content = call_model(model_name)
+                used_model = model_name
+                break
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        if used_model is None:
+            raise last_error or RuntimeError("No available models")
+
+        if used_model != preferred_model:
+            logger.warning(
+                "LLM failure; switched model from %s to %s",
+                preferred_model,
+                used_model
+            )
+            session.selected_model = used_model
+            if db_user:
+                db_user.selected_model = used_model
+            db.commit()
+            db.refresh(session)
+
+        response_payload = {
+            "content": assistant_content,
+            "request_id": f"sse-{uuid.uuid4().hex[:8]}",
+            "assistant_message": {
+                "content": assistant_content
+            }
+        }
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM service error: {str(exc)}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to contact LLM backend: {str(exc)}"
+        ) from exc
 
     # Reload session to pick up assistant message count update
     db.refresh(session)
@@ -531,26 +531,15 @@ async def send_message(
 
 @router.post("/messages/stream")
 async def send_message_stream(
+    request: Request,
     payload: schemas.ChatMessageSendRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     """
-    Send a message and stream the response.
-    Works in both SSE and MQTT modes:
-    - SSE mode: Real streaming from llama.cpp
-    - MQTT mode: Simulated streaming (chunks full response)
+    Send a message and stream the response over SSE.
     """
     from ..config import settings
-    
-    # Only check MQTT connection in MQTT mode
-    if settings.LLM_COMM_MODE.lower() == "mqtt":
-        from ..mqtt import mqtt_client
-        if not mqtt_client or not mqtt_client.is_connected():
-            raise HTTPException(
-                status_code=503,
-                detail="LLM backend connection unavailable. Please try again in a moment."
-            )
     
     session = (
         db.query(ChatSession)
@@ -584,7 +573,10 @@ async def send_message_stream(
         session_id=session.id,
         role="user",
         content=payload.content,
-        metadata_json=None,
+        metadata_json=json.dumps({
+            "image_urls": payload.image_urls,
+            "video_urls": payload.metadata.get("video_urls") if payload.metadata else None
+        }) if (payload.image_urls or (payload.metadata and payload.metadata.get("video_urls"))) else None,
         request_id=None,
         created_at=now,
     )
@@ -600,6 +592,9 @@ async def send_message_stream(
     user_message_id_value = user_message.id
     session_key_value = session.session_key
     system_prompt_value = session.system_prompt or _default_prompt()
+    db_user = db.query(User).filter(User.id == user.id).first()
+    preferred_model = session.selected_model or (db_user.selected_model if db_user else None)
+    candidate_models = _fallback_model_names(preferred_model)
 
     # Create a generator that streams the response
     async def stream_generator():
@@ -614,119 +609,138 @@ async def send_message_stream(
             yield f"data: {json.dumps(metadata)}\n\n"
             
             full_content = ""
-            
-            if settings.LLM_COMM_MODE.lower() == "sse":
-                from ..services.llm_service import get_llm_service
-                llm_service = get_llm_service()
 
-                if settings.LLM_VISION_ENABLED and payload.image_urls:
-                    # Vision streaming: build multi-part messages and stream via generate_stream
-                    user_parts = [{"type": "text", "text": payload.content}]
-                    for url in payload.image_urls:
-                        user_parts.append({"type": "image_url", "image_url": {"url": url}})
-                    messages = [
-                        {"role": "system", "content": system_prompt_value},
-                        {"role": "user", "content": user_parts},
-                    ]
-                    for chunk in llm_service.generate_stream(
-                        messages=messages,
-                        temperature=effective_temperature,
-                        top_p=effective_top_p,
-                        max_tokens=effective_max_tokens,
-                        tools=None,
-                        tool_choice="none"
-                    ):
+            from ..services.llm_service import get_llm_service
+            llm_service = get_llm_service()
+            used_model: Optional[str] = None
+            last_error: Optional[str] = None
+
+            for model_name in candidate_models:
+                try:
+                    if settings.LLM_VISION_ENABLED and payload.image_urls:
+                        user_parts = [{"type": "text", "text": payload.content}]
+                        for url in payload.image_urls:
+                            user_parts.append({"type": "image_url", "image_url": {"url": url}})
+                        messages = [
+                            {"role": "system", "content": system_prompt_value},
+                            {"role": "user", "content": user_parts},
+                        ]
+                        stream_iter = llm_service.agenerate_stream(
+                            messages=messages,
+                            temperature=effective_temperature,
+                            top_p=effective_top_p,
+                            max_tokens=effective_max_tokens,
+                            model=model_name,
+                            tools=None,
+                            tool_choice="none"
+                        )
+                    else:
+                        stream_iter = llm_service.aprocess_message_stream(
+                            session_id=session_key_value,
+                            system_prompt=system_prompt_value,
+                            user_message=payload.content,
+                            temperature=effective_temperature,
+                            top_p=effective_top_p,
+                            max_tokens=effective_max_tokens,
+                            use_tools=False,
+                            model=model_name
+                        )
+
+                    # Used to track if we successfully started streaming from this model
+                    model_started = False
+                    
+                    async for chunk in stream_iter:
+                        if not model_started:
+                            model_started = True
+                            used_model = model_name
+                            if used_model != preferred_model:
+                                logger.warning(
+                                    "LLM failure; switched model from %s to %s",
+                                    preferred_model,
+                                    used_model
+                                )
+                                async def update_model_choice():
+                                    def _sync_db_update():
+                                        from ..database import SessionLocal
+                                        db_switch = SessionLocal()
+                                        try:
+                                            session_update = db_switch.query(ChatSession).filter(ChatSession.id == session_id_value).first()
+                                            if session_update:
+                                                session_update.selected_model = used_model
+                                                session_update.updated_at = datetime.utcnow()
+                                                session_update.last_used_at = datetime.utcnow()
+                                            user_update = db_switch.query(User).filter(User.id == user.id).first()
+                                            if user_update:
+                                                user_update.selected_model = used_model
+                                            db_switch.commit()
+                                        finally:
+                                            db_switch.close()
+                                    await asyncio.to_thread(_sync_db_update)
+                                
+                                asyncio.create_task(update_model_choice())
+
+                        if isinstance(chunk, str) and chunk.startswith("Error:"):
+                            last_error = chunk
+                            model_started = False # Reset so we try next model
+                            break
+                        
                         full_content += chunk
                         chunk_data = {"type": "chunk", "content": chunk}
                         yield f"data: {json.dumps(chunk_data)}\n\n"
                         await asyncio.sleep(0)
-                else:
-                    # Text-only streaming with history
-                    for chunk in llm_service.process_message_stream(
-                        session_id=session_key_value,
-                        system_prompt=system_prompt_value,
-                        user_message=payload.content,
-                        temperature=effective_temperature,
-                        top_p=effective_top_p,
-                        max_tokens=effective_max_tokens,
-                        use_tools=False
-                    ):
-                        full_content += chunk
-                        chunk_data = {"type": "chunk", "content": chunk}
-                        yield f"data: {json.dumps(chunk_data)}\n\n"
-                        await asyncio.sleep(0)  # Allow other tasks to run
+                        if await request.is_disconnected():
+                            logger.info("Client disconnected during stream")
+                            return
                     
-            else:
-                # MQTT mode: Get full response, then simulate streaming
-                mqtt_payload = {
-                    "sessionId": session_key_value,
-                    "message": payload.content,
-                }
-                if system_prompt_value:
-                    mqtt_payload["systemPrompt"] = system_prompt_value
-                if effective_temperature is not None:
-                    mqtt_payload["temperature"] = effective_temperature
-                if effective_top_p is not None:
-                    mqtt_payload["topP"] = effective_top_p
-                if effective_max_tokens is not None:
-                    mqtt_payload["maxTokens"] = effective_max_tokens
+                    if model_started:
+                        break
+                except Exception as exc:
+                    last_error = str(exc)
+                    continue
 
+            if used_model is None:
+                err_msg = last_error or "LLM error: no available models"
+                yield f"data: {json.dumps({'type': 'error', 'error': err_msg})}\n\n"
+                return
+
+            # Save assistant message to database (offload to thread to keep stream smooth)
+            def _save_assistant_message():
+                from ..database import SessionLocal
+                db_stream = SessionLocal()
                 try:
-                    response_payload = await send_chat_message(mqtt_payload, timeout=90.0)
-                    full_content = response_payload.get("content", "")
+                    request_id = f"stream-{uuid.uuid4().hex[:8]}"
+                    now_assistant = datetime.utcnow()
+                    assistant_message = ChatMessage(
+                        session_id=session_id_value,
+                        role="assistant",
+                        content=full_content,
+                        metadata_json=None,
+                        request_id=request_id,
+                        created_at=now_assistant,
+                    )
                     
-                    # Simulate streaming by chunking the response
-                    chunk_size = 10  # Characters per chunk
-                    for i in range(0, len(full_content), chunk_size):
-                        chunk = full_content[i:i+chunk_size]
-                        chunk_data = {"type": "chunk", "content": chunk}
-                        yield f"data: {json.dumps(chunk_data)}\n\n"
-                        await asyncio.sleep(0.01)  # Small delay to simulate streaming
-                        
-                except asyncio.TimeoutError:
-                    error_data = {"type": "error", "message": "The AI model is taking longer than usual to respond."}
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                    return
-                except Exception as e:
-                    error_data = {"type": "error", "message": str(e)}
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                    return
+                    session_update = db_stream.query(ChatSession).filter(ChatSession.id == session_id_value).first()
+                    if session_update:
+                        session_update.message_count = (session_update.message_count or 0) + 1
+                        session_update.updated_at = now_assistant
+                        session_update.last_used_at = now_assistant
+                    
+                    db_stream.add(assistant_message)
+                    db_stream.commit()
+                    db_stream.refresh(assistant_message)
+                    return assistant_message.id
+                finally:
+                    db_stream.close()
+
+            assistant_msg_id = await asyncio.to_thread(_save_assistant_message)
             
-            # Save assistant message to database (create new session to avoid detached instance errors)
-            from ..database import SessionLocal
-            db_stream = SessionLocal()
-            try:
-                request_id = f"stream-{uuid.uuid4().hex[:8]}"
-                now_assistant = datetime.utcnow()
-                assistant_message = ChatMessage(
-                    session_id=session_id_value,
-                    role="assistant",
-                    content=full_content,
-                    metadata_json=None,
-                    request_id=request_id,
-                    created_at=now_assistant,
-                )
-                
-                # Update session message count and timestamps
-                session_update = db_stream.query(ChatSession).filter(ChatSession.id == session_id_value).first()
-                if session_update:
-                    session_update.message_count = (session_update.message_count or 0) + 1
-                    session_update.updated_at = now_assistant
-                    session_update.last_used_at = now_assistant
-                
-                db_stream.add(assistant_message)
-                db_stream.commit()
-                db_stream.refresh(assistant_message)
-                
-                # Send completion with assistant message ID
-                completion_data = {
-                    "type": "done",
-                    "assistant_message_id": assistant_message.id,
-                    "full_content": full_content
-                }
-                yield f"data: {json.dumps(completion_data)}\n\n"
-            finally:
-                db_stream.close()
+            # Send completion with assistant message ID
+            completion_data = {
+                "type": "done",
+                "assistant_message_id": assistant_msg_id,
+                "full_content": full_content
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
             
         except Exception as e:
             error_data = {"type": "error", "message": f"Streaming error: {str(e)}"}
@@ -811,19 +825,52 @@ async def upload_document(
             os.remove(temp_file_path)
 
 
+@router.post("/upload-video")
+async def upload_video(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Upload a video file."""
+    import os
+    import uuid as _uuid
+    
+    filename = file.filename or "uploaded_video"
+    ext = filename.split(".")[-1].lower() if "." in filename else ""
+    allowed = {"mp4", "webm", "ogg", "mov"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported video type. Use MP4/WEBM/OGG/MOV.")
+
+    stored_filename = f"vid_{_uuid.uuid4().hex}.{ext}"
+    uploads_dir = "uploads"
+    os.makedirs(uploads_dir, exist_ok=True)
+    final_path = os.path.join(uploads_dir, stored_filename)
+
+    with open(final_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+
+    return {
+        "filename": filename,
+        "stored_filename": stored_filename,
+        "url": f"/uploads/{stored_filename}",
+    }
+
+
 @router.post("/upload-image")
 async def upload_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Upload an image and (optionally) extract text using OCR.
+    """Upload an image and return a base64 data URL for LLM vision APIs.
 
     Returns:
         {
           "filename": original filename,
           "stored_filename": name stored on server,
-          "url": accessible URL under /uploads/,
+          "url": base64 data URL for LLM vision API consumption,
+          "file_url": accessible URL under /uploads/ (for display),
           "ocr_text": extracted text (may be empty),
           "ocr_length": length of extracted text,
           "has_text": bool indicating if OCR produced non-empty text
@@ -833,10 +880,13 @@ async def upload_image(
         - OCR uses pytesseract + Pillow if available; otherwise returns empty text.
         - For security, the image is re-saved via Pillow to ensure it's a valid image and strip any embedded metadata.
         - Supported formats: png, jpg, jpeg, webp, gif (gif: first frame only for OCR).
+        - The 'url' field returns a base64 data URL for direct use with LLM vision APIs.
     """
     import os
     import uuid as _uuid
     import tempfile
+    import base64
+    import io
 
     # Validate content type / extension
     filename = file.filename or "uploaded_image"
@@ -870,7 +920,28 @@ async def upload_image(
             # Convert to RGB to standardize
             if img.mode not in ("RGB", "RGBA"):
                 img = img.convert("RGB")
+            
+            # Save to file for serving
             img.save(final_path, optimize=True)
+            
+            # Generate base64 data URL for LLM vision API
+            # Resize if too large (max 2048px on longest edge) to reduce token usage
+            max_dimension = 2048
+            if max(img.size) > max_dimension:
+                ratio = max_dimension / max(img.size)
+                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            
+            # Convert to base64 data URL
+            buffer = io.BytesIO()
+            # Use JPEG for smaller size (unless PNG is needed for transparency)
+            output_format = "PNG" if img.mode == "RGBA" else "JPEG"
+            mime_type = "image/png" if output_format == "PNG" else "image/jpeg"
+            img.save(buffer, format=output_format, quality=85 if output_format == "JPEG" else None)
+            buffer.seek(0)
+            base64_data = base64.b64encode(buffer.read()).decode("utf-8")
+            data_url = f"data:{mime_type};base64,{base64_data}"
+            
         except ImportError:
             raise HTTPException(status_code=500, detail="Image processing requires Pillow. Please install pillow.")
         except Exception as exc:
@@ -893,7 +964,8 @@ async def upload_image(
         return {
             "filename": filename,
             "stored_filename": stored_filename,
-            "url": f"/uploads/{stored_filename}",
+            "url": data_url,  # Base64 data URL for LLM vision API
+            "file_url": f"/uploads/{stored_filename}",  # Server file URL for display
             "ocr_text": ocr_text,
             "ocr_length": len(ocr_text),
             "has_text": bool(ocr_text),

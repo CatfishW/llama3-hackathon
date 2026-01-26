@@ -1,6 +1,6 @@
 [Unit]
 Description=Prompt Portal Backend (FastAPI)
-After=network.target mosquitto.service
+After=network.target
 Requires=network.target
 
 [Service]

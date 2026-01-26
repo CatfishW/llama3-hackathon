@@ -1,11 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Trophy,
+  Users,
+  User as UserIcon,
+  FileCode,
+  Star,
+  Archive,
+  Activity,
+  Gamepad,
+  Clock,
+  RotateCcw,
+  ChevronDown,
+  Medal,
+  Zap,
+  Info,
+  AlertTriangle,
+  Loader2,
+  ArrowRight
+} from 'lucide-react'
 import { leaderboardAPI } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useTutorial } from '../contexts/TutorialContext'
 
 type Entry = {
   rank: number
   user_email: string
+  template_id: number
   template_title: string
   score: number  // Deprecated score (old system)
   new_score?: number | null  // New comprehensive scoring system
@@ -13,16 +35,13 @@ type Entry = {
   created_at: string
   total_steps?: number | null
   collision_count?: number | null
-  driving_game_consensus_reached?: boolean | null
-  driving_game_message_count?: number | null
-  driving_game_duration_seconds?: number | null
 }
 
 export default function Leaderboard() {
   const [items, setItems] = useState<Entry[]>([])
   const [total, setTotal] = useState(0)
   const [skip, setSkip] = useState(0)
-  const [mode, setMode] = useState<'lam'|'manual'>('lam')
+  const [mode, setMode] = useState<'lam' | 'manual'>('lam')
   const [forceRefresh, setForceRefresh] = useState(0)
   const [participants, setParticipants] = useState<number | null>(null)
   const [registeredUsers, setRegisteredUsers] = useState<number | null>(null)
@@ -30,50 +49,34 @@ export default function Leaderboard() {
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const isMobile = useIsMobile()
-  
-  // Theme state
-  const [theme, setTheme] = useState<'default' | 'orange'>(() => {
-    const saved = localStorage.getItem('webgame-theme')
-    return (saved === 'orange' || saved === 'default') ? saved : 'default'
-  })
+  const { runTutorial } = useTutorial()
 
-  // Persist theme changes
   useEffect(() => {
-    localStorage.setItem('webgame-theme', theme)
-  }, [theme])
-
-  // Theme configuration
-  const themeConfig = {
-    default: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      buttonPrimary: 'linear-gradient(45deg,#4ecdc4,#44a08d)',
-      avatarGradient: 'linear-gradient(45deg, #4ecdc4, #44a08d)'
-    },
-    orange: {
-      background: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 50%, #f7931e 100%)',
-      buttonPrimary: 'linear-gradient(45deg,#ff8c42,#ff6b35)',
-      avatarGradient: 'linear-gradient(45deg, #ff8c42, #ff6b35)'
+    const hasSeenLeaderboardTutorial = localStorage.getItem('tutorial_seen_leaderboard')
+    if (!hasSeenLeaderboardTutorial && !loading) {
+      runTutorial([
+        { target: '#leaderboard-stats', title: 'Global Statistics', content: 'See the total number of participants and registered engineers in the LAM ecosystem.', position: 'bottom' },
+        { target: '#leaderboard-table', title: 'The Hall of Fame', content: 'Analyze the top-performing sessions. You can see the rank, score, and the specific template used.', position: 'top' },
+        { target: '#load-more-btn', title: 'Deeper Insights', content: 'Click here to load more rankings and see how other engineers are performing.', position: 'top' },
+      ]);
+      localStorage.setItem('tutorial_seen_leaderboard', 'true');
     }
+  }, [loading, runTutorial]);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
   }
 
-  const currentTheme = themeConfig[theme]
+  const itemVariants = {
+    hidden: { opacity: 0, y: 10 },
+    visible: { opacity: 1, y: 0 }
+  }
 
   async function load(initial = false) {
     try {
       setLoading(true)
-      console.log(`[LEADERBOARD] ===== LOADING DATA =====`)
-      console.log(`[LEADERBOARD] Mode: ${mode}`)
-      console.log(`[LEADERBOARD] Initial: ${initial}`)
-      console.log(`[LEADERBOARD] Force refresh: ${forceRefresh}`)
-      console.log(`[LEADERBOARD] Calling API NOW...`)
-      
       const { data, total } = await leaderboardAPI.getLeaderboard(PAGE_SIZE, initial ? 0 : skip, mode)
-      
-      console.log(`[LEADERBOARD] ===== API RESPONSE =====`)
-      console.log(`[LEADERBOARD] Total: ${total}`)
-      console.log(`[LEADERBOARD] Entries: ${data.length}`)
-      console.log(`[LEADERBOARD] First entry:`, data[0])
-      
       setTotal(total)
       if (initial) {
         setItems(data)
@@ -83,444 +86,320 @@ export default function Leaderboard() {
         setSkip(prev => prev + data.length)
       }
     } catch (e: any) {
-      console.error('[LEADERBOARD] ===== ERROR =====', e)
       setErr(e?.response?.data?.detail || 'Failed to load leaderboard')
     } finally {
       setLoading(false)
     }
   }
-  
-  useEffect(() => { 
-    console.log(`[LEADERBOARD] useEffect triggered - mode changed to: ${mode}`)
-    load(true) 
-  }, [mode, forceRefresh])
+
+  useEffect(() => { load(true) }, [mode, forceRefresh])
 
   useEffect(() => {
-    ;(async ()=>{
+    ; (async () => {
       try {
         const s = await leaderboardAPI.getStats()
         setParticipants(s.participants)
         setRegisteredUsers(s.registered_users)
-      } catch {}
+      } catch { }
     })()
   }, [])
 
-  const containerStyle = {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: isMobile ? '24px 12px 56px' : '40px 20px'
-  }
-
-  const headerStyle = {
-    textAlign: 'center' as const,
-    marginBottom: isMobile ? '28px' : '40px'
-  }
-
-  const tableContainerStyle: any = {
-    background: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '15px',
-    padding: isMobile ? '18px 14px' : '30px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    overflowX: 'auto' as const,
-    WebkitOverflowScrolling: 'touch'
-  }
-
-  const tableStyle = {
-    width: '100%',
-    minWidth: isMobile ? '900px' : '100%', // Ensure table has enough width for all columns
-    borderCollapse: 'collapse' as const,
-    color: 'white'
-  }
-
-  const thStyle = {
-    padding: isMobile ? '10px 12px' : '15px 20px',
-    textAlign: 'left' as const,
-    borderBottom: '2px solid rgba(255, 255, 255, 0.2)',
-    fontSize: isMobile ? '.85rem' : '1.1rem',
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-    whiteSpace: 'nowrap' as const
-  }
-
-  const tdStyle = {
-    padding: isMobile ? '10px 12px' : '15px 20px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    fontSize: isMobile ? '.85rem' : '1rem',
-    whiteSpace: 'nowrap' as const
-  }
-
   const getRankIcon = (rank: number) => {
     switch (rank) {
-      case 1: return '🥇'
-      case 2: return '🥈'
-      case 3: return '🥉'
-      default: return `#${rank}`
+      case 1: return <Medal size={20} color="#fbbf24" />
+      case 2: return <Medal size={20} color="#cbd5e1" />
+      case 3: return <Medal size={20} color="#d97706" />
+      default: return <span style={{ fontSize: '0.85rem', fontWeight: 700, opacity: 0.5 }}>#{rank}</span>
     }
   }
 
-  const getRankStyle = (rank: number) => {
+  const getRankStyle = (rank: number): any => {
     const baseStyle = {
-      fontWeight: '700',
-      fontSize: '1.1rem',
-      padding: '8px 12px',
-      borderRadius: '20px',
-      display: 'inline-block',
-      minWidth: '50px',
-      textAlign: 'center' as const
+      width: '36px',
+      height: '36px',
+      borderRadius: '10px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.05)'
     }
 
-    switch (rank) {
-      case 1:
-        return { ...baseStyle, background: 'linear-gradient(45deg, #ffd700, #ffed4e)', color: '#333' }
-      case 2:
-        return { ...baseStyle, background: 'linear-gradient(45deg, #c0c0c0, #e8e8e8)', color: '#333' }
-      case 3:
-        return { ...baseStyle, background: 'linear-gradient(45deg, #cd7f32, #daa520)', color: 'white' }
-      default:
-        return { ...baseStyle, background: 'rgba(255, 255, 255, 0.1)', color: 'white' }
-    }
+    if (rank === 1) return { ...baseStyle, background: 'rgba(251, 191, 36, 0.1)', borderColor: 'rgba(251, 191, 36, 0.2)' }
+    if (rank === 2) return { ...baseStyle, background: 'rgba(203, 213, 225, 0.1)', borderColor: 'rgba(203, 213, 225, 0.2)' }
+    if (rank === 3) return { ...baseStyle, background: 'rgba(217, 119, 6, 0.1)', borderColor: 'rgba(217, 119, 6, 0.2)' }
+    return baseStyle
   }
 
   return (
-  <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white' }}>
-      <div style={containerStyle}>
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-      <h1 style={{ fontSize: isMobile ? '2.2rem':'3rem', fontWeight: '700', margin: 0, lineHeight:1.15 }}>
-              🏆 Leaderboard
-            </h1>
-            {/* Theme Switcher */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '14px', opacity: 0.9 }}>Theme:</span>
-              <select 
-                value={theme} 
-                onChange={(e) => setTheme(e.target.value as 'default' | 'orange')}
-                style={{ 
-                  padding: '4px 8px', 
-                  borderRadius: '6px', 
-                  background: 'rgba(255,255,255,0.1)', 
-                  color: '#fff', 
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  fontSize: '14px'
-                }}
-              >
-                <option value="default" style={{ background: '#333' }}>Default Blue</option>
-                <option value="orange" style={{ background: '#333' }}>Orange Sunset</option>
-              </select>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#f8fafc', fontFamily: 'Urbanist, sans-serif' }}>
+      <motion.div
+        style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '24px 16px 80px' : '60px 24px' }}
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants} style={{ textAlign: 'center', marginBottom: '48px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <div style={{ padding: '16px', borderRadius: '24px', background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: '0 0 40px rgba(99,102,241,0.1)' }}>
+              <Trophy size={48} className="text-indigo-400" />
             </div>
           </div>
-          <div style={{ fontSize: isMobile ? '1rem':'1.1rem', opacity: 0.9, maxWidth: '820px', margin: '10px auto 0', lineHeight:1.45 }}>
-            <div style={{ display:'flex', gap:16, justifyContent:'center', flexWrap:'wrap' }}>
-              <div style={{ background:'rgba(0,0,0,0.25)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'8px 12px' }}>
-                Participants: <b>{participants!=null? participants : '—'}</b>
-              </div>
-              <div style={{ background:'rgba(0,0,0,0.25)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'8px 12px' }}>
-                Registered Users: <b>{registeredUsers!=null? registeredUsers : '—'}</b>
-              </div>
-            </div>
-            {/* Mode toggle */}
-            <div style={{ marginTop: 16, display:'flex', justifyContent:'center' }}>
-              <div style={{ display:'inline-flex', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius: 999, padding:4, flexWrap: 'wrap', gap: isMobile ? 2 : 0 }}>
-                {(['lam','manual'] as const).map(m => (
-                  <button key={m}
-                    onClick={()=>{
-                      console.log(`[BUTTON CLICK] Switching to mode: ${m}`)
-                      setMode(m)
-                      setForceRefresh(prev => prev + 1)
-                    }}
-                    style={{
-                      padding: isMobile ? '6px 10px':'8px 16px',
-                      borderRadius: 999,
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: '#fff',
-                      background: mode===m ? (theme==='orange' ? 'linear-gradient(45deg,#ff8c42,#ff6b35)' : 'linear-gradient(45deg,#4ecdc4,#44a08d)') : 'transparent',
-                      boxShadow: mode===m ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
-                      transition: 'all .2s',
-                      fontWeight: 700,
-                      fontSize: isMobile ? '.85rem':'1rem',
-                      minWidth: isMobile ? 90 : 120
-                    }}>
-                    {m==='lam' ? 'LAM Mode' : 'Manual Mode'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ marginTop:8, textAlign:'center', opacity:.85 }}>
-              Viewing: <b>{mode==='lam' ? 'LAM Mode (LLM controls)' : 'Manual Mode (You control)'}</b>
-            </div>
-          </div>
-        </div>
+          <h1 style={{ fontSize: isMobile ? '2.5rem' : '4rem', fontWeight: 900, margin: 0, letterSpacing: '-0.04em', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            Global Leaderboard
+          </h1>
+          <p style={{ color: '#94a3b8', marginTop: '16px', fontSize: '1.2rem', fontWeight: 500 }}>
+            Top performing prompt engineering strategies in the arena.
+          </p>
+        </motion.div>
 
-      {err && (
-        <div style={{
-          background: 'rgba(255, 107, 107, 0.2)',
-          border: '1px solid rgba(255, 107, 107, 0.4)',
-          borderRadius: '10px',
-          padding: '15px',
-          marginBottom: '20px',
-          color: '#ff6b6b',
-          textAlign: 'center'
-        }}>
-          <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-          {err}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px' }}>
-          <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', marginBottom: '20px' }}></i>
-          <p style={{ fontSize: '1.1rem', opacity: '0.8' }}>Loading leaderboard...</p>
-        </div>
-      ) : (
-        <div style={tableContainerStyle}>
-          {(isMobile || window.innerWidth < 1200) && items.length > 0 && (
-            <div style={{ fontSize: '.75rem', opacity: .7, marginBottom: 10, textAlign: 'center', padding: '6px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-              💡 Scroll horizontally ↔ to see all columns
+        <motion.div variants={itemVariants} style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '40px' }}>
+          <div id="leaderboard-stats" style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div style={statCardStyle}>
+              <Users size={18} className="text-indigo-400" />
+              <span>Participants: <b>{participants ?? '—'}</b></span>
             </div>
-          )}
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, color:'rgba(255,255,255,0.85)'}}>
-            <div>Total entries: <b>{total}</b></div>
-            <div>Showing: <b>{items.length}</b></div>
+            <div style={statCardStyle}>
+              <Users size={18} className="text-blue-400" />
+              <span>Registered: <b>{registeredUsers ?? '—'}</b></span>
+            </div>
           </div>
-          {items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px' }}>
-              <i className="fas fa-trophy" style={{ fontSize: '3rem', marginBottom: '20px', opacity: '0.5' }}></i>
-              <h3 style={{ marginBottom: '10px', fontSize: '1.5rem' }}>No entries yet</h3>
-              <p style={{ opacity: '0.7' }}>Be the first to submit a template and score!</p>
+
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ display: 'inline-flex', background: 'rgba(30, 41, 59, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 16, padding: '10px 24px', backdropFilter: 'blur(8px)', color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>
+              LAM Arena Rankings
+            </div>
+          </div>
+        </motion.div>
+
+        {err && (
+          <motion.div variants={itemVariants} style={errorStyle}>
+            <AlertTriangle size={20} />
+            {err}
+          </motion.div>
+        )}
+
+        <motion.div id="leaderboard-table" variants={itemVariants} style={tableWrapperStyle}>
+          {loading && items.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '100px 0' }}>
+              <Loader2 size={40} className="animate-spin text-indigo-500" style={{ margin: '0 auto' }} />
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '80px 0', color: '#64748b' }}>
+              <Trophy size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
+              <h3 style={{ fontSize: '1.25rem', color: '#cbd5e1' }}>No rankings available</h3>
+              <p>Be the first to compete in this mode!</p>
             </div>
           ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={{...thStyle, width: '80px', minWidth: '80px'}}>
-                    <i className="fas fa-medal" style={{ marginRight: '8px' }}></i>
-                    Rank
-                  </th>
-                  <th style={{...thStyle, width: '200px', minWidth: '180px'}}>
-                    <i className="fas fa-user" style={{ marginRight: '8px' }}></i>
-                    User
-                  </th>
-                  <th style={{...thStyle, width: '180px', minWidth: '150px'}}>
-                    <i className="fas fa-file-code" style={{ marginRight: '8px' }}></i>
-                    Template
-                  </th>
-                  <th style={{...thStyle, width: '120px', minWidth: '110px'}}>
-                    <i className="fas fa-star" style={{ marginRight: '8px' }}></i>
-                    New Score
-                  </th>
-                  <th style={{...thStyle, width: '120px', minWidth: '110px'}}>
-                    <i className="fas fa-archive" style={{ marginRight: '8px', opacity: 0.5 }}></i>
-                    <span style={{ opacity: 0.6 }}>Old Score</span>
-                  </th>
-                  <th style={{...thStyle, width: '140px', minWidth: '120px'}}>
-                    <i className="fas fa-chart-line" style={{ marginRight: '8px' }}></i>
-                    Metrics
-                  </th>
-                  <th style={{...thStyle, width: '140px', minWidth: '120px'}}>
-                    <i className="fas fa-gamepad" style={{ marginRight: '8px' }}></i>
-                    Session
-                  </th>
-                  <th style={{...thStyle, width: '150px', minWidth: '140px'}}>
-                    <i className="fas fa-clock" style={{ marginRight: '8px' }}></i>
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-        {items.map((entry, index) => (
-                  <tr 
-          key={entry.session_id + '-' + index}
-                    style={{
-                      background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
-                      transition: 'background-color 0.3s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'transparent'
-                    }}
-                  >
-                    <td style={tdStyle}>
-                      <span style={getRankStyle(entry.rank)}>
-                        {getRankIcon(entry.rank)}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                          background: currentTheme.avatarGradient,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginRight: '12px',
-                          fontSize: '0.9rem',
-                          fontWeight: '600'
-                        }}>
-                          {entry.user_email.charAt(0).toUpperCase()}
-                        </div>
-                        {entry.user_email}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <Link to={`/templates/view/${(entry as any).template_id}`} style={{
-                        background: 'rgba(78, 205, 196, 0.2)',
-                        border: '1px solid rgba(78, 205, 196, 0.4)',
-                        borderRadius: '15px',
-                        padding: '4px 12px',
-                        fontSize: '0.9rem',
-                        fontWeight: '500',
-                        color: 'white',
-                        textDecoration: 'none'
-                      }}>
-                        {entry.template_title}
-                      </Link>
-                    </td>
-                    <td style={tdStyle}>
-                      {entry.new_score != null ? (
-                        <span style={{
-                          fontSize: '1.3rem',
-                          fontWeight: '700',
-                          color: '#4ade80',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}>
-                          {entry.new_score}
-                          <span style={{ fontSize: '0.7rem', opacity: 0.7, fontWeight: 400 }}>NEW</span>
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '0.9rem', opacity: 0.5 }}>—</span>
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={{
-                        fontSize: '1rem',
-                        fontWeight: '500',
-                        color: '#fbbf24',
-                        opacity: 0.6
-                      }}>
-                        {entry.score}
-                      </span>
-                      <div style={{ fontSize: '0.65rem', opacity: 0.4, marginTop: '2px' }}>
-                        (deprecated)
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      {entry.total_steps != null || entry.collision_count != null ? (
-                        <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                          {entry.total_steps != null && (
-                            <div>Steps: {entry.total_steps}</div>
-                          )}
-                          {entry.collision_count != null && (
-                            <div style={{ color: entry.collision_count > 0 ? '#f87171' : '#4ade80' }}>
-                              Collisions: {entry.collision_count}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.9rem', opacity: 0.3 }}>—</span>
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <code style={{
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontSize: '0.85rem',
-                        fontFamily: 'monospace'
-                      }}>
-                        {entry.session_id.slice(0, 8)}...
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={{ fontSize: isMobile ? '0.8rem' : '0.95rem', lineHeight: 1.3 }}>
-                        <div style={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
-                          {new Date(entry.created_at).toLocaleDateString('en-US', { 
-                            month: '2-digit', 
-                            day: '2-digit',
-                            year: 'numeric'
-                          }).replace(/\//g, '/')}
-                        </div>
-                        <div style={{ fontSize: '0.85em', opacity: 0.6, whiteSpace: 'nowrap' }}>
-                          {new Date(entry.created_at).toLocaleTimeString('en-US', { 
-                            hour: '2-digit', 
-                            minute: '2-digit',
-                            hour12: false
-                          })}
-                        </div>
-                      </div>
-                    </td>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Rank</th>
+                    <th style={thStyle}>Engineer</th>
+                    <th style={thStyle}>Template</th>
+                    <th style={thStyle}>Arena Score</th>
+                    <th style={thStyle}>Legacy</th>
+                    <th style={thStyle}>Performance</th>
+                    <th style={thStyle}>Session</th>
+                    <th style={thStyle}>Timestamp</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <AnimatePresence>
+                    {items.map((entry, idx) => (
+                      <motion.tr
+                        key={entry.session_id + idx}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={trStyle}
+                      >
+                        <td style={tdStyle}>
+                          <div style={getRankStyle(entry.rank)}>
+                            {getRankIcon(entry.rank)}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={avatarStyle}>
+                              {entry.user_email.charAt(0).toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{entry.user_email.split('@')[0]}</span>
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <Link to={`/templates/view/${entry.template_id}`} style={templateLinkStyle}>
+                            <FileCode size={14} />
+                            {entry.template_title}
+                          </Link>
+                        </td>
+                        <td style={tdStyle}>
+                          {entry.new_score != null ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4ade80' }}>{entry.new_score}</span>
+                              <Zap size={12} className="text-yellow-400" />
+                            </div>
+                          ) : <span style={{ opacity: 0.3 }}>—</span>}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{entry.score}</span>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.8rem' }}>
+                            {entry.total_steps != null && <span style={{ color: '#cbd5e1' }}>Steps: <b>{entry.total_steps}</b></span>}
+                            {entry.collision_count != null && (
+                              <span style={{ color: entry.collision_count > 0 ? '#f87171' : '#4ade80' }}>
+                                Collisions: <b>{entry.collision_count}</b>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <code style={codeStyle}>{entry.session_id.slice(0, 8)}</code>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.8rem' }}>
+                            <span style={{ color: '#cbd5e1' }}>{new Date(entry.created_at).toLocaleDateString()}</span>
+                            <span style={{ color: '#64748b' }}>{new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
-      )}
+        </motion.div>
 
-      {/* Controls */}
-      <div style={{ textAlign: 'center', marginTop: '30px', display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
-        <button
-          onClick={() => load(true)}
-          disabled={loading}
-          style={{
-            background: currentTheme.buttonPrimary,
-            color: 'white',
-            border: 'none',
-            padding: '12px 24px',
-            borderRadius: '25px',
-            fontSize: '1rem',
-            fontWeight: '600',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'all 0.3s ease',
-            opacity: loading ? 0.6 : 1
-          }}
-          onMouseOver={(e) => {
-            if (!loading) {
-              e.currentTarget.style.background = theme === 'orange' ? '#ff8c42' : 'rgba(78, 205, 196, 1)'
-              e.currentTarget.style.transform = 'translateY(-2px)'
-            }
-          }}
-          onMouseOut={(e) => {
-            if (!loading) {
-              e.currentTarget.style.background = currentTheme.buttonPrimary
-              e.currentTarget.style.transform = 'translateY(0)'
-            }
-          }}
-        >
-          <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} style={{ marginRight: '8px' }}></i>
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
-
-        {skip < total && (
-          <button
-            onClick={() => load(false)}
-            disabled={loading}
-            style={{
-              background: 'linear-gradient(45deg,#36c,#59f)',
-              color: 'white',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: '25px',
-              fontSize: '1rem',
-              fontWeight: '600',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.3s ease',
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-down'}`} style={{ marginRight: '8px' }}></i>
-            {loading ? 'Loading...' : 'Load more'} ({skip}/{total})
-          </button>
+        {(skip < total) && (
+          <motion.div variants={itemVariants} style={{ textAlign: 'center' }}>
+            <motion.button
+              id="load-more-btn"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => load(false)}
+              disabled={loading}
+              style={loadMoreButtonStyle}
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <ChevronDown size={18} />}
+              Load More Rankings ({items.length} / {total})
+            </motion.button>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </motion.div>
     </div>
   )
+}
+
+const statCardStyle: CSSProperties = {
+  background: 'rgba(30, 41, 59, 0.4)',
+  border: '1px solid rgba(255, 255, 255, 0.05)',
+  borderRadius: '12px',
+  padding: '10px 16px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  fontSize: '0.9rem',
+  color: '#cbd5e1'
+}
+
+const tableWrapperStyle: CSSProperties = {
+  background: 'rgba(30, 41, 59, 0.4)',
+  backdropFilter: 'blur(16px)',
+  borderRadius: '24px',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  padding: '8px',
+  boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)'
+}
+
+const tableStyle: CSSProperties = {
+  width: '100%',
+  borderCollapse: 'separate',
+  borderSpacing: '0 4px',
+}
+
+const thStyle: CSSProperties = {
+  padding: '16px 20px',
+  textAlign: 'left',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  color: '#64748b',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em'
+}
+
+const trStyle: CSSProperties = {
+  background: 'transparent',
+}
+
+const tdStyle: CSSProperties = {
+  padding: '16px 20px',
+  borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+  whiteSpace: 'nowrap'
+}
+
+const avatarStyle: CSSProperties = {
+  width: '32px',
+  height: '32px',
+  borderRadius: '50%',
+  background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.85rem',
+  fontWeight: 700,
+  color: '#fff'
+}
+
+const templateLinkStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '6px 12px',
+  background: 'rgba(99, 102, 241, 0.1)',
+  border: '1px solid rgba(99, 102, 241, 0.2)',
+  borderRadius: '10px',
+  color: '#818cf8',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  textDecoration: 'none',
+  transition: 'all 0.2s'
+}
+
+const codeStyle: CSSProperties = {
+  fontFamily: 'monospace',
+  background: 'rgba(15, 23, 42, 0.4)',
+  padding: '4px 8px',
+  borderRadius: '6px',
+  color: '#94a3b8',
+  fontSize: '0.8rem'
+}
+
+const errorStyle: CSSProperties = {
+  background: 'rgba(239, 68, 68, 0.1)',
+  border: '1px solid rgba(239, 68, 68, 0.2)',
+  borderRadius: '16px',
+  padding: '16px 24px',
+  color: '#fca5a5',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  marginBottom: '32px'
+}
+
+const loadMoreButtonStyle: CSSProperties = {
+  marginTop: '32px',
+  padding: '12px 32px',
+  borderRadius: '14px',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  background: 'rgba(255, 255, 255, 0.03)',
+  color: '#f1f5f9',
+  fontSize: '0.95rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '10px',
+  transition: 'all 0.2s'
 }

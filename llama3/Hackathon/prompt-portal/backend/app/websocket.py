@@ -1,7 +1,7 @@
-from fastapi import WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List
 import json
-import jwt
+from jose import jwt, JWTError
 from datetime import datetime
 
 from .config import settings
@@ -49,11 +49,11 @@ async def get_current_user_ws(websocket: WebSocket, token: str, db: Session):
     """Authenticate WebSocket connection"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("sub")
+        user_id: int = payload.get("user_id")
         if user_id is None:
             await websocket.close(code=1008, reason="Invalid token")
             return None
-    except jwt.PyJWTError:
+    except JWTError:
         await websocket.close(code=1008, reason="Invalid token")
         return None
     

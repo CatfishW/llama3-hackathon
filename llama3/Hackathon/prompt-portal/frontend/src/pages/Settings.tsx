@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { api, modelsAPI } from '../api'
+import { useTutorial } from '../contexts/TutorialContext'
+import { motion, AnimatePresence } from 'framer-motion'
 
 type UserSettings = {
   email_notifications: boolean
@@ -22,6 +24,20 @@ type ModelInfo = {
   maxTokens?: number
   supportsFunctions: boolean
   supportsVision: boolean
+}
+
+type ModelStatus = {
+  name: string
+  provider: string
+  model: string
+  description?: string
+  features: string[]
+  maxTokens?: number
+  supportsFunctions: boolean
+  supportsVision: boolean
+  is_active: boolean
+  status_message: string
+  response_time_ms?: number
 }
 
 export default function Settings() {
@@ -47,13 +63,13 @@ export default function Settings() {
   const [err, setErr] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
-  
+
   // Model selection state
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
   const [loadingModels, setLoadingModels] = useState(true)
   const [selectingModel, setSelectingModel] = useState(false)
-  
+
   // Model management state
   const [showModelDialog, setShowModelDialog] = useState(false)
   const [editingModel, setEditingModel] = useState<ModelInfo | null>(null)
@@ -65,25 +81,46 @@ export default function Settings() {
     apiKey: '',
     description: '',
     features: '',
-    maxTokens: 8192,
+    maxTokens: 4096,
     supportsFunctions: true,
     supportsVision: false
   })
+
+  // Model status state
+  const [modelsStatus, setModelsStatus] = useState<ModelStatus[]>([])
+  const [loadingStatus, setLoadingStatus] = useState(false)
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null)
+  const { runTutorial } = useTutorial()
+
+  useEffect(() => {
+    const hasSeenSettingsTutorial = localStorage.getItem('tutorial_seen_settings')
+    if (!hasSeenSettingsTutorial && !loading) {
+      runTutorial([
+        { target: '#settings-check-status', title: 'LLM Diagnostics', content: 'Verify the health of all configured AI models and check latency in real-time.', position: 'bottom' },
+        { target: '#settings-add-model', title: 'Bring Your Own Brain', content: 'Connect any OpenAI-compatible API to expand your agent capabilities.', position: 'bottom' },
+        { target: '#settings-privacy-card', title: 'Data Sovereignty', content: 'Control who sees your profile and how your scores are displayed on leaderboards.', position: 'top' },
+        { target: '#settings-notif-card', title: 'Alert Preferences', content: 'Manage which system events trigger email or in-app notifications.', position: 'top' },
+        { target: '#settings-password-card', title: 'Security Perimeter', content: 'Regularly update your credentials to maintain mission security.', position: 'top' },
+      ]);
+      localStorage.setItem('tutorial_seen_settings', 'true');
+    }
+  }, [loading, runTutorial]);
 
   useEffect(() => {
     loadSettings()
     loadModels()
   }, [])
 
-  useEffect(()=>{ 
-    const upd=()=>setIsMobile(window.innerWidth<720); 
-    upd(); 
-    window.addEventListener('resize',upd); 
-    window.addEventListener('orientationchange',upd); 
-    return ()=>{
-      window.removeEventListener('resize',upd); 
-      window.removeEventListener('orientationchange',upd)
-    } 
+  useEffect(() => {
+    const upd = () => setIsMobile(window.innerWidth < 720);
+    upd();
+    window.addEventListener('resize', upd);
+    window.addEventListener('orientationchange', upd);
+    return () => {
+      window.removeEventListener('resize', upd);
+      window.removeEventListener('orientationchange', upd)
+    }
   }, [])
 
   async function loadSettings() {
@@ -114,20 +151,62 @@ export default function Settings() {
     }
   }
 
+  async function loadModelsStatus() {
+    try {
+      setLoadingStatus(true)
+      const res = await modelsAPI.getStatus()
+      setModelsStatus(res.data)
+    } catch (e) {
+      console.error('Failed to load models status:', e)
+    } finally {
+      setLoadingStatus(false)
+    }
+  }
+
+  async function testModelConnection() {
+    if (!modelForm.apiBase || !modelForm.apiKey) {
+      setTestResult({ success: false, message: 'Please enter API Base URL and API Key' })
+      return
+    }
+
+    try {
+      setTestingConnection(true)
+      setTestResult(null)
+      const res = await modelsAPI.testConnectivity(modelForm.apiBase, modelForm.apiKey, modelForm.model)
+      setTestResult({
+        success: res.data.success,
+        message: res.data.message + (res.data.model_name ? ` (Model: ${res.data.model_name})` : '')
+      })
+      // If successful and model was auto-detected, fill in the model field
+      if (res.data.success && res.data.model_name && !modelForm.model) {
+        setModelForm(prev => ({ ...prev, model: res.data.model_name }))
+      }
+    } catch (e: any) {
+      setTestResult({
+        success: false,
+        message: e?.response?.data?.message || 'Connection test failed'
+      })
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
   async function selectModelHandler(modelName: string) {
     try {
       setSelectingModel(true)
       await modelsAPI.selectModel(modelName)
-      
+
       // Update selected model locally
       const model = availableModels.find(m => m.name === modelName)
       if (model) {
         setSelectedModel(model)
       }
-      
+
       setSuccess(`Successfully switched to ${modelName}!`)
       setErr(null)
-      setTimeout(() => setSuccess(null), 3000)
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to select model')
     } finally {
@@ -137,6 +216,7 @@ export default function Settings() {
 
   async function openAddModelDialog() {
     setEditingModel(null)
+    setTestResult(null)
     setModelForm({
       name: '',
       provider: 'openai',
@@ -145,7 +225,7 @@ export default function Settings() {
       apiKey: '',
       description: '',
       features: '',
-      maxTokens: 8192,
+      maxTokens: 4096,
       supportsFunctions: true,
       supportsVision: false
     })
@@ -157,6 +237,7 @@ export default function Settings() {
       // Fetch full config including API key
       const res = await modelsAPI.getModelConfig(model.name)
       setEditingModel(model)
+      setTestResult(null)
       setModelForm({
         name: model.name,
         provider: res.data.provider,
@@ -165,7 +246,7 @@ export default function Settings() {
         apiKey: res.data.apiKey,
         description: res.data.description || '',
         features: (res.data.features || []).join(', '),
-        maxTokens: res.data.maxTokens || 8192,
+        maxTokens: res.data.maxTokens || 4096,
         supportsFunctions: res.data.supportsFunctions !== false,
         supportsVision: res.data.supportsVision === true
       })
@@ -223,7 +304,9 @@ export default function Settings() {
       await api.put('/api/settings/', settings)
       setSuccess('Settings saved successfully!')
       setErr(null)
-      setTimeout(() => setSuccess(null), 3000)
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Failed to save settings')
     } finally {
@@ -268,7 +351,7 @@ export default function Settings() {
     const userInput = prompt(
       `This action cannot be undone. All your data will be permanently deleted.\n\nType "${confirmText}" to confirm:`
     )
-    
+
     if (userInput !== confirmText) {
       return
     }
@@ -285,26 +368,26 @@ export default function Settings() {
   const containerStyle = {
     maxWidth: '800px',
     margin: '0 auto',
-    padding: isMobile? '28px 14px':'40px 20px'
+    padding: isMobile ? '28px 14px' : '40px 20px'
   }
 
   const cardStyle = {
     background: 'rgba(255, 255, 255, 0.1)',
     backdropFilter: 'blur(10px)',
     borderRadius: '15px',
-    padding: isMobile? '22px 18px':'30px',
+    padding: isMobile ? '22px 18px' : '30px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     marginBottom: '25px'
   }
 
   const inputStyle = {
     width: '100%',
-    padding: isMobile? '10px 14px':'12px 16px',
+    padding: isMobile ? '10px 14px' : '12px 16px',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.3)',
     background: 'rgba(255, 255, 255, 0.1)',
     color: 'white',
-    fontSize: isMobile? '.95rem':'1rem',
+    fontSize: isMobile ? '.95rem' : '1rem',
     marginTop: '8px'
   }
 
@@ -319,7 +402,7 @@ export default function Settings() {
       secondary: 'rgba(255, 255, 255, 0.2)',
       danger: 'linear-gradient(45deg, #ff6b6b, #ee5a52)'
     }
-    
+
     return {
       background: variants[variant],
       color: 'white',
@@ -418,8 +501,37 @@ export default function Settings() {
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
+                id="settings-check-status"
+                onClick={loadModelsStatus}
+                disabled={loadingStatus}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  color: 'white',
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  cursor: loadingStatus ? 'wait' : 'pointer',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                {loadingStatus ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-plug" style={{ marginRight: '8px' }}></i>
+                    Check LLM Status
+                  </>
+                )}
+              </button>
+              <button
+                id="settings-add-model"
                 onClick={openAddModelDialog}
                 style={{
                   ...buttonStyle('primary'),
@@ -432,163 +544,207 @@ export default function Settings() {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
-            {availableModels.map((model) => {
-              const isSelected = selectedModel?.name === model.name
-              
-              return (
-                <div
-                  key={model.name}
-                  onClick={() => !selectingModel && selectModelHandler(model.name)}
-                  style={{
-                    background: isSelected ? 'linear-gradient(135deg, rgba(78, 205, 196, 0.2), rgba(68, 160, 141, 0.2))' : 'rgba(255, 255, 255, 0.05)',
-                    border: isSelected ? '2px solid #4ecdc4' : '2px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    cursor: selectingModel ? 'wait' : 'pointer',
-                    transition: 'all 0.3s ease',
-                    position: 'relative' as const,
-                    overflow: 'hidden'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!selectingModel && !isSelected) {
-                      e.currentTarget.style.transform = 'translateY(-2px)'
-                      e.currentTarget.style.borderColor = 'rgba(78, 205, 196, 0.5)'
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-                    }
-                  }}
-                >
-                  {isSelected && (
-                    <div style={{
-                      position: 'absolute' as const,
-                      top: '10px',
-                      right: '10px',
-                      background: '#4ecdc4',
-                      borderRadius: '50%',
-                      width: '30px',
-                      height: '30px',
+            {/* LLM Status Display */}
+            {modelsStatus.length > 0 && (
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.2)',
+                borderRadius: '10px',
+                padding: '15px',
+                marginBottom: '20px'
+              }}>
+                <h4 style={{ fontSize: '1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="fas fa-signal"></i>
+                  LLM Connectivity Status
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {modelsStatus.map(status => (
+                    <div key={status.name} style={{
+                      background: status.is_active ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                      border: `1px solid ${status.is_active ? 'rgba(76, 175, 80, 0.4)' : 'rgba(255, 107, 107, 0.4)'}`,
+                      borderRadius: '8px',
+                      padding: '10px 15px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 8px rgba(78, 205, 196, 0.4)'
+                      gap: '10px',
+                      minWidth: '200px'
                     }}>
-                      <i className="fas fa-check" style={{ fontSize: '0.9rem', color: 'white' }}></i>
+                      <div style={{
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        background: status.is_active ? '#4caf50' : '#ff6b6b',
+                        boxShadow: status.is_active ? '0 0 8px rgba(76, 175, 80, 0.6)' : '0 0 8px rgba(255, 107, 107, 0.6)'
+                      }}></div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{status.name}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                          {status.status_message}
+                          {status.response_time_ms && ` (${status.response_time_ms}ms)`}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  
-                  <div style={{ marginBottom: '12px' }}>
-                    <h4 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '5px' }}>
-                      {model.name}
-                    </h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', opacity: '0.7' }}>
-                      <i className="fas fa-server" style={{ fontSize: '0.75rem' }}></i>
-                      <span>{model.provider}</span>
-                      {model.supportsVision && (
-                        <>
-                          <span>•</span>
-                          <i className="fas fa-eye" title="Vision Support"></i>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {model.description && (
-                    <p style={{ fontSize: '0.9rem', opacity: '0.8', marginBottom: '12px', lineHeight: '1.4' }}>
-                      {model.description}
-                    </p>
-                  )}
-
-                  {model.features && model.features.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px', marginBottom: '12px' }}>
-                      {model.features.slice(0, 4).map((feature, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            background: 'rgba(78, 205, 196, 0.2)',
-                            color: '#4ecdc4',
-                            padding: '4px 10px',
-                            borderRadius: '12px',
-                            fontSize: '0.75rem',
-                            fontWeight: '500'
-                          }}
-                        >
-                          {feature}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Model management buttons */}
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px' }}
-                    onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => openEditModelDialog(model)}
-                      style={{
-                        flex: 1,
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        color: 'white',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(78, 205, 196, 0.2)'
-                        e.currentTarget.style.borderColor = '#4ecdc4'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
-                      }}
-                    >
-                      <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteModelHandler(model.name)}
-                      style={{
-                        flex: 1,
-                        background: 'rgba(255, 107, 107, 0.1)',
-                        border: '1px solid rgba(255, 107, 107, 0.3)',
-                        color: '#ff6b6b',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 107, 107, 0.2)'
-                        e.currentTarget.style.borderColor = '#ff6b6b'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
-                        e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
-                      }}
-                    >
-                      <i className="fas fa-trash" style={{ marginRight: '6px' }}></i>
-                      Delete
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+              {availableModels.map((model) => {
+                const isSelected = selectedModel?.name === model.name
+
+                return (
+                  <div
+                    key={model.name}
+                    onClick={() => !selectingModel && selectModelHandler(model.name)}
+                    style={{
+                      background: isSelected ? 'linear-gradient(135deg, rgba(78, 205, 196, 0.2), rgba(68, 160, 141, 0.2))' : 'rgba(255, 255, 255, 0.05)',
+                      border: isSelected ? '2px solid #4ecdc4' : '2px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      cursor: selectingModel ? 'wait' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      position: 'relative' as const,
+                      overflow: 'hidden'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!selectingModel && !isSelected) {
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                        e.currentTarget.style.borderColor = 'rgba(78, 205, 196, 0.5)'
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+                      }
+                    }}
+                  >
+                    {isSelected && (
+                      <div style={{
+                        position: 'absolute' as const,
+                        top: '10px',
+                        right: '10px',
+                        background: '#4ecdc4',
+                        borderRadius: '50%',
+                        width: '30px',
+                        height: '30px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(78, 205, 196, 0.4)'
+                      }}>
+                        <i className="fas fa-check" style={{ fontSize: '0.9rem', color: 'white' }}></i>
+                      </div>
+                    )}
+
+                    <div style={{ marginBottom: '12px' }}>
+                      <h4 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '5px' }}>
+                        {model.name}
+                      </h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', opacity: '0.7' }}>
+                        <i className="fas fa-server" style={{ fontSize: '0.75rem' }}></i>
+                        <span>{model.provider}</span>
+                        {model.supportsVision && (
+                          <>
+                            <span>•</span>
+                            <i className="fas fa-eye" title="Vision Support"></i>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {model.description && (
+                      <p style={{ fontSize: '0.9rem', opacity: '0.8', marginBottom: '12px', lineHeight: '1.4' }}>
+                        {model.description}
+                      </p>
+                    )}
+
+                    {model.features && model.features.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px', marginBottom: '12px' }}>
+                        {model.features.slice(0, 4).map((feature, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              background: 'rgba(78, 205, 196, 0.2)',
+                              color: '#4ecdc4',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: '500'
+                            }}
+                          >
+                            {feature}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Model management buttons */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px' }}
+                      onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => openEditModelDialog(model)}
+                        style={{
+                          flex: 1,
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          color: 'white',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(78, 205, 196, 0.2)'
+                          e.currentTarget.style.borderColor = '#4ecdc4'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
+                        }}
+                      >
+                        <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteModelHandler(model.name)}
+                        style={{
+                          flex: 1,
+                          background: 'rgba(255, 107, 107, 0.1)',
+                          border: '1px solid rgba(255, 107, 107, 0.3)',
+                          color: '#ff6b6b',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 107, 107, 0.2)'
+                          e.currentTarget.style.borderColor = '#ff6b6b'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
+                          e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
+                        }}
+                      >
+                        <i className="fas fa-trash" style={{ marginRight: '6px' }}></i>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </>
         )}
       </div>
 
       {/* Privacy Settings */}
-      <div style={cardStyle}>
+      <div id="settings-privacy-card" style={cardStyle}>
         <h3 style={{ fontSize: '1.5rem', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <i className="fas fa-shield-alt"></i>
           Privacy & Visibility
@@ -645,7 +801,7 @@ export default function Settings() {
       </div>
 
       {/* Notification Settings */}
-      <div style={cardStyle}>
+      <div id="settings-notif-card" style={cardStyle}>
         <h3 style={{ fontSize: '1.5rem', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <i className="fas fa-bell"></i>
           Notifications
@@ -696,21 +852,6 @@ export default function Settings() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-              Theme
-            </label>
-            <select
-              value={settings.theme}
-              onChange={(e) => setSettings({ ...settings, theme: e.target.value as any })}
-              style={selectStyle}
-            >
-              <option value="dark" style={{ background: '#333', color: 'white' }}>Dark</option>
-              <option value="light" style={{ background: '#333', color: 'white' }}>Light</option>
-              <option value="auto" style={{ background: '#333', color: 'white' }}>Auto (System)</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
               Language
             </label>
             <select
@@ -749,7 +890,7 @@ export default function Settings() {
       </div>
 
       {/* Change Password */}
-      <div style={cardStyle}>
+      <div id="settings-password-card" style={cardStyle}>
         <h3 style={{ fontSize: '1.5rem', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <i className="fas fa-key"></i>
           Change Password
@@ -947,10 +1088,63 @@ export default function Settings() {
                   type="password"
                   value={modelForm.apiKey}
                   onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
-                  placeholder="Enter API key"
+                  placeholder="Enter API key (use 'not-needed' if not required)"
                   style={inputStyle}
                   autoComplete="off"
                 />
+                <small style={{ color: '#888', fontSize: '0.8rem' }}>
+                  Tip: For AGAII Cloud models, use "not-needed" as the API key
+                </small>
+              </div>
+
+              {/* Test Connection Button */}
+              <div>
+                <button
+                  type="button"
+                  onClick={testModelConnection}
+                  disabled={testingConnection || !modelForm.apiBase}
+                  style={{
+                    background: 'rgba(78, 205, 196, 0.2)',
+                    border: '1px solid #4ecdc4',
+                    color: '#4ecdc4',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    cursor: testingConnection ? 'wait' : 'pointer',
+                    fontWeight: '500',
+                    transition: 'all 0.3s ease',
+                    width: '100%'
+                  }}
+                >
+                  {testingConnection ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                      Testing Connection...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-plug" style={{ marginRight: '8px' }}></i>
+                      Test Connection
+                    </>
+                  )}
+                </button>
+                {testResult && (
+                  <div style={{
+                    marginTop: '10px',
+                    padding: '10px 15px',
+                    borderRadius: '8px',
+                    background: testResult.success ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                    border: `1px solid ${testResult.success ? 'rgba(76, 175, 80, 0.4)' : 'rgba(255, 107, 107, 0.4)'}`,
+                    color: testResult.success ? '#4caf50' : '#ff6b6b',
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <i className={`fas ${testResult.success ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
+                    {testResult.message}
+                  </div>
+                )}
               </div>
 
               <div>

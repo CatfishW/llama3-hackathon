@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Tag, 
-  AlignLeft, 
-  Code, 
-  Check, 
-  Save, 
-  AlertTriangle, 
-  Info, 
-  GitBranch, 
-  ToggleRight, 
+import {
+  Tag,
+  AlignLeft,
+  Code,
+  Check,
+  Save,
+  AlertTriangle,
+  Info,
+  GitBranch,
+  ToggleRight,
   ToggleLeft,
   Loader2,
   Sparkles
@@ -41,7 +41,7 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
     }
   }
 
-  const containerVariants = {
+  const containerVariants: any = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
   }
@@ -91,7 +91,38 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
     background: 'rgba(15, 23, 42, 0.6)'
   }
 
-  const placeholderText = `You are a Large Action Model (LAM) that controls a maze game...`
+  const goodPlaceholderText = `# ROLE: MAZE NAVIGATOR
+You are an autonomous drone inside a hazardous environment.
+Objective: Reach the Exit (usually 13, 13) and collect Oxygen canisters.
+
+# RULES:
+1. ALWAYS respond with valid JSON only.
+2. Movement: Move toward path (0), avoid walls (1).
+3. Efficiency: Prioritize moves that reduce distance to Exit (X, Y).
+4. Oxygen: If a path to oxygen is visible, prioritize it to maximize score.
+
+# RESPONSE FORMAT:
+{"action": "move", "direction": "north" | "south" | "east" | "west"}
+OR
+{"action": "use_skill", "skill": "ping" | "sprint" | "scan"}
+
+# INPUT:
+You will receive JSON telemetry containing:
+- status (x, y, energy, oxygen, exit)
+- surroundings (north, south, east, west)
+- available_skills`
+
+  const badPlaceholderText = `# ROLE: IMPROVISER
+Write a vivid narrative of your journey through the maze.
+
+# IMPORTANT:
+- Explain every thought step-by-step in Markdown.
+- Respond in YAML with multiple actions per turn.
+- Add commentary and a concluding paragraph.
+
+# OUTPUT:
+Give a long, descriptive answer. Do NOT use JSON.
+`
 
   return (
     <motion.form
@@ -136,10 +167,10 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
           <Tag size={16} className="text-indigo-400" />
           Template Title
         </label>
-        <input 
-          value={title} 
-          onChange={e => setTitle(e.target.value)} 
-          required 
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          required
           style={inputStyle}
           placeholder="e.g., Maze Navigator Pro"
           className="focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -151,9 +182,9 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
           <AlignLeft size={16} className="text-indigo-400" />
           Description
         </label>
-        <textarea 
-          value={description} 
-          onChange={e => setDescription(e.target.value)} 
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
           style={textareaStyle}
           placeholder="What does this template achieve?"
         />
@@ -165,39 +196,63 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
             <Code size={16} className="text-indigo-400" />
             Prompt Content
           </label>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
-            onClick={() => setContent(placeholderText)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: 'rgba(99, 102, 241, 0.15)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              color: '#818cf8',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Sparkles size={14} />
-            Use Sample
-          </motion.button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              onClick={() => setContent(goodPlaceholderText)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.2)',
+                color: '#34d399',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Sparkles size={14} />
+              Use Good
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              onClick={() => setContent(badPlaceholderText)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(244, 63, 94, 0.15)',
+                border: '1px solid rgba(244, 63, 94, 0.2)',
+                color: '#fda4af',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <AlertTriangle size={14} />
+              Use Bad
+            </motion.button>
+          </div>
         </div>
-        <textarea 
-          value={content} 
-          onChange={e => setContent(e.target.value)} 
+        <textarea
+          value={content}
+          onChange={e => setContent(e.target.value)}
           style={codeAreaStyle}
           placeholder="System instructions and game logic..."
           required
         />
-        <div style={{ 
-          marginTop: '10px', 
-          fontSize: '0.8rem', 
+        <div style={{
+          marginTop: '10px',
+          fontSize: '0.8rem',
           color: 'rgba(148, 163, 184, 0.7)',
           display: 'flex',
           alignItems: 'center',
@@ -211,16 +266,16 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
         </div>
       </div>
 
-      <div style={{ 
-        display: 'flex', 
-        gap: '32px', 
+      <div style={{
+        display: 'flex',
+        gap: '32px',
         marginBottom: '32px',
         background: 'rgba(15, 23, 42, 0.2)',
         padding: '20px',
         borderRadius: '16px',
         border: '1px solid rgba(255, 255, 255, 0.05)'
       }}>
-        <div 
+        <div
           onClick={() => setIsActive(!isActive)}
           style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
         >
@@ -233,10 +288,10 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <GitBranch size={20} className="text-indigo-400" />
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Version</label>
-          <input 
-            type="number" 
-            value={version} 
-            onChange={e => setVersion(parseInt(e.target.value || '1'))} 
+          <input
+            type="number"
+            value={version}
+            onChange={e => setVersion(parseInt(e.target.value || '1'))}
             min={1}
             style={{
               width: '60px',
@@ -251,10 +306,10 @@ export default function TemplateForm({ initial, onSubmit }: Props) {
         </div>
       </div>
 
-      <motion.button 
+      <motion.button
         whileHover={{ scale: 1.01, boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' }}
         whileTap={{ scale: 0.99 }}
-        type="submit" 
+        type="submit"
         disabled={isSubmitting}
         style={{
           width: '100%',

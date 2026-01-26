@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from sqlalchemy.orm import Session
 import logging
+import httpx
 
 from ..deps import get_current_user, get_db
 from ..models_config import get_models_manager, ModelConfig
@@ -124,7 +125,7 @@ async def get_selected_model(
         if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        selected_model_name = db_user.selected_model or "TangLLM"
+        selected_model_name = db_user.selected_model or "AGAII Cloud LLM"
         
         # Get model configuration
         models_manager = get_models_manager()
@@ -266,8 +267,8 @@ async def add_custom_model(
                     detail="Could not auto-detect model from URL. Please specify model name manually."
                 )
 
-        # Set default maxTokens to 5000 if not specified
-        max_tokens = request.maxTokens if request.maxTokens is not None else 5000
+        # Set default maxTokens to 4096 if not specified
+        max_tokens = request.maxTokens if request.maxTokens is not None else 4096
 
         # Create new model configuration
         new_model = ModelConfig(
@@ -393,7 +394,7 @@ async def delete_model(
         users_with_deleted_model = db.query(User).filter(User.selected_model == model_name).all()
         if users_with_deleted_model:
             remaining_models = models_manager.get_all_models()
-            default_model = remaining_models[0].name if remaining_models else "TangLLM"
+            default_model = remaining_models[0].name if remaining_models else "AGAII Cloud LLM"
             
             for user_record in users_with_deleted_model:
                 user_record.selected_model = default_model
@@ -414,3 +415,242 @@ async def delete_model(
         logger.error(f"Failed to delete model: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete model: {str(e)}")
+
+
+class ModelTestRequest(BaseModel):
+    """Request to test model connectivity"""
+    model_config = {"protected_namespaces": ()}
+    api_base: str = Field(..., description="API base URL to test")
+    api_key: str = Field(..., description="API key for authentication")
+    model: Optional[str] = Field(None, description="Model identifier to test (optional)")
+
+
+class ModelTestResponse(BaseModel):
+    """Response from model connectivity test"""
+    success: bool
+    message: str
+    model_name: Optional[str] = None
+    response_time_ms: Optional[int] = None
+
+
+class ModelStatusOut(BaseModel):
+    """Model with status information"""
+    name: str
+    provider: str
+    model: str
+    description: Optional[str] = None
+    features: List[str] = []
+    maxTokens: Optional[int] = None
+    supportsFunctions: bool = True
+    supportsVision: bool = False
+    is_active: bool
+    status_message: str
+    response_time_ms: Optional[int] = None
+
+
+@router.post("/test", response_model=ModelTestResponse)
+async def test_model_connectivity(
+    request: ModelTestRequest,
+    user = Depends(get_current_user)
+):
+    """
+    Test connectivity to an LLM API endpoint.
+    
+    This endpoint allows users to verify their API configuration
+    before saving a model.
+    """
+    import time
+    
+    try:
+        base_input = request.api_base.rstrip('/')
+        base_candidates = []
+        if base_input.endswith('/v1'):
+            base_candidates = [base_input, base_input[:-3]]
+        else:
+            base_candidates = [base_input, f"{base_input}/v1"]
+
+        model_urls = []
+        seen_urls = set()
+        for base in base_candidates:
+            if not base:
+                continue
+            url = f"{base}/models"
+            if url not in seen_urls:
+                model_urls.append(url)
+                seen_urls.add(url)
+
+        headers = {"accept": "application/json"}
+        if request.api_key and request.api_key not in ["not-needed", "none", ""]:
+            headers["Authorization"] = f"Bearer {request.api_key}"
+
+        start_time = time.time()
+        data = None
+        last_error: Optional[str] = None
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            for models_url in model_urls:
+                try:
+                    response = await client.get(models_url, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+                except httpx.TimeoutException:
+                    last_error = "Connection timed out after 10 seconds"
+                except httpx.HTTPStatusError as e:
+                    last_error = f"HTTP error {e.response.status_code}: {e.response.text[:200]}"
+                except Exception as e:
+                    last_error = f"Connection failed: {str(e)}"
+
+            if data is None and request.model:
+                base_url = base_input if base_input.endswith('/v1') else f"{base_input}/v1"
+                chat_url = f"{base_url}/chat/completions"
+                payload = {
+                    "model": request.model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                    "temperature": 0
+                }
+                try:
+                    response = await client.post(
+                        chat_url,
+                        headers={**headers, "content-type": "application/json"},
+                        json=payload
+                    )
+                    response.raise_for_status()
+                    response_time = int((time.time() - start_time) * 1000)
+                    return ModelTestResponse(
+                        success=True,
+                        message="Successfully connected to LLM API",
+                        model_name=request.model,
+                        response_time_ms=response_time
+                    )
+                except httpx.TimeoutException:
+                    last_error = "Connection timed out after 10 seconds"
+                except httpx.HTTPStatusError as e:
+                    last_error = f"HTTP error {e.response.status_code}: {e.response.text[:200]}"
+                except Exception as e:
+                    last_error = f"Connection failed: {str(e)}"
+
+        if data is None:
+            return ModelTestResponse(
+                success=False,
+                message=last_error or "Connection failed: No response from server"
+            )
+
+        response_time = int((time.time() - start_time) * 1000)
+
+        model_name = None
+        if isinstance(data, dict):
+            if isinstance(data.get("data"), list) and data["data"]:
+                model_name = data["data"][0].get("id")
+            elif isinstance(data.get("models"), list) and data["models"]:
+                model_name = data["models"][0].get("id") or data["models"][0].get("name")
+
+        return ModelTestResponse(
+            success=True,
+            message="Successfully connected to LLM API",
+            model_name=model_name,
+            response_time_ms=response_time
+        )
+    except Exception as e:
+        logger.error(f"Model connectivity test failed: {e}")
+        return ModelTestResponse(
+            success=False,
+            message=f"Connection failed: {str(e)}"
+        )
+
+
+@router.get("/status", response_model=List[ModelStatusOut])
+async def get_models_status(
+    user = Depends(get_current_user)
+):
+    """
+    Get all available models with their current connectivity status.
+    
+    This endpoint checks each model's API endpoint and returns
+    whether it's active or not.
+    """
+    import time
+    import asyncio
+    
+    models_manager = get_models_manager()
+    models = models_manager.get_all_models()
+    
+    async def check_model_status(model: ModelConfig) -> ModelStatusOut:
+        """Check a single model's connectivity status"""
+        try:
+            # Normalize the URL
+            base_url = model.apiBase.rstrip('/')
+            if not base_url.endswith('/v1'):
+                base_url = f"{base_url}/v1"
+            models_url = f"{base_url}/models"
+            
+            headers = {"accept": "application/json"}
+            if model.apiKey and model.apiKey not in ["not-needed", "none", ""]:
+                headers["Authorization"] = f"Bearer {model.apiKey}"
+            
+            start_time = time.time()
+            
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(models_url, headers=headers)
+                response.raise_for_status()
+            
+            response_time = int((time.time() - start_time) * 1000)
+            
+            return ModelStatusOut(
+                name=model.name,
+                provider=model.provider,
+                model=model.model,
+                description=model.description,
+                features=model.features or [],
+                maxTokens=model.maxTokens,
+                supportsFunctions=model.supportsFunctions,
+                supportsVision=model.supportsVision,
+                is_active=True,
+                status_message="Active and responding",
+                response_time_ms=response_time
+            )
+            
+        except httpx.TimeoutException:
+            return ModelStatusOut(
+                name=model.name,
+                provider=model.provider,
+                model=model.model,
+                description=model.description,
+                features=model.features or [],
+                maxTokens=model.maxTokens,
+                supportsFunctions=model.supportsFunctions,
+                supportsVision=model.supportsVision,
+                is_active=False,
+                status_message="Connection timed out"
+            )
+        except httpx.HTTPStatusError as e:
+            return ModelStatusOut(
+                name=model.name,
+                provider=model.provider,
+                model=model.model,
+                description=model.description,
+                features=model.features or [],
+                maxTokens=model.maxTokens,
+                supportsFunctions=model.supportsFunctions,
+                supportsVision=model.supportsVision,
+                is_active=False,
+                status_message=f"HTTP {e.response.status_code}"
+            )
+        except Exception as e:
+            return ModelStatusOut(
+                name=model.name,
+                provider=model.provider,
+                model=model.model,
+                description=model.description,
+                features=model.features or [],
+                maxTokens=model.maxTokens,
+                supportsFunctions=model.supportsFunctions,
+                supportsVision=model.supportsVision,
+                is_active=False,
+                status_message=f"Error: {str(e)[:50]}"
+            )
+    
+    # Check all models concurrently
+    results = await asyncio.gather(*[check_model_status(m) for m in models])
+    return list(results)

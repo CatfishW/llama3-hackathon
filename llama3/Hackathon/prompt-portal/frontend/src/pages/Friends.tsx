@@ -7,12 +7,14 @@ type Friend = {
   id: number
   requester_id: number
   requested_id: number
-  status: 'PENDING' | 'ACCEPTED' | 'BLOCKED'
+  status: 'pending' | 'accepted' | 'blocked'
   created_at: string
   requester: {
     id: number
     email: string
     full_name?: string
+    display_name?: string
+    school?: string
     profile_picture?: string
     level: number
     is_online: boolean
@@ -21,6 +23,8 @@ type Friend = {
     id: number
     email: string
     full_name?: string
+    display_name?: string
+    school?: string
     profile_picture?: string
     level: number
     is_online: boolean
@@ -30,11 +34,12 @@ type Friend = {
 type UserSearch = {
   id: number
   email: string
+  full_name?: string
   display_name?: string
   profile_picture?: string
   school?: string
-  is_friend: boolean
-  has_pending_request: boolean
+  is_friend?: boolean
+  has_pending_request?: boolean
 }
 
 export default function Friends() {
@@ -204,20 +209,20 @@ export default function Friends() {
   
   // Pending requests received by current user (where they are the requested user)
   const incomingRequests = friends.filter(f => 
-    f.status === 'PENDING' && 
+    f.status === 'pending' && 
     f.requested_id === currentUserId
   )
   
   // Pending requests sent by current user (where they are the requester)
   const outgoingRequests = friends.filter(f => 
-    f.status === 'PENDING' && 
+    f.status === 'pending' && 
     f.requester_id === currentUserId
   )
   
   // All pending requests (for the tab counter)
-  const allPendingRequests = friends.filter(f => f.status === 'PENDING')
+  const allPendingRequests = friends.filter(f => f.status === 'pending')
   
-  const acceptedFriends = friends.filter(f => f.status === 'ACCEPTED')
+  const acceptedFriends = friends.filter(f => f.status === 'accepted')
 
   // Helper function to get the friend user data
   function getFriendUser(friendship: Friend, currentUserId: number) {
@@ -414,7 +419,7 @@ export default function Friends() {
                   
                   <div style={{ flex: 1 }}>
                     <h4 style={{ marginBottom: '5px' }}>
-                      {friendUser.full_name || friendUser.email}
+                      {friendUser.display_name || friendUser.full_name || friendUser.email}
                     </h4>
                     <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>
                       {friendUser.email}
@@ -563,7 +568,7 @@ export default function Friends() {
                 
                 <div style={{ flex: 1 }}>
                   <h4 style={{ marginBottom: '5px' }}>
-                    {user.display_name || user.email}
+                    {user.display_name || user.full_name || user.email}
                   </h4>
                   <p style={{ opacity: '0.8', fontSize: '0.9rem' }}>
                     {user.email}

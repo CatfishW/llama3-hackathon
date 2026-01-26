@@ -3,8 +3,8 @@
 
 REMOTE_USER="lobin"
 REMOTE_HOST="vpn.agaii.org"
-REMOTE_PORT=3001
-LOCAL_PORT=3001
+REMOTE_PORT=3000
+LOCAL_PORT=3000
 RECONNECT_DELAY=5
 
 echo "=== LLM Server Reverse SSH Tunnel ==="

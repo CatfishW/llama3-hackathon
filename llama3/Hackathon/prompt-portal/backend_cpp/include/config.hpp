@@ -35,7 +35,7 @@ struct LlmConfig {
     int timeout = 300;
     double temperature = 0.6;
     double top_p = 0.9;
-    int max_tokens = 512;
+    int max_tokens = 4096;
 };
 
 struct Config {

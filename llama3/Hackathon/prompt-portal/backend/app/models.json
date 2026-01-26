@@ -1,0 +1,396 @@
+{
+  "version": "1.0.0",
+  "models": [
+    {
+      "name": "AGAII Cloud MLLM (Vision)",
+      "provider": "vllm",
+      "model": "cyankiwi/Qwen3-VL-30B-A3B-Instruct-AWQ-8bit",
+      "apiBase": "https://game.agaii.org/mllm/v1",
+      "apiKey": "not-needed",
+      "description": "AGAII Cloud MLLM - Advanced multi-modal model, no API key required",
+      "features": [
+        "No API Key",
+        "Vision Support",
+        "Multi-modal",
+        "Cloud Hosted"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": true,
+      "autoDetect": true
+    },
+    {
+      "name": "AGAII Cloud LLM",
+      "provider": "vllm",
+      "model": "Qwen/Qwen3-VL-8B-Instruct-FP8",
+      "apiBase": "https://game.agaii.org/llm",
+      "apiKey": "not-needed",
+      "description": "AGAII Cloud VLM - Qwen3 Vision-Language model, no API key required",
+      "features": [
+        "No API Key",
+        "Vision Support",
+        "Function Calling",
+        "Cloud Hosted"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": true,
+      "autoDetect": true
+    },
+    {
+      "name": "DeepSeek V3.2 (NVIDIA)",
+      "provider": "openai",
+      "model": "deepseek-ai/deepseek-v3.2",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "NVIDIA Integrate API - DeepSeek V3.2",
+      "features": [
+        "NVIDIA Integrate",
+        "Cloud Hosted"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "DeepSeek R1 (NVIDIA)",
+      "provider": "openai",
+      "model": "deepseek-ai/deepseek-r1",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "DeepSeek R1 Reasoning Model - State-of-the-art open reasoning",
+      "features": [
+        "NVIDIA NIM",
+        "Reasoning",
+        "Thinking"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "DeepSeek V3 (NVIDIA)",
+      "provider": "openai",
+      "model": "deepseek-ai/deepseek-v3",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "DeepSeek V3 - High-efficiency mixture-of-experts model",
+      "features": [
+        "NVIDIA NIM",
+        "Efficiency"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "MiniMax M2 (NVIDIA)",
+      "provider": "openai",
+      "model": "minimaxai/minimax-m2",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "NVIDIA Integrate API - MiniMax M2",
+      "features": [
+        "NVIDIA Integrate",
+        "Streaming"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "GPT OSS 120B (NVIDIA)",
+      "provider": "openai",
+      "model": "openai/gpt-oss-120b",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "NVIDIA Integrate API - GPT OSS 120B",
+      "features": [
+        "NVIDIA Integrate",
+        "Powerful"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Llama 3.3 70B (NVIDIA)",
+      "provider": "openai",
+      "model": "meta/llama-3.3-70b-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "Meta Llama 3.3 70B",
+      "features": [
+        "NVIDIA NIM",
+        "Fast"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Llama 3.1 405B (NVIDIA)",
+      "provider": "openai",
+      "model": "meta/llama-3.1-405b-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": "Meta Llama 3.1 405B",
+      "features": [
+        "NVIDIA NIM",
+        "Powerful"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Llama 4 Maverick (Early)",
+      "provider": "openai",
+      "model": "meta/llama-4-maverick-17b-128e-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Next Gen"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Llama 4 Scout (Early)",
+      "provider": "openai",
+      "model": "meta/llama-4-scout-17b-16e-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Scouting"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Mistral Large 3 (NVIDIA)",
+      "provider": "openai",
+      "model": "mistralai/mistral-large-3-675b-instruct-2512",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Frontier"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Devstral 2 123B (NVIDIA)",
+      "provider": "openai",
+      "model": "mistralai/devstral-2-123b-instruct-2512",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Developer"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Qwen 3 Thinking (NVIDIA)",
+      "provider": "openai",
+      "model": "qwen/qwen3-next-80b-a3b-thinking",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Thinking",
+        "Logic"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Qwen 3 Coder 480B",
+      "provider": "openai",
+      "model": "qwen/qwen3-coder-480b-a35b-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Coding"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "QwQ 32B (NVIDIA)",
+      "provider": "openai",
+      "model": "qwen/qwq-32b",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Reasoning"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Kimi-K2 Thinking",
+      "provider": "openai",
+      "model": "moonshotai/kimi-k2-thinking",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Reasoning"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Phi-4 Flash Reasoning",
+      "provider": "openai",
+      "model": "microsoft/phi-4-mini-flash-reasoning",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Reasoning",
+        "Fast"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Gemma 3 27B (NVIDIA)",
+      "provider": "openai",
+      "model": "google/gemma-3-27b-it",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Google Next"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Gemma 3 1B (NVIDIA)",
+      "provider": "openai",
+      "model": "google/gemma-3-1b-it",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Ultralight"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Llama 3.2 Vision 90B",
+      "provider": "openai",
+      "model": "meta/llama-3.2-90b-vision-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Vision Support"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": true,
+      "autoDetect": false
+    },
+    {
+      "name": "Mixtral 8x22B (NVIDIA)",
+      "provider": "openai",
+      "model": "mistralai/mixtral-8x22b-instruct-v0.1",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Large Context"
+      ],
+      "maxTokens": 8192,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Phi-4 Mini (NVIDIA)",
+      "provider": "openai",
+      "model": "microsoft/phi-4-mini-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Efficient"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    },
+    {
+      "name": "Nemotron 70B (NVIDIA)",
+      "provider": "openai",
+      "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+      "apiBase": "https://integrate.api.nvidia.com/v1",
+      "apiKey": "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",
+      "description": null,
+      "features": [
+        "NVIDIA NIM",
+        "Logic Optimized"
+      ],
+      "maxTokens": 4096,
+      "supportsFunctions": true,
+      "supportsVision": false,
+      "autoDetect": false
+    }
+  ]
+}

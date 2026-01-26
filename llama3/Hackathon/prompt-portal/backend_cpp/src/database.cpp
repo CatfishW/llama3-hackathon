@@ -95,25 +95,6 @@ void Database::create_tables() {
         )
     )");
 
-    // Driving game scores table
-    db_->exec(R"(
-        CREATE TABLE IF NOT EXISTS driving_game_scores (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            template_id INTEGER NOT NULL,
-            session_id TEXT NOT NULL,
-            score REAL NOT NULL,
-            consensus_reached INTEGER DEFAULT 1,
-            message_count INTEGER NOT NULL,
-            duration_seconds REAL NOT NULL,
-            player_option TEXT NOT NULL,
-            agent_option TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (template_id) REFERENCES prompt_templates(id)
-        )
-    )");
-
     // Announcements table
     db_->exec(R"(
         CREATE TABLE IF NOT EXISTS announcements (
@@ -135,7 +116,6 @@ void Database::create_tables() {
     db_->exec("CREATE INDEX IF NOT EXISTS idx_templates_user ON prompt_templates(user_id)");
     db_->exec("CREATE INDEX IF NOT EXISTS idx_scores_user ON scores(user_id)");
     db_->exec("CREATE INDEX IF NOT EXISTS idx_scores_template ON scores(template_id)");
-    db_->exec("CREATE INDEX IF NOT EXISTS idx_driving_scores_user ON driving_game_scores(user_id)");
 }
 
 User Database::row_to_user(SQLite::Statement& query) {
@@ -487,83 +467,6 @@ int Database::count_scores() {
 
 int Database::count_participants() {
     SQLite::Statement query(*db_, "SELECT COUNT(DISTINCT user_id) FROM scores");
-    query.executeStep();
-    return query.getColumn(0).getInt();
-}
-
-DrivingGameScore Database::row_to_driving_score(SQLite::Statement& query) {
-    DrivingGameScore score;
-    score.id = query.getColumn("id").getInt();
-    score.user_id = query.getColumn("user_id").getInt();
-    score.template_id = query.getColumn("template_id").getInt();
-    score.session_id = query.getColumn("session_id").getText();
-    score.score = query.getColumn("score").getDouble();
-    score.consensus_reached = query.getColumn("consensus_reached").getInt() != 0;
-    score.message_count = query.getColumn("message_count").getInt();
-    score.duration_seconds = query.getColumn("duration_seconds").getDouble();
-    score.player_option = query.getColumn("player_option").getText();
-    score.agent_option = query.getColumn("agent_option").getText();
-    score.created_at = query.getColumn("created_at").getText();
-    return score;
-}
-
-DrivingGameScore Database::create_driving_score(const DrivingGameScore& s) {
-    SQLite::Statement insert(*db_, R"(
-        INSERT INTO driving_game_scores (user_id, template_id, session_id, score,
-            consensus_reached, message_count, duration_seconds, player_option, agent_option)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    )");
-    
-    insert.bind(1, s.user_id);
-    insert.bind(2, s.template_id);
-    insert.bind(3, s.session_id);
-    insert.bind(4, s.score);
-    insert.bind(5, s.consensus_reached ? 1 : 0);
-    insert.bind(6, s.message_count);
-    insert.bind(7, s.duration_seconds);
-    insert.bind(8, s.player_option);
-    insert.bind(9, s.agent_option);
-    insert.exec();
-    
-    DrivingGameScore result = s;
-    result.id = static_cast<int>(db_->getLastInsertRowid());
-    result.created_at = current_timestamp();
-    return result;
-}
-
-std::vector<DrivingGameLeaderboardEntry> Database::get_driving_leaderboard(int limit, int skip) {
-    std::vector<DrivingGameLeaderboardEntry> entries;
-    
-    SQLite::Statement query(*db_, R"(
-        SELECT s.*, u.email, t.title as template_title
-        FROM driving_game_scores s
-        JOIN users u ON s.user_id = u.id
-        JOIN prompt_templates t ON s.template_id = t.id
-        ORDER BY s.score DESC, s.created_at ASC
-        LIMIT ? OFFSET ?
-    )");
-    query.bind(1, limit);
-    query.bind(2, skip);
-    
-    int rank = skip + 1;
-    while (query.executeStep()) {
-        DrivingGameLeaderboardEntry entry;
-        entry.rank = rank++;
-        entry.user_email = query.getColumn("email").getText();
-        entry.template_id = query.getColumn("template_id").getInt();
-        entry.template_title = query.getColumn("template_title").getText();
-        entry.score = query.getColumn("score").getDouble();
-        entry.message_count = query.getColumn("message_count").getInt();
-        entry.duration_seconds = query.getColumn("duration_seconds").getDouble();
-        entry.session_id = query.getColumn("session_id").getText();
-        entry.created_at = query.getColumn("created_at").getText();
-        entries.push_back(entry);
-    }
-    return entries;
-}
-
-int Database::count_driving_scores() {
-    SQLite::Statement query(*db_, "SELECT COUNT(*) FROM driving_game_scores");
     query.executeStep();
     return query.getColumn(0).getInt();
 }

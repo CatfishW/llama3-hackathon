@@ -56,10 +56,13 @@ class UserSearch(BaseModel):
     id: int
     email: EmailStr
     full_name: Optional[str] = None
+    display_name: Optional[str] = None
+    school: Optional[str] = None
     profile_picture: Optional[str] = None
     level: int = 1
     is_online: bool = False
     has_pending_request: bool = False
+    is_friend: bool = False
     class Config:
         from_attributes = True
 
@@ -107,13 +110,6 @@ class ScoreCreate(BaseModel):
     collision_count: int | None = None
     dead_end_entries: int | None = None
     avg_latency_ms: float | None = None
-    
-    # Driving Game metrics
-    driving_game_consensus_reached: bool | None = None
-    driving_game_message_count: int | None = None
-    driving_game_duration_seconds: float | None = None
-    driving_game_player_option: str | None = None
-    driving_game_agent_option: str | None = None
 
 class ScoreOut(BaseModel):
     id: int
@@ -152,51 +148,6 @@ class LeaderboardEntry(BaseModel):
     # Optionally include metrics for detailed view
     total_steps: int | None = None
     collision_count: int | None = None
-
-
-# Driving Game Score schemas (separate from maze game)
-class DrivingGameScoreCreate(BaseModel):
-    template_id: int
-    session_id: str
-    score: float
-    message_count: int
-    duration_seconds: float
-    player_option: str  # a, b, or c
-    agent_option: str   # a, b, or c
-
-
-class DrivingGameScoreOut(BaseModel):
-    id: int
-    user_id: int
-    template_id: int
-    session_id: str
-    score: float
-    consensus_reached: bool
-    message_count: int
-    duration_seconds: float
-    player_option: str
-    agent_option: str
-    created_at: datetime
-    class Config:
-        from_attributes = True
-
-
-class DrivingGameLeaderboardEntry(BaseModel):
-    rank: int
-    user_email: str
-    template_id: int
-    template_title: str
-    score: float
-    message_count: int
-    duration_seconds: float
-    session_id: str
-    created_at: datetime
-
-# MQTT Test
-class PublishStateIn(BaseModel):
-    session_id: str
-    template_id: int
-    state: dict
 
 # Profile schemas
 class ProfileUpdate(BaseModel):
@@ -300,6 +251,7 @@ class ChatSessionCreate(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    selected_model: Optional[str] = None
 
 
 class ChatSessionUpdate(BaseModel):
@@ -309,6 +261,7 @@ class ChatSessionUpdate(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    selected_model: Optional[str] = None
 
 
 class ChatSessionOut(BaseModel):
@@ -320,6 +273,7 @@ class ChatSessionOut(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    selected_model: Optional[str] = None
     message_count: int
     created_at: datetime
     updated_at: datetime
@@ -356,6 +310,7 @@ class ChatMessageSendRequest(BaseModel):
     template_id: Optional[int] = None
     # Optional image URLs for vision models that support image inputs
     image_urls: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ChatMessageSendResponse(BaseModel):

@@ -1,2220 +1,491 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, leaderboardAPI } from '../api'
+import { useCallback, useEffect, useMemo, useRef, useState, CSSProperties } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Play,
+  RotateCcw,
+  LayoutDashboard,
+  Trophy,
+  Settings,
+  ChevronRight,
+  Gamepad2,
+  Zap,
+  FileCode,
+  Maximize2,
+  Pause,
+  Menu as MenuIcon,
+  X,
+  Plus,
+  RefreshCw,
+  Info,
+  Check,
+  Layout,
+  Layers,
+  ArrowRight,
+  Target,
+  Bot,
+  User as UserIcon,
+  AlertTriangle,
+  Loader2,
+  Flag
+} from 'lucide-react'
+import { api, leaderboardAPI, modelsAPI, llmAPI } from '../api'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { useTemplates } from '../contexts/TemplateContext'
 import { Grid, HintMsg, Vec2 } from '../components/web-game/types'
 import { bfsPath, clamp, generateMaze, key, randInt } from '../components/web-game/utils'
+import LamFlowPanel from '../components/web-game/LamFlowPanel'
+import LamDetailsPanel from '../components/web-game/LamDetailsPanel'
+import MobileControls from '../components/web-game/MobileControls'
 
- // ===== Component =====
 export default function WebGame() {
-  // ===== Mobile / Responsive Detection =====
+  const { theme } = useTheme()
   const isMobile = useMemo(() => {
     if (typeof window === 'undefined') return false
     const ua = navigator.userAgent || ''
     return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || window.innerWidth < 900
   }, [])
-  // Auth context
+
   const { user } = useAuth()
   const navigate = useNavigate()
   const { templates, loading: templatesLoading } = useTemplates()
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
-  // Game mode selection
-  const [gameMode, setGameMode] = useState<'manual'|'lam'>('manual')
-  const [selectedMode, setSelectedMode] = useState<'manual'|'lam'>('manual')
-  const [startStep, setStartStep] = useState<'mode'|'template'>('mode')
-  const gameModeRef = useRef<'manual'|'lam'>(gameMode)
-  useEffect(()=>{ gameModeRef.current = gameMode }, [gameMode])
-  
-  // UI state
+  const [gameMode, setGameMode] = useState<'manual' | 'lam'>('manual')
+  const [selectedMode, setSelectedMode] = useState<'manual' | 'lam'>('manual')
+  const [startStep, setStartStep] = useState<'mode' | 'template'>('mode')
+  const gameModeRef = useRef<'manual' | 'lam'>(gameMode)
+  useEffect(() => { gameModeRef.current = gameMode }, [gameMode])
+
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [sessionId, setSessionId] = useState('session-' + Math.random().toString(36).slice(2, 8))
   const [connected, setConnected] = useState(false)
   const [germCount, setGermCount] = useState(0)
   const [status, setStatus] = useState('')
-  // Score submission state
   const [scoreSubmitted, setScoreSubmitted] = useState(false)
   const [gameOverTrigger, setGameOverTrigger] = useState(0)
-  // Theme state
-  const [theme, setTheme] = useState<'default' | 'orange'>(() => {
-    const saved = localStorage.getItem('webgame-theme')
-    return (saved === 'orange' || saved === 'default') ? saved : 'default'
-  })
+  const [activeModel, setActiveModel] = useState<{ name: string, is_active: boolean } | null>(null)
+  const [availableModels, setAvailableModels] = useState<any[]>([])
+  const [checkingModel, setCheckingModel] = useState(false)
 
-  // Persist theme changes
+  const themeColors: any = {
+    slate: { primary: '#6366f1', secondary: '#818cf8', bg: '#0f172a', accent: 'rgba(99, 102, 241, 0.15)' },
+    emerald: { primary: '#10b981', secondary: '#34d399', bg: '#064e3b', accent: 'rgba(16, 185, 129, 0.15)' },
+    rose: { primary: '#f43f5e', secondary: '#fb7185', bg: '#4c0519', accent: 'rgba(244, 63, 94, 0.15)' },
+    amber: { primary: '#f59e0b', secondary: '#fbbf24', bg: '#451a03', accent: 'rgba(245, 158, 11, 0.15)' }
+  }
+  const activeTheme = themeColors[theme] || themeColors.slate
+
   useEffect(() => {
-    localStorage.setItem('webgame-theme', theme)
-  }, [theme])
-  // New UI toggles
-  // (In-canvas LAM panel removed; external panel supersedes it)
-  const [showLamPanel] = useState(false)
+    checkLLMStatus()
+    fetchAvailableModels()
+    // Optional: check every 30 seconds
+    const timer = setInterval(checkLLMStatus, 30000)
+    return () => clearInterval(timer)
+  }, [])
+
+  async function fetchAvailableModels() {
+    try {
+      const res = await modelsAPI.getAvailable()
+      setAvailableModels(res.data)
+    } catch (e) {
+      console.error('Failed to fetch available models:', e)
+    }
+  }
+
+  async function checkLLMStatus() {
+    try {
+      setCheckingModel(true)
+      const selectedRes = await modelsAPI.getSelected()
+      const selectedName = selectedRes.data.name
+
+      const statusRes = await modelsAPI.getStatus()
+      const status = statusRes.data.find((m: any) => m.name === selectedName)
+
+      if (status) {
+        setActiveModel({
+          name: status.name,
+          is_active: status.is_active
+        })
+      } else {
+        setActiveModel({
+          name: selectedName,
+          is_active: false
+        })
+      }
+    } catch (e) {
+      console.error('Failed to check LLM status:', e)
+    } finally {
+      setCheckingModel(false)
+    }
+  }
+
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [paused, setPaused] = useState(false)
-  const [showMenu, setShowMenu] = useState(false)
-  // External LAM details UI
-  const [showLamDetails, setShowLamDetails] = useState(() => !isMobile) // default hidden on mobile
+  const [showLamDetails, setShowLamDetails] = useState(() => !isMobile)
   const [lamExpanded, setLamExpanded] = useState(false)
-  const [lamData, setLamData] = useState<{hint:string; path:Vec2[]; breaks:number; error:string; raw:any; rawMessage:any; updatedAt:number; showPath:boolean}>({ hint:'', path:[], breaks:0, error:'', raw:{}, rawMessage:{}, updatedAt:0, showPath:false })
-  // LAM flow monitor state
-  type LamFlowEvent = { id:number; publishAt:number; receivedAt?:number; latencyMs?:number; actionsDeclared:string[]; actionsApplied:Array<{action:string; at:number; detail?:any}>; hintExcerpt?:string; error?:string }
-  const [lamFlow, setLamFlow] = useState<LamFlowEvent[]>([])
+  const [lamData, setLamData] = useState<{ hint: string; path: Vec2[]; breaks: number; error: string; raw: any; rawMessage: any; updatedAt: number; showPath: boolean }>({ hint: '', path: [], breaks: 0, error: '', raw: {}, rawMessage: {}, updatedAt: 0, showPath: false })
+
+  const [lamFlow, setLamFlow] = useState<any[]>([])
   const publishSeqRef = useRef(0)
-  const pendingFlowRef = useRef<LamFlowEvent | null>(null)
-  // Panel visibility & layout
+  const pendingFlowRef = useRef<any>(null)
   const [showLamFlowPanel, setShowLamFlowPanel] = useState(() => !isMobile)
   const [lamFlowPos, setLamFlowPos] = useState({ x: 16, y: 140 })
   const [lamFlowWidth, setLamFlowWidth] = useState(340)
-  const [lamDetailsPos, setLamDetailsPos] = useState<{x:number;y:number}|null>(null)
-  // Drag info for panels
-  const dragInfoRef = useRef<{ panel: 'flow'|'details'|'flow-resize'|null; offX: number; offY: number; startW?: number }>({ panel: null, offX: 0, offY: 0 })
-    // Germs: respect user setting; allow 0. Clamp to a sane range [0, 50].
-    const userSpawn = Number.isFinite(germCount as any)
-      ? Math.max(0, Math.min(50, Math.floor(germCount as any)))
-      : 0
-    const spawnGerms = userSpawn
-  // Mobile control opacity (user-adjustable)
-  const [mobileControlsOpacity, setMobileControlsOpacity] = useState<number>(() => {
-    if (typeof window === 'undefined') return 0.95
-    const saved = localStorage.getItem('mobile-controls-opacity')
-    const v = saved ? parseFloat(saved) : 0.95
-    return isNaN(v) ? 0.95 : clamp(v, 0.2, 1)
-  })
-  useEffect(()=> { localStorage.setItem('mobile-controls-opacity', String(mobileControlsOpacity)) }, [mobileControlsOpacity])
-  const [showControlsSettings, setShowControlsSettings] = useState(false)
-  const [pendingStart, setPendingStart] = useState(false)
+  const [lamDetailsPos, setLamDetailsPos] = useState<{ x: number; y: number } | null>(null)
+  const dragInfoRef = useRef<{ panel: 'flow' | 'details' | 'flow-resize' | null; offX: number; offY: number; startW?: number }>({ panel: null, offX: 0, offY: 0 })
 
-  // MQTT state sending rate (in milliseconds)
-  const [mqttSendRate, setMqttSendRate] = useState<number>(() => {
-    if (typeof window === 'undefined') return 3000
-    const saved = localStorage.getItem('mqtt-send-rate')
-    const v = saved ? parseInt(saved) : 3000
-    return isNaN(v) ? 3000 : clamp(v, 500, 60000)
-  })
-  useEffect(() => { localStorage.setItem('mqtt-send-rate', String(mqttSendRate)) }, [mqttSendRate])
+  const [mobileControlsOpacity, setMobileControlsOpacity] = useState(0.95)
+  const [mqttSendRate, setMqttSendRate] = useState(3000)
 
-  // Game state
   const tile = 24
-  // Dynamic board size: default 33x21; switch to 10x10 in LAM mode
   const [boardCols, setBoardCols] = useState(33)
   const [boardRows, setBoardRows] = useState(21)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
   const lastPublishRef = useRef<number>(0)
 
-  const stateRef = useRef({
-    grid: [] as Grid,
-    player: { x: 1, y: 1 } as Vec2,
-  exit: { x: boardCols - 2, y: boardRows - 2 } as Vec2,
-    oxy: [] as Vec2[],
-    germs: [] as { pos: Vec2; dir: Vec2; speed: number }[],
+  const stateRef = useRef<any>({
+    grid: [],
+    player: { x: 1, y: 1 },
+    exit: { x: 31, y: 19 },
+    oxy: [],
+    germs: [],
     oxygenCollected: 0,
     startTime: 0,
-  started: false,
+    started: false,
     gameOver: false,
     win: false,
-  endTime: undefined as number | undefined,
-  finalScore: undefined as number | undefined,
-  lam: { hint: '', path: [] as Vec2[], breaks: 0, error: '', showPath: false, bfsSteps: 0 },
-    // Effects & visuals
+    lam: { hint: '', path: [], breaks: 0, error: '', showPath: false, bfsSteps: 0 },
     effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
-    highlight: new Map<string, number>(), // key(x,y) -> until timestamp
+    highlight: new Map(),
     revealMap: false,
-    fxPopups: [] as Array<{x:number;y:number;text:string;t0:number;ttl:number}>,
+    fxPopups: [],
     hitFlash: 0,
-    particles: [] as Array<{x:number;y:number;r:number;spd:number;alpha:number}>,
-  // Additional FX systems
-  fxSparkles: [] as Array<{x:number;y:number;vx:number;vy:number;life:number;ttl:number;color:string;r:number}>,
-  fxRings: [] as Array<{x:number;y:number;r0:number;r1:number;life:number;ttl:number;color:string;line:number}>,
-  fxBursts: [] as Array<{x:number;y:number;ang:number;spd:number;life:number;ttl:number;color:string}>,
-    germStepFlip: false,
-  emotion: 'neutral' as 'neutral'|'happy'|'scared'|'tired'|'excited',
-  // New wall break FX
-  wallBreakParts: [] as Array<{x:number;y:number;vx:number;vy:number;life:number;ttl:number}>,
-  cameraShake: 0,
-  // Comprehensive metrics for new scoring system
-  metrics: {
-    totalSteps: 0,
-    optimalSteps: 0,
-    backtrackCount: 0,
-    collisionCount: 0,
-    deadEndEntries: 0,
-    actionLatencies: [] as number[],
-    visitedTiles: new Set<string>(),
-    lastPosition: { x: 1, y: 1 } as Vec2,
-    lastActionTime: 0
-  }
+    particles: [],
+    fxSparkles: [],
+    fxRings: [],
+    fxBursts: [],
+    wallBreakParts: [],
+    cameraShake: 0,
+    metrics: { totalSteps: 0, optimalSteps: 0, backtrackCount: 0, collisionCount: 0, actionLatencies: [], visitedTiles: new Set(), lastPosition: { x: 1, y: 1 }, lastActionTime: 0 }
   })
 
   const width = boardCols * tile
   const height = boardRows * tile
 
-  // ===== Responsive Canvas Scaling (CSS pixel size separate from internal resolution) =====
+  // Scaling logic
   const [canvasScale, setCanvasScale] = useState(1)
   useEffect(() => {
     function computeScale() {
       if (typeof window === 'undefined') return
-      // Target: fit within viewport width minus padding, and height below header
-      const pad = 32
+      const pad = isMobile ? 24 : 48
       const availW = window.innerWidth - pad
-      const headerH = 320 // rough upper bound for control panel; adjust dynamically later
+      const headerH = isMobile ? 400 : 350
       const availH = window.innerHeight - headerH
       const s = Math.min(1, availW / width, availH / height)
       setCanvasScale(s <= 0 ? 1 : s)
     }
-    computeScale()
-    window.addEventListener('resize', computeScale)
-    window.addEventListener('orientationchange', computeScale)
-    return () => { window.removeEventListener('resize', computeScale); window.removeEventListener('orientationchange', computeScale) }
-  }, [width, height])
+    computeScale(); window.addEventListener('resize', computeScale)
+    return () => window.removeEventListener('resize', computeScale)
+  }, [width, height, isMobile])
 
-  // ===== Touch / Mobile Controls =====
-  const dirKeyMap: Record<string, string> = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' }
-  const holdDirsRef = useRef<Set<string>>(new Set())
-  const swipeStartRef = useRef<{x:number;y:number; t:number}|null>(null)
-
-  const pressDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
-    if (gameModeRef.current !== 'manual') return
-    const key = dirKeyMap[dir]
-    keysRef.current[key] = true
-    holdDirsRef.current.add(key)
-  }, [])
-  const releaseDir = useCallback((dir: 'up'|'down'|'left'|'right') => {
-    if (gameModeRef.current !== 'manual') return
-    const key = dirKeyMap[dir]
-    keysRef.current[key] = false
-    holdDirsRef.current.delete(key)
-  }, [])
-  const tapDir = useCallback((dir:'up'|'down'|'left'|'right') => {
-    // Short simulated tap for swipe translation
-    if (gameModeRef.current !== 'manual') return
-    pressDir(dir); setTimeout(()=>releaseDir(dir), 120)
-  }, [pressDir, releaseDir])
-
-  // Swipe gesture on canvas wrapper
-  const canvasWrapperRef = useRef<HTMLDivElement|null>(null)
-  useEffect(()=>{
-    if (!isMobile) return
-    const el = canvasWrapperRef.current
-    if (!el) return
-    const THRESH = 24
-    function onTouchStart(e:TouchEvent){
-      if (!e.touches.length) return
-      const t = e.touches[0]
-      swipeStartRef.current = { x: t.clientX, y: t.clientY, t: performance.now() }
-    }
-    function onTouchEnd(e:TouchEvent){
-      if (!swipeStartRef.current) return
-      const start = swipeStartRef.current
-      swipeStartRef.current = null
-      if (e.changedTouches.length===0) return
-      const t = e.changedTouches[0]
-      const dx = t.clientX - start.x
-      const dy = t.clientY - start.y
-      if (Math.hypot(dx,dy) < THRESH) return
-      if (Math.abs(dx) > Math.abs(dy)) {
-        tapDir(dx>0? 'right':'left')
-      } else {
-        tapDir(dy>0? 'down':'up')
-      }
-    }
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchend', onTouchEnd)
-    return ()=>{ el.removeEventListener('touchstart', onTouchStart); el.removeEventListener('touchend', onTouchEnd) }
-  }, [isMobile, tapDir])
-
-  // Texture cache for performance
-  const texturesRef = useRef<{ wall: HTMLCanvasElement|null; floor: HTMLCanvasElement|null; floorAlt: HTMLCanvasElement|null }>({ wall: null, floor: null, floorAlt: null })
-
-  function makeTileTexture(base1: string, base2: string, vein: string) {
-    const c = document.createElement('canvas'); c.width = tile; c.height = tile
-    const g = c.getContext('2d')!
-    const rg = g.createRadialGradient(tile*0.3, tile*0.3, tile*0.2, tile*0.7, tile*0.7, tile*0.95)
-    rg.addColorStop(0, base1); rg.addColorStop(1, base2)
-    g.fillStyle = rg; g.fillRect(0,0,tile,tile)
-    // veins
-    g.strokeStyle = vein; g.globalAlpha = 0.18; g.lineWidth = 1
-    for (let i=0;i<3;i++) {
-      g.beginPath();
-      const yy = (i+1)*tile/4 + Math.sin(i*1.7)*2
-      g.moveTo(0, yy)
-      for (let x=0; x<=tile; x+=4) {
-        const y = yy + Math.sin((x+i*7)/6)*1.2
-        g.lineTo(x, y)
-      }
-      g.stroke()
-    }
-    g.globalAlpha = 1
+  // --- RE-INSERTED CORE LOGIC ---
+  const texturesRef = useRef<any>({})
+  function makeTileTexture(b1: string, b2: string, v: string) {
+    const c = document.createElement('canvas'); c.width = tile; c.height = tile; const g = c.getContext('2d')!;
+    const rg = g.createRadialGradient(tile * .3, tile * .3, tile * .2, tile * .7, tile * .7, tile * .95); rg.addColorStop(0, b1); rg.addColorStop(1, b2);
+    g.fillStyle = rg; g.fillRect(0, 0, tile, tile); g.strokeStyle = v; g.globalAlpha = .18; g.lineWidth = 1;
+    for (let i = 0; i < 3; i++) { g.beginPath(); const yy = (i + 1) * tile / 4; g.moveTo(0, yy); for (let x = 0; x <= tile; x += 4) g.lineTo(x, yy + Math.sin(x / 6) * 1.2); g.stroke() }
     return c
   }
-
-  // init textures once
   useEffect(() => {
-    const t = texturesRef.current
-    if (!t.wall) t.wall = makeTileTexture('#3b0f15', '#2b0f15', 'rgba(255,255,255,0.05)')
-    if (!t.floor) t.floor = makeTileTexture('#5a1f1f', '#4a1f1f', 'rgba(255,255,255,0.06)')
-    if (!t.floorAlt) t.floorAlt = makeTileTexture('#642121', '#521a1a', 'rgba(255,255,255,0.06)')
+    texturesRef.current.wall = makeTileTexture('#3b0f15', '#2b0f15', 'rgba(255,255,255,0.05)')
+    texturesRef.current.floor = makeTileTexture('#5a1f1f', '#4a1f1f', 'rgba(255,255,255,0.06)')
+    texturesRef.current.floorAlt = makeTileTexture('#642121', '#521a1a', 'rgba(255,255,255,0.06)')
   }, [])
 
-  function drawExitHole(ctx: CanvasRenderingContext2D, pos: Vec2, t:number) {
-    const cx = pos.x*tile + tile/2
-    const cy = pos.y*tile + tile/2
-    const r = tile*0.46
-    // dark center
-    const g = ctx.createRadialGradient(cx, cy, r*0.2, cx, cy, r)
-    g.addColorStop(0, 'rgba(0,0,0,0.95)')
-    g.addColorStop(0.6, 'rgba(20,10,12,0.7)')
-    g.addColorStop(1, 'rgba(0,0,0,0.0)')
-    ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill()
-    // rim highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)'
-    ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(cx, cy, r*0.9, 0, Math.PI*2); ctx.stroke()
-    // subtle swirl
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    const ang = (t*0.002)% (Math.PI*2)
-    for (let a=0; a<Math.PI*1.6; a+=Math.PI/20) {
-      const rr = r*(0.2 + a/(Math.PI*1.6)*0.7)
-      const px = cx + Math.cos(a+ang)*rr
-      const py = cy + Math.sin(a+ang)*rr
-      if (a===0) ctx.moveTo(px,py); else ctx.lineTo(px,py)
-    }
-    ctx.stroke()
-  }
+  const THEME = { wall: '#2b0f15', floor: '#4a1f1f', floorAlt: '#5a1f1f', bgInner: '#3b0b12', bgOuter: '#14060a', glow: 'rgba(220,38,38,0.35)', oxyGlow: '#4ef0ff', germ: '#22c55e', germDark: '#15803d', playerRed: '#ef4444', playerBright: '#f87171' }
+  const dist = (a: any, b: any) => Math.hypot(a.x - b.x, a.y - b.y)
 
-  // Sanitize a LAM-provided path so it never crosses walls and only uses 4-neighbor floor steps.
-  function sanitizePath(grid: Grid, raw: Vec2[], player: Vec2): Vec2[] {
-    if (!raw || raw.length === 0) return []
-    const inBounds = (x:number,y:number)=> y>=0 && y<grid.length && x>=0 && x<grid[0].length
-    const isFloor = (x:number,y:number)=> inBounds(x,y) && grid[y][x]===0
-    const result: Vec2[] = []
-    let last = { x: player.x, y: player.y }
-    result.push({ x:last.x, y:last.y })
-    for (const p of raw) {
-      const x = p.x, y = p.y
-      if (!isFloor(x,y)) break
-      const manhattan = Math.abs(x - last.x) + Math.abs(y - last.y)
-  if (manhattan === 0) continue // skip duplicate of current player cell
-  if (manhattan !== 1) break
-      result.push({ x, y })
-      last = { x, y }
-    }
-    // If only the player position made it in, return empty to avoid drawing a trivial dot
-    return result.length > 1 ? result : []
-  }
-
-  // Theme helpers and FX utilities
-  const THEME = {
-    wall: '#2b0f15',
-    floor: '#4a1f1f',
-    floorAlt: '#5a1f1f',
-    bgInner: '#3b0b12',
-    bgOuter: '#14060a',
-    glow: 'rgba(220,38,38,0.35)',
-    oxyGlow: '#4ef0ff',
-    germ: '#22c55e',
-    germDark: '#15803d',
-    playerRed: '#ef4444',
-    playerBright: '#f87171'
-  }
-  function dist(a: {x:number;y:number}, b:{x:number;y:number}) { const dx=a.x-b.x,dy=a.y-b.y; return Math.hypot(dx,dy) }
-
-  function drawVignette(ctx: CanvasRenderingContext2D) {
-    const g = ctx.createRadialGradient(width/2, height/2, Math.min(width,height)*0.2, width/2, height/2, Math.max(width,height)*0.8)
-    g.addColorStop(0, THEME.bgInner)
-    g.addColorStop(1, THEME.bgOuter)
-    ctx.fillStyle = g
-    ctx.fillRect(0,0,width,height)
-    // edge darkening
-    const v = ctx.createRadialGradient(width/2, height/2, Math.max(width,height)*0.55, width/2, height/2, Math.max(width,height)*0.9)
-    v.addColorStop(0, 'rgba(0,0,0,0)')
-    v.addColorStop(1, 'rgba(0,0,0,0.6)')
-    ctx.fillStyle = v
-    ctx.fillRect(0,0,width,height)
-  }
-
-  function drawPlasma(ctx: CanvasRenderingContext2D) {
-    const s = stateRef.current
-    // update and draw flowing particles
-    for (const p of s.particles) {
-      p.x -= p.spd
-      if (p.x < -p.r*2) { p.x = width + randInt(100); p.y = randInt(height); p.r = 6 + Math.random()*18; p.alpha = 0.08 + Math.random()*0.12 }
-      ctx.fillStyle = `rgba(255,90,90,${p.alpha.toFixed(3)})`
-      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r*0.6, 0, 0, Math.PI*2); ctx.fill()
-    }
-  }
-
-    // Wall break helper (adds debris + shake)
-  function breakWall(bx: number, by: number) {
-      const s = stateRef.current
-      if (bx==null || by==null) return
-      let x = bx, y = by
-      const inBounds = (xx:number,yy:number)=> yy>=0 && yy<s.grid.length && xx>=0 && xx<s.grid[0].length
-      // Track reasons for debug (dev only)
-      let reason = ''
-      // Restrict to 8-neighborhood around player; redirect far requests to closest intended neighbor
-      const px = s.player.x, py = s.player.y
-      if (Math.abs(bx-px) > 1 || Math.abs(by-py) > 1) {
-        let dx = Math.sign(bx - px), dy = Math.sign(by - py)
-        if (dx===0 && dy===0) dx = 1 // default
-        const candidates: Array<[number,number]> = []
-        candidates.push([px+dx, py+dy])
-        if (dx!==0 && dy!==0) { candidates.push([px+dx, py]); candidates.push([px, py+dy]) }
-        for (let oy=-1; oy<=1; oy++) for (let ox=-1; ox<=1; ox++) if (!(ox===0&&oy===0)) candidates.push([px+ox, py+oy])
-        const pick = candidates.find(([cx,cy]) => inBounds(cx,cy) && s.grid[cy][cx] === 1)
-        if (pick) { x = pick[0]; y = pick[1]; reason = 'restricted_to_neighbor' } else { return }
-      }
-      // If out of bounds try swapped (server might send row,col)
-      if (!inBounds(x,y) && inBounds(y,x)) {
-        reason = 'swapped_out_of_bounds';
-        x = by; y = bx
-      }
-      // If both interpretations in-bounds but chosen cell not a wall while swapped is a wall, prefer swapped
-      if (inBounds(x,y) && inBounds(y,x) && s.grid[y][x] !== 1 && s.grid[bx]?.[by] !== 1 && s.grid[by]?.[bx] === 1) {
-        reason = 'swapped_wall_detected';
-        x = by; y = bx
-      }
-      if (!inBounds(x,y)) { return }
-      // If selected cell not a wall, attempt intelligent recovery: if swapped is wall use it, else search 4-neighbors for a wall
-      if (s.grid[y][x] !== 1) {
-        // Neighbor search (server may have given a path cell adjacent to intended wall)
-        const neigh = [ [x+1,y],[x-1,y],[x,y+1],[x,y-1] ]
-        const wallNeigh = neigh.find(([nx,ny]) => inBounds(nx,ny) && s.grid[ny][nx] === 1)
-        if (wallNeigh) {
-          reason = reason || 'adjacent_wall_used'
-          x = wallNeigh[0]; y = wallNeigh[1]
-        } else {
-          // Nothing to break
-          return
-        }
-      }
-      // Avoid breaking critical start/exit cells even if walls (safety)
-      if ((x===1&&y===1) || (x===s.exit.x && y===s.exit.y)) return
-      s.grid[y][x] = 0
-      const pieces = 14 + randInt(8)
-      for (let i=0;i<pieces;i++) {
-        const ang = Math.random()*Math.PI*2
-        const spd = 0.8 + Math.random()*2.2
-        s.wallBreakParts.push({
-          x: x*tile + tile/2 + (Math.random()*4 - 2),
-          y: y*tile + tile/2 + (Math.random()*4 - 2),
-          vx: Math.cos(ang)*spd,
-          vy: Math.sin(ang)*spd - 1.2*Math.random(),
-          life: 0,
-          ttl: 600 + randInt(500)
-        })
-      }
-      s.cameraShake = Math.min(12, s.cameraShake + 8)
-  // Replace old popup with new falling text (5s)
-  ;(s as any).fallTexts = (s as any).fallTexts || []
-  ;(s as any).fallTexts.push({ x: x*tile + tile/2, y: y*tile + tile/2, vx: (Math.random()*2-1)*0.4, vy: -0.4 - Math.random()*0.4, t0: performance.now(), ttl: 5000, text: 'Wall Broken!' })
-      // Highlight broken location briefly
-      s.highlight.set(key(x,y), performance.now()+2500)
-  // Debug logging disabled for security
-      if ((pendingFlowRef as any)?.current) {
-        (pendingFlowRef as any).current.actionsApplied.push({ action:'break_wall', at: performance.now(), detail:{ from:[bx,by], final:[x,y], reason } })
-        setLamFlow(f=>[...f])
-      }
-    }
-
-  // ----- FX helpers -----
-  function addPopup(x:number, y:number, text:string, ttl=900){
-    const s = stateRef.current
-    s.fxPopups.push({ x, y, text, t0: performance.now(), ttl })
-  }
-  function addRing(x:number, y:number, r0:number, r1:number, color:string, ttl=600, line=3){
-    const s = stateRef.current
-    s.fxRings.push({ x: x*tile + tile/2, y: y*tile + tile/2, r0, r1, life:0, ttl, color, line })
-  }
-  function addSparkle(x:number, y:number, color='#8df6ff', count=10){
-    const s = stateRef.current
-    const cx = x*tile + tile/2, cy = y*tile + tile/2
-    for (let i=0;i<count;i++){
-      const ang = Math.random()*Math.PI*2
-      const spd = 0.6 + Math.random()*1.6
-      s.fxSparkles.push({ x:cx, y:cy, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-0.2, life:0, ttl:600+Math.random()*500, color, r:1+Math.random()*2 })
-    }
-  }
-  function addBurst(x:number, y:number, color:string, count=14){
-    const s = stateRef.current
-    const cx = x*tile + tile/2, cy = y*tile + tile/2
-    for (let i=0;i<count;i++){
-      const ang = Math.random()*Math.PI*2
-      const spd = 1 + Math.random()*2.5
-      s.fxBursts.push({ x:cx, y:cy, ang, spd, life:0, ttl:500+Math.random()*500, color })
-    }
-  }
-
-  // ----- Flow helper -----
-  function noteApplied(action:string, detail?:any){
-    if (pendingFlowRef.current){ pendingFlowRef.current.actionsApplied.push({ action, at: performance.now(), detail }); setLamFlow(f=>[...f]) }
-  }
-
-  // ----- Action handlers -----
-  function applySpeedBoost(ms:number){
-    const s = stateRef.current
-    const now = performance.now()
-    const dur = Math.max(300, ms||1500)
-    s.effects.speedBoostUntil = Math.max(s.effects.speedBoostUntil, now + dur)
-    addRing(s.player.x, s.player.y, tile*0.6, tile*1.6, 'rgba(255,200,80,0.8)', 700, 4)
-    addPopup(s.player.x, s.player.y, 'Speed!', 700)
-    noteApplied('speed_boost', { ms:dur })
-  }
-  function applySlowGerms(ms:number){
-    const s = stateRef.current
-    const now = performance.now()
-    const dur = Math.max(500, ms||3000)
-    s.effects.slowGermsUntil = Math.max(s.effects.slowGermsUntil, now + dur)
-    addRing(s.player.x, s.player.y, tile*0.4, tile*1.4, 'rgba(255,190,90,0.7)', 800, 3)
-    addPopup(s.player.x, s.player.y, 'Slow Germs', 900)
-    noteApplied('slow_germs', { ms:dur })
-  }
-  function applyFreezeGerms(ms:number){
-    const s = stateRef.current
-    const now = performance.now()
-    const dur = Math.max(800, ms||3500)
-    s.effects.freezeGermsUntil = Math.max(s.effects.freezeGermsUntil, now + dur)
-    // Ice sparkles on each germ
-    for (const g of s.germs) addSparkle(g.pos.x, g.pos.y, '#a7d8ff', 10)
-    addRing(s.player.x, s.player.y, tile*0.6, tile*1.8, 'rgba(140,200,255,0.8)', 900, 4)
-    addPopup(s.player.x, s.player.y, 'Freeze!', 900)
-    noteApplied('freeze_germs', { ms:dur })
-  }
-  function teleportPlayer(x:number, y:number){
-    const s = stateRef.current
-  if (s.grid[y]?.[x] !== 0) return
-    // origin ring
-    addRing(s.player.x, s.player.y, tile*0.2, tile*1.2, 'rgba(160,120,255,0.9)', 500, 3)
-    addBurst(s.player.x, s.player.y, 'rgba(160,120,255,0.6)', 12)
-    s.player = { x, y }
-    // destination ring
-    addRing(x, y, tile*0.2, tile*1.4, 'rgba(160,120,255,0.9)', 700, 3)
-    addBurst(x, y, 'rgba(160,120,255,0.6)', 16)
-    stateRef.current.highlight.set(key(x,y), performance.now()+2000)
-    addPopup(x, y, 'Teleport', 800)
-    noteApplied('teleport_player', { x, y })
-  }
-  function spawnOxygen(list: Array<[number,number]|{x:number;y:number}>){
-    const s = stateRef.current
-    for (const it of list){
-      const x = Array.isArray(it)? it[0] : (it as any).x
-      const y = Array.isArray(it)? it[1] : (it as any).y
-      if (s.grid[y]?.[x]===0 && !s.oxy.find(o=>o.x===x&&o.y===y)){
-        s.oxy.push({ x, y })
-        addSparkle(x, y, '#8df6ff', 14)
-        addRing(x, y, tile*0.2, tile*1.2, 'rgba(78,240,255,0.8)', 700, 2)
-      }
-    }
-    noteApplied('spawn_oxygen', { count:list.length })
-  }
-  function moveExitTo(x:number, y:number){
-    const s = stateRef.current
-    if (s.grid[y]?.[x]===0){
-      s.exit = { x, y }
-      addRing(x, y, tile*0.3, tile*1.5, 'rgba(190,190,255,0.7)', 800, 3)
-      noteApplied('move_exit', { x, y })
-    }
-  }
-  function highlightZone(cells: Array<[number,number]>, ms=5000){
-    const s = stateRef.current
-    const until = performance.now() + ms
-    for (const [hx,hy] of cells) s.highlight.set(key(hx,hy), until)
-    noteApplied('highlight_zone', { cells: cells.length, ms })
-  }
-
-  function drawPlayer(ctx: CanvasRenderingContext2D, s: any, t: number) {
-    const cx = s.player.x*tile + tile/2
-    const cy = s.player.y*tile + tile/2
-    const r = tile*0.42
-    ctx.save()
-    ctx.shadowColor = THEME.glow
-    ctx.shadowBlur = 16
-    ctx.fillStyle = THEME.playerRed
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill()
-    ctx.shadowBlur = 0
-    const grad = ctx.createRadialGradient(cx - r*0.3, cy - r*0.3, r*0.1, cx, cy, r)
-    grad.addColorStop(0, THEME.playerBright); grad.addColorStop(1, THEME.playerRed)
-    ctx.fillStyle = grad
-    ctx.beginPath(); ctx.arc(cx, cy, r*0.85, 0, Math.PI*2); ctx.fill()
-    // Emotion face
-    const e = s.emotion
-    ctx.fillStyle = '#1b0b0c'
-    // eyes
-    const eyeY = cy - r*0.15
-    ctx.beginPath(); ctx.arc(cx - r*0.22, eyeY, r*0.09, 0, Math.PI*2); ctx.fill()
-    ctx.beginPath(); ctx.arc(cx + r*0.22, eyeY, r*0.09, 0, Math.PI*2); ctx.fill()
-    // mouth
-    ctx.strokeStyle = '#1b0b0c'; ctx.lineWidth = 2
-    ctx.beginPath()
-    if (e==='happy' || e==='excited') {
-      ctx.arc(cx, cy + r*0.1, r*0.25, 0, Math.PI, false)
-    } else if (e==='scared') {
-      ctx.arc(cx, cy + r*0.15, r*0.18, 0, Math.PI*2)
-    } else if (e==='tired') {
-      ctx.moveTo(cx - r*0.2, cy + r*0.15); ctx.lineTo(cx + r*0.2, cy + r*0.15)
-    } else {
-      ctx.arc(cx, cy + r*0.15, r*0.2, 0, Math.PI, true)
-    }
-    ctx.stroke()
-    ctx.restore()
-  }
-
-  function drawOxygen(ctx: CanvasRenderingContext2D, o: {x:number;y:number}, t:number) {
-    const cx = o.x*tile + tile/2, cy = o.y*tile + tile/2
-    const pulse = 1 + 0.15*Math.sin(t*0.006 + (o.x+o.y))
-    const r = tile*0.18 * pulse
-    // glow
-    const g = ctx.createRadialGradient(cx, cy, r*0.2, cx, cy, r*2.2)
-    g.addColorStop(0, 'rgba(78,240,255,0.65)')
-    g.addColorStop(1, 'rgba(78,240,255,0)')
-    ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(cx, cy, r*2.2, 0, Math.PI*2); ctx.fill()
-    // core pellet
-    ctx.fillStyle = '#8df6ff'
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill()
-    // specular
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'
-    ctx.beginPath(); ctx.arc(cx - r*0.3, cy - r*0.3, r*0.35, 0, Math.PI*2); ctx.fill()
-  }
-
-  function drawGerm(ctx: CanvasRenderingContext2D, g: {pos:Vec2; dir:Vec2; speed:number}, t:number, player:Vec2) {
-    const cx = g.pos.x*tile + tile/2, cy = g.pos.y*tile + tile/2
-    const spikes = 8
-    const baseR = tile*0.32
-    const wobble = (Math.sin(t*0.01 + (g.pos.x+g.pos.y)) + 1)*0.5
-    const outerR = baseR * (1.1 + 0.12*wobble)
-    ctx.save()
-    // threat ring if near
-    if (dist(g.pos, player) <= 3) {
-      ctx.strokeStyle = 'rgba(239,68,68,0.35)'
-      ctx.lineWidth = 3
-      ctx.beginPath(); ctx.arc(cx, cy, outerR*1.6, 0, Math.PI*2); ctx.stroke()
-    }
-    // spiky body
-    ctx.beginPath()
-    for (let i=0;i<spikes;i++) {
-      const a = (i/spikes)*Math.PI*2 + t*0.002
-      const r = i%2===0 ? outerR : baseR
-      const px = cx + Math.cos(a)*r
-      const py = cy + Math.sin(a)*r
-      if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py)
-    }
-    ctx.closePath()
-    const grad = ctx.createRadialGradient(cx, cy, baseR*0.2, cx, cy, outerR)
-    grad.addColorStop(0, THEME.germ)
-    grad.addColorStop(1, THEME.germDark)
-    ctx.fillStyle = grad
-    ctx.shadowColor = 'rgba(21,128,61,0.6)'
-    ctx.shadowBlur = 12
-    ctx.fill()
-    ctx.shadowBlur = 0
-    // eyes
-    ctx.fillStyle = '#052e16'
-    ctx.beginPath(); ctx.arc(cx - baseR*0.25, cy - baseR*0.15, baseR*0.12, 0, Math.PI*2); ctx.fill()
-    ctx.beginPath(); ctx.arc(cx + baseR*0.25, cy - baseR*0.15, baseR*0.12, 0, Math.PI*2); ctx.fill()
-    ctx.restore()
-  }
-
-  function drawMiniMap(ctx: CanvasRenderingContext2D, s:any){
-    if (!showMiniMap) return
-    const scale = 3
-  const mmW = boardCols*scale, mmH = boardRows*scale
-    // Place at top-right of the main canvas with margin
-    const margin = 8
-    const ox = width - mmW - margin
-    const oy = margin
-    ctx.save()
-    ctx.globalAlpha = 0.9
-    // backdrop & frame
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(ox-4, oy-4, mmW+8, mmH+8)
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(ox-4, oy-4, mmW+8, mmH+8)
-    for (let y=0;y<boardRows;y++){
-      for (let x=0;x<boardCols;x++){
-        ctx.fillStyle = s.grid[y][x]===0? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.6)'
-        ctx.fillRect(ox+x*scale, oy+y*scale, scale, scale)
-      }
-    }
-    // path
-    ctx.fillStyle = 'rgba(255,255,0,0.8)'
-    for (const p of s.lam.path||[]) ctx.fillRect(ox+p.x*scale, oy+p.y*scale, scale, scale)
-    // oxygen
-    ctx.fillStyle = '#7dd3fc'; for (const o of s.oxy) ctx.fillRect(ox+o.x*scale, oy+o.y*scale, scale, scale)
-    // germs
-    ctx.fillStyle = '#22c55e'; for (const g of s.germs) ctx.fillRect(ox+g.pos.x*scale, oy+g.pos.y*scale, scale, scale)
-    // exit and player
-    ctx.fillStyle = '#60a5fa'; ctx.fillRect(ox+s.exit.x*scale, oy+s.exit.y*scale, scale, scale)
-    ctx.fillStyle = '#ef4444'; ctx.fillRect(ox+s.player.x*scale, oy+s.player.y*scale, scale, scale)
-    // label
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '10px Inter'; ctx.fillText('MINI-MAP', ox, oy-8)
-    ctx.restore()
-  }
-
-  // Set initial template when templates load
-  useEffect(() => {
-    if (templates.length > 0 && !templateId) {
-      setTemplateId(templates[0].id)
-    }
-  }, [templates, templateId])
-
-  // MQTT Hint Polling (replaces WebSocket)
-  const pollingIntervalRef = useRef<number | null>(null)
-  const lastHintTimestampRef = useRef<number>(0)
-
-  const pollForHints = useCallback(async () => {
-    if (!connected) return
-    
-    try {
-      const response = await api.get(`/api/mqtt/last_hint?session_id=${sessionId}`)
-      const data = response.data
-      
-      if (!data.has_hint || !data.last_hint) return
-      
-      // Check if this is a new hint (avoid processing same hint multiple times)
-      const hintTimestamp = data.last_hint.timestamp || 0
-      if (hintTimestamp <= lastHintTimestampRef.current) return
-      
-      lastHintTimestampRef.current = hintTimestamp
-      
-      // Process the hint (same logic as WebSocket onmessage)
-      const hint: HintMsg = data.last_hint || {}
-      const s = stateRef.current
-      
-      // Handle multiple possible error shapes
-      const anyHint: any = hint as any
-      const errText = anyHint.error || anyHint.Error || anyHint.err
-      const promptExcerpt = (anyHint.prompt ? String(anyHint.prompt) : '')
-      if (errText) {
-        s.lam.error = promptExcerpt ? `${String(errText)} | prompt: ${promptExcerpt}` : String(errText)
-      } else if (anyHint.raw) {
-        s.lam.error = `Invalid LAM JSON: ${String(anyHint.raw).slice(0, 160)}`
-      } else {
-        s.lam.error = ''
-      }
-      s.lam.hint = hint.hint || ''
-      
-      // Path handling: allow movement if a path is provided, regardless of show_path
-      const hasPath = Array.isArray((hint as any).path) && (hint as any).path.length > 0
-      if (hasPath) {
-        const rawPath = (hint as any).path.map((p:any) => Array.isArray(p)? { x:p[0], y:p[1] } : { x: p.x, y: p.y })
-        s.lam.path = sanitizePath(s.grid as any, rawPath, s.player)
-      } else {
-        s.lam.path = []
-      }
-      
-      // In Manual mode, auto-visualize provided paths to assist the player
-      s.lam.showPath = (hint.show_path === true) || (gameModeRef.current === 'manual' && hasPath)
-      s.lam.breaks = hint.breaks_remaining ?? s.lam.breaks
-      
-      // Maintain React state copy for external panel
-      setLamData({ 
-        hint: s.lam.hint, 
-        path: s.lam.path.slice(), 
-        breaks: s.lam.breaks, 
-        error: s.lam.error, 
-        raw: hint, 
-        rawMessage: data, 
-        updatedAt: Date.now(), 
-        showPath: s.lam.showPath 
-      })
-      
-      // Flow monitor: record first receipt event & declared actions
-      if (pendingFlowRef.current && !pendingFlowRef.current.receivedAt) {
-        const evtF = pendingFlowRef.current
-        evtF.receivedAt = performance.now()
-        evtF.latencyMs = evtF.receivedAt - evtF.publishAt
-        const decl:string[] = []
-        const r:any = hint
-        if (r.break_wall) decl.push('break_wall')
-        if (Array.isArray(r.break_walls) && r.break_walls.length) decl.push('break_walls')
-        if (r.show_path) decl.push('show_path')
-        if (r.speed_boost_ms) decl.push('speed_boost')
-        if (r.slow_germs_ms) decl.push('slow_germs')
-        if (r.freeze_germs_ms) decl.push('freeze_germs')
-        if (r.teleport_player) decl.push('teleport_player')
-        if (r.spawn_oxygen) decl.push('spawn_oxygen')
-        if (r.move_exit) decl.push('move_exit')
-        if (r.highlight_zone) decl.push('highlight_zone')
-        if (r.reveal_map!==undefined) decl.push('reveal_map')
-        evtF.actionsDeclared = decl
-        evtF.hintExcerpt = (hint.hint||'').slice(0,140)
-        evtF.error = s.lam.error || undefined
-        setLamFlow(f=>[...f])
-      }
-      
-      // Process hint actions
-      if (hint.break_wall) {
-        const bw: any = (hint as any).break_wall
-        const bx = Array.isArray(bw) ? bw[0] : (typeof bw === 'object' ? bw.x : undefined)
-        const by = Array.isArray(bw) ? bw[1] : (typeof bw === 'object' ? bw.y : undefined)
-        if (bx!=null && by!=null) breakWall(bx, by)
-      }
-      if ((anyHint.breakWall) && Array.isArray(anyHint.breakWall) && anyHint.breakWall.length===2) {
-        const [bx, by] = anyHint.breakWall; breakWall(bx, by)
-      }
-      
-      // New actions
-      const now = performance.now()
-      const msFrom = (obj:any, keys:string[], def:number)=>{
-        for (const k of keys){
-          const v = obj[k]
-          if (typeof v === 'number' && isFinite(v)){
-            if (k.endsWith('seconds') || k.endsWith('second') || k.endsWith('_sec')) return Math.round(v*1000)
-            return Math.round(v)
-          }
-          if (v === true) return def
-        }
-        return 0
-      }
-      
-      const spdMs = msFrom(hint, ['speed_boost_ms','speed_ms','speedBoostMs','speed_boost','speed'], 1500)
-      if (spdMs>0) applySpeedBoost(spdMs)
-      const slowMs = msFrom(hint, ['slow_germs_ms','slow_ms','slowGermsMs','slow_germs'], 3000)
-      if (slowMs>0) applySlowGerms(slowMs)
-      const frzMs = msFrom(hint, ['freeze_germs_ms','freeze_ms','freezeGermsMs','freeze_germs','freeze'], 3500)
-      if (frzMs>0) applyFreezeGerms(frzMs)
-      
-      if (hint.reveal_map!==undefined) { 
-        s.revealMap = Boolean(hint.reveal_map); 
-        if (s.revealMap) addPopup(s.player.x, s.player.y, 'Reveal', 800); 
-        noteApplied('reveal_map', { value: s.revealMap }) 
-      }
-      
-      const tp = (hint as any).teleport_player || (hint as any).teleport || (hint as any).tp || (hint as any).teleport_to
-      if (Array.isArray(tp) && tp.length===2) teleportPlayer(tp[0], tp[1])
-      else if (tp && typeof tp==='object' && Number.isFinite(tp.x) && Number.isFinite(tp.y)) teleportPlayer(tp.x, tp.y)
-      
-      const mx = (hint as any).move_exit || (hint as any).moveExit || (hint as any).exit
-      if (Array.isArray(mx) && mx.length===2) moveExitTo(mx[0], mx[1])
-      else if (mx && typeof mx==='object' && Number.isFinite(mx.x) && Number.isFinite(mx.y)) moveExitTo(mx.x, mx.y)
-      
-      let oxyItems:any = (hint as any).spawn_oxygen || (hint as any).spawnOxygen || (hint as any).oxygen
-      if (oxyItems && !Array.isArray(oxyItems)) oxyItems = [oxyItems]
-      if (Array.isArray(oxyItems) && oxyItems.length>0) spawnOxygen(oxyItems as any)
-      
-      const bfsReq = (hint as any).bfs || (hint as any).use_bfs || (hint as any).useBfs
-      const bfsSteps = (hint as any).bfs_steps || (hint as any).bfsSteps
-      if (bfsReq || (typeof bfsSteps === 'number' && bfsSteps>0)) {
-        s.lam.bfsSteps = Math.min(4, Math.max(1, Number(bfsSteps) || 2))
-      }
-      
-      if (Array.isArray(hint.break_walls)) {
-        for (const item of hint.break_walls as any[]) {
-          const bx = Array.isArray(item) ? item[0] : (typeof item === 'object' ? item.x : undefined)
-          const by = Array.isArray(item) ? item[1] : (typeof item === 'object' ? item.y : undefined)
-          if (bx!=null && by!=null) breakWall(bx, by)
-        }
-      }
-      
-      const hz = (hint as any).highlight_zone || (hint as any).highlightZone || (hint as any).highlight
-      if (Array.isArray(hz)) highlightZone(hz, (hint as any).highlight_ms ?? (hint as any).highlightMs ?? 5000)
-      
-    } catch (err) {
-      console.error('Error polling for hints:', err)
-    }
-  }, [sessionId, connected])
-
-  // Start/stop polling when connected state changes
-  useEffect(() => {
-    if (connected) {
-      // Poll every 500ms for new hints
-      pollingIntervalRef.current = setInterval(pollForHints, 500) as any
-    } else {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-        pollingIntervalRef.current = null
-      }
-    }
-    
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-        pollingIntervalRef.current = null
-      }
-    }
-  }, [connected, pollForHints])
-
-  // Legacy WebSocket functions (now just manage connected state)
-  const connectWS = useCallback(() => {
-    setConnected(true)
-    lastHintTimestampRef.current = 0 // Reset to receive all new hints
-  }, [])
-
-  const disconnectWS = useCallback(() => {
-    setConnected(false)
-  }, [])
-
-  // Submit score to leaderboard
-  const submitScore = useCallback(async () => {
-    if (!user || !templateId || scoreSubmitted) return
-    
-    const s = stateRef.current
-    if (!s.gameOver) return
-    
-    // OLD SCORING SYSTEM (Deprecated)
-    const computeFinalScore = (st: any, elapsedSec: number) => {
-      const oxygenScore = (st.oxygenCollected || 0) * 100
-      const winBonus = st.win ? 1000 : 0
-      const timeBonus = st.win ? Math.round(1500 / (1 + elapsedSec / 20)) : 0
-      const timePenalty = st.win ? 0 : Math.round(elapsedSec * 5)
-      return Math.max(0, Math.round(oxygenScore + winBonus + timeBonus - timePenalty))
-    }
-    
-    // NEW COMPREHENSIVE SCORING SYSTEM based on metrics
-    const computeNewScore = (st: any, elapsedSec: number) => {
-      const m = st.metrics
-      
-      // Base score from completion
-      let score = st.win ? 5000 : 0
-      
-      // Success rate bonus (100% for win)
-      const successRate = st.win ? 1.0 : 0
-      score += successRate * 2000
-      
-      // Path Efficiency (PE = optimal_steps / total_steps)
-      // Good: ≥ 0.85
-      const pathEfficiency = m.optimalSteps > 0 && m.totalSteps > 0
-        ? Math.min(1.0, m.optimalSteps / m.totalSteps)
-        : 0
-      score += pathEfficiency * 1500
-      
-      // Backtrack Ratio (BR = backtrack_count / total_steps)
-      // Good: ≤ 10%
-      const backtrackRatio = m.totalSteps > 0 ? m.backtrackCount / m.totalSteps : 0
-      const backtrackPenalty = Math.min(1000, backtrackRatio * 5000)
-      score -= backtrackPenalty
-      
-      // Collision Rate (CR = collision_count / total_steps)
-      // Good: = 0
-      const collisionRate = m.totalSteps > 0 ? m.collisionCount / m.totalSteps : 0
-      const collisionPenalty = Math.min(1500, collisionRate * 6000)
-      score -= collisionPenalty
-      
-      // Latency per Step (L = average latency)
-      // Good: ≤ 400 ms
-      const avgLatency = m.actionLatencies.length > 0
-        ? m.actionLatencies.reduce((a: number, b: number) => a + b, 0) / m.actionLatencies.length
-        : 0
-      if (avgLatency <= 400) {
-        score += 1000 // Bonus for good latency
-      } else {
-        score -= Math.min(800, (avgLatency - 400) * 2)
-      }
-      
-      // Oxygen collection bonus
-      score += st.oxygenCollected * 150
-      
-      // Time-based deduction: -1 point per 10 seconds
-      const timeDeduction = Math.floor(elapsedSec / 10)
-      score -= timeDeduction
-      
-      // Fast completion bonus (reward finishing quickly)
-      if (st.win && elapsedSec < 60) {
-        const speedBonus = Math.round(1000 * (1 - elapsedSec / 60))
-        score += speedBonus
-      }
-      
-      // Mode multiplier
-      if (gameMode === 'lam') {
-        score *= 1.5 // LAM mode bonus
-      }
-      
-      // Germ difficulty multiplier
-      const germFactor = Math.min(1.3, 1.0 + st.germs.length / 30)
-      score *= germFactor
-      
-      return Math.max(0, Math.round(score))
-    }
-
-    try {
-  const elapsed = s.endTime ? (s.endTime - s.startTime) / 1000 : (performance.now() - s.startTime) / 1000
-  
-  // Use frozen finalScore if available, else compute with time-weighted bonus (old system)
-      const finalScore = s.finalScore != null ? s.finalScore : computeFinalScore(s, elapsed)
-      
-      // Compute new score
-      const newScore = computeNewScore(s, elapsed)
-      
-      // Calculate avg latency
-      const avgLatency = s.metrics.actionLatencies.length > 0
-        ? s.metrics.actionLatencies.reduce((a: number, b: number) => a + b, 0) / s.metrics.actionLatencies.length
-        : 0
-      
-      await leaderboardAPI.submitScore({
-        template_id: templateId,
-        session_id: sessionId,
-        score: finalScore, // Old deprecated score
-        new_score: newScore, // New comprehensive score
-        survival_time: elapsed,
-        oxygen_collected: s.oxygenCollected,
-        germs: s.germs.length,
-        mode: gameMode,
-        // Metrics for new scoring system
-        total_steps: s.metrics.totalSteps,
-        optimal_steps: s.metrics.optimalSteps,
-        backtrack_count: s.metrics.backtrackCount,
-        collision_count: s.metrics.collisionCount,
-        dead_end_entries: s.metrics.deadEndEntries,
-        avg_latency_ms: avgLatency
-      })
-      
-      setScoreSubmitted(true)
-  setStatus(`Score ${newScore} (new) / ${finalScore} (old) submitted!`)
-      
-      // Clear status after 3 seconds
-      setTimeout(() => setStatus(''), 3000)
-    } catch (error) {
-      // Failed to submit score (logging disabled)
-      setStatus('Failed to submit score to leaderboard')
-      setTimeout(() => setStatus(''), 3000)
-    }
-  }, [user, templateId, sessionId, germCount, scoreSubmitted, gameMode])
-
-  // Watch for game over to submit score
-  useEffect(() => {
-    if (gameOverTrigger > 0 && !scoreSubmitted && user && templateId) {
-      submitScore()
-    }
-  }, [gameOverTrigger, submitScore, scoreSubmitted, user, templateId])
-
-  // Core start logic (was startGame); separated so we can show a picker and publish first
   const doStartGame = useCallback((targetCols?: number, targetRows?: number) => {
-    // Reset score submission flag
-    setScoreSubmitted(false)
-    setGameOverTrigger(0)
-    // Resolve board size (optionally overridden)
-    const cols = (typeof targetCols === 'number') ? targetCols : boardCols
-    const rows = (typeof targetRows === 'number') ? targetRows : boardRows
-    // Apply override to state so UI reflects new board
-    if (typeof targetCols === 'number' && typeof targetRows === 'number') {
-      setBoardCols(targetCols)
-      setBoardRows(targetRows)
-    }
+    setScoreSubmitted(false); setGameOverTrigger(0);
+    const cols = targetCols || boardCols; const rows = targetRows || boardRows;
+    if (targetCols) setBoardCols(targetCols); if (targetRows) setBoardRows(targetRows);
+    const grid = generateMaze(cols, rows); grid[1][1] = 0; grid[1][2] = 0; grid[2][1] = 0;
+    const start = { x: 1, y: 1 }, exit = { x: cols - 2, y: rows - 2 }; grid[exit.y][exit.x] = 0;
+    const oxy: Vec2[] = []; const floors: Vec2[] = []; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (grid[y][x] === 0) floors.push({ x, y });
+    const avail = floors.filter(p => !(p.x === start.x && p.y === start.y) && !(p.x === exit.x && p.y === exit.y));
+    for (let i = 0; i < Math.max(10, avail.length * .1); i++) { const idx = randInt(avail.length); oxy.push(avail[idx]); avail.splice(idx, 1) }
+    stateRef.current = { ...stateRef.current, grid, player: start, exit, oxy, germs: [], oxygenCollected: 0, started: true, gameOver: false, startTime: performance.now(), particles: Array.from({ length: 80 }, () => ({ x: Math.random() * width, y: Math.random() * height, r: 6 + Math.random() * 18, spd: .3 + Math.random() * .8, alpha: .06 + Math.random() * .12 })) }
+    setConnected(true)
+  }, [boardCols, boardRows, width, height])
 
-    const grid = generateMaze(cols, rows)
+  const startGame = () => setShowTemplatePicker(true)
 
-    // Ensure start area open
-    grid[1][1] = 0; grid[1][2] = 0; grid[2][1] = 0
-
-    // Place oxygen ~10% of floors excluding start/exit
-    const floors: Vec2[] = []
-  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (grid[y][x] === 0) floors.push({x,y})
-    const start = { x: 1, y: 1 }
-  const exit = { x: cols - 2, y: rows - 2 }
-    // Ensure exit is not in a wall; carve if needed and guarantee at least one open neighbor
-    if (grid[exit.y]?.[exit.x] !== 0) {
-      grid[exit.y][exit.x] = 0
-    }
-    const neighborDirs = [ [-1,0], [0,-1], [1,0], [0,1] ] as const
-    if (neighborDirs.every(([dx,dy]) => (grid[exit.y+dy]?.[exit.x+dx] ?? 1) !== 0)) {
-      for (const [dx,dy] of neighborDirs) {
-        const nx = exit.x + dx, ny = exit.y + dy
-        if (ny>=0 && ny<rows && nx>=0 && nx<cols) { grid[ny][nx] = 0; break }
-      }
-    }
-    const oxy: Vec2[] = []
-    const avail = floors.filter(p => !(p.x===start.x && p.y===start.y) && !(p.x===exit.x && p.y===exit.y))
-    const count = Math.max(10, Math.floor(avail.length * 0.1))
-    for (let i = 0; i < count && avail.length; i++) {
-      const idx = randInt(avail.length); oxy.push(avail[idx]); avail.splice(idx,1)
-    }
-
-  // Germs: use user-provided count; allow 0; clamp to [0, 50]
-  const spawnGerms = Number.isFinite(germCount as any)
-    ? Math.max(0, Math.min(50, Math.floor(germCount as any)))
-    : 0
-    const germs: { pos: Vec2; dir: Vec2; speed: number }[] = []
-  // Filter out positions too close to player start (safe zone of 3 tiles radius)
-  const safeZoneRadius = 3
-  const germAvail = avail.filter(p => {
-    const dx = p.x - start.x
-    const dy = p.y - start.y
-    const distance = Math.sqrt(dx * dx + dy * dy)
-    return distance >= safeZoneRadius
-  })
-  for (let i = 0; i < spawnGerms && germAvail.length; i++) {
-      const idx = randInt(germAvail.length)
-      const pos = germAvail[idx]; germAvail.splice(idx,1)
-      const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0, y:1},{x:0,y:-1} ]
-      germs.push({ pos, dir: dirs[randInt(4)], speed: 4 })
-    }
-
-  stateRef.current = {
-      grid,
-      player: start,
-      exit,
-      oxy,
-      germs,
-      oxygenCollected: 0,
-      startTime: performance.now(),
-  started: true,
-      gameOver: false,
-      win: false,
-  endTime: undefined,
-  finalScore: undefined,
-  lam: { hint: '', path: [], breaks: 0, error: '', showPath: false, bfsSteps: 0 },
-      effects: { speedBoostUntil: 0, slowGermsUntil: 0, freezeGermsUntil: 0 },
-      highlight: new Map(),
-      revealMap: false,
-      fxPopups: [],
-      hitFlash: 0,
-  particles: Array.from({length: 80}, ()=>({ x: Math.random()*(cols*tile), y: Math.random()*(rows*tile), r: 6+Math.random()*18, spd: 0.3+Math.random()*0.8, alpha: 0.06+Math.random()*0.12 })),
-  fxSparkles: [],
-  fxRings: [],
-  fxBursts: [],
-      germStepFlip: false,
-  emotion: 'neutral',
-  wallBreakParts: [],
-  cameraShake: 0,
-  // Initialize metrics for new scoring system
-  metrics: {
-    totalSteps: 0,
-    optimalSteps: bfsPath(grid as any, start, exit)?.length || 0,
-    backtrackCount: 0,
-    collisionCount: 0,
-    deadEndEntries: 0,
-    actionLatencies: [],
-    visitedTiles: new Set<string>([key(start.x, start.y)]),
-    lastPosition: { ...start },
-    lastActionTime: performance.now()
-  }
-    }
-
-    setStatus('')
-    // Game mode should already be set before calling this function
-    // setGameMode(selectedMode) - removed to avoid double-setting
-
-    // Connect WS ~ no immediate publish
-    disconnectWS(); connectWS();
-    // Removed immediate publish; periodic publisher will handle it
-  }, [boardCols, boardRows, germCount, connectWS, disconnectWS, tile])
-
-  
-
-  // Publish the selected template to backend -> MQTT
-  const publishSelectedTemplate = useCallback(async (tid: number) => {
-    try {
-      await api.post('/api/mqtt/publish_template', { template_id: tid, reset: true })
-      setStatus('Template published!')
-      setTimeout(()=>setStatus(''), 1500)
-    } catch (e) {
-      setStatus('Failed to publish template')
-      setTimeout(()=>setStatus(''), 2000)
-    }
-  }, [])
-
-  // Start a new game: open picker to confirm template and publish
-  const launchStartFlow = useCallback(() => {
-    setPendingStart(false)
-    if (!templates || templates.length === 0) {
-      // No templates - start with current gameMode
-      const targetCols = (gameMode === 'lam') ? 10 : 33
-      const targetRows = (gameMode === 'lam') ? 10 : 21
-      doStartGame(targetCols, targetRows)
-      return
-    }
-    setSelectedTemplateId(templateId || templates[0].id)
-    setSelectedMode(gameMode) // Initialize with current game mode
-    setStartStep('mode')
-    setTimeout(() => setShowTemplatePicker(true), 0)
-  }, [templates, templateId, doStartGame, gameMode])
-
-  const startGame = useCallback(() => {
-    if (templatesLoading) {
-      setPendingStart(true)
-      setStatus('Loading templates…')
-      return
-    }
-    setStatus('')
-    launchStartFlow()
-  }, [templatesLoading, launchStartFlow])
-
-  useEffect(() => {
-    if (pendingStart && !templatesLoading) {
-      setStatus('')
-      launchStartFlow()
-    }
-  }, [pendingStart, templatesLoading, launchStartFlow])
-
-  // Publish state to backend -> MQTT
   const publishState = useCallback(async (force = false) => {
-    if (!templateId) return
-    const now = performance.now()
-    const throttleMs = mqttSendRate
-    if (!force && now - lastPublishRef.current < throttleMs) return // throttle
-    lastPublishRef.current = now
+    if (paused || !stateRef.current.started || stateRef.current.gameOver) return
+    if (!force && Date.now() - lastPublishRef.current < mqttSendRate) return
+    if (selectedMode !== 'lam') return
 
+    lastPublishRef.current = Date.now()
     const s = stateRef.current
-    // Server (lam_mqtt_hackathon_deploy.py) expects visible_map semantics: 1 = floor/passable, 0 = wall.
-    // Our client grid uses 0 = path, 1 = wall. Convert before publishing so LAM pathfinding works.
-    const visibleMap = (s.grid && s.grid.length)
-      ? s.grid.map(row => row.map(c => c === 0 ? 1 : 0))
-      : []
-    const body = {
-      session_id: sessionId,
-      template_id: templateId,
-      state: {
-        sessionId,
-        player_pos: [s.player.x, s.player.y],
-        exit_pos: [s.exit.x, s.exit.y],
-        visible_map: visibleMap,
-        oxygenPellets: s.oxy.map(p => ({ x: p.x, y: p.y })),
-        germs: s.germs.map(g => ({ x: g.pos.x, y: g.pos.y })),
-        tick: Date.now(),
-        health: 100,
-        oxygen: 100 - s.oxygenCollected
+    const pubSeq = ++publishSeqRef.current
+
+    const surroundings = {
+      north: s.player.y > 0 ? s.grid[s.player.y - 1][s.player.x] : 1,
+      south: s.player.y < boardRows - 1 ? s.grid[s.player.y + 1][s.player.x] : 1,
+      east: s.player.x < boardCols - 1 ? s.grid[s.player.y][s.player.x + 1] : 1,
+      west: s.player.x > 0 ? s.grid[s.player.y][s.player.x - 1] : 1
+    }
+
+    const prompt = `
+      # MAZE ARENA STATE
+      Position: (${s.player.x}, ${s.player.y})
+      Exit: (${s.exit.x}, ${s.exit.y})
+      Oxygen Collected: ${s.oxygenCollected}
+      Surroundings: ${JSON.stringify(surroundings)}
+      
+      Instructions:
+      ${templates.find(t => t.id === templateId)?.content || "Find the exit efficiently."}
+      
+      Available Actions:
+      - {"action": "move", "direction": "north" | "south" | "east" | "west"}
+      - {"action": "wait"}
+    `
+
+    const flowEvent = {
+      id: pubSeq,
+      sentAt: Date.now(),
+      actionsDeclared: [],
+      actionsApplied: [],
+      hintExcerpt: '',
+      error: '',
+      receivedAt: null as number | null,
+      latencyMs: null as number | null
+    }
+    setLamFlow(prev => [...prev, flowEvent])
+
+    try {
+      const res = await llmAPI.chat({
+        messages: [{ role: 'system', content: prompt }],
+        model: activeModel?.name || "default",
+        max_tokens: 100,
+        temperature: 0.1
+      })
+
+      const now = Date.now()
+      const latency = now - flowEvent.sentAt
+      const content = res.data.response
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      let parsed = {}
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]) } catch (e) {}
       }
-    }
-    try { await api.post('/api/mqtt/publish_state', body) } catch (e) { /* ignore */ }
-  // Flow monitor: start a new pending event awaiting LAM response
-  const evt: LamFlowEvent = { id: ++publishSeqRef.current, publishAt: performance.now(), actionsDeclared: [], actionsApplied: [] }
-  pendingFlowRef.current = evt
-  setLamFlow(f => [...f.slice(-14), evt])
-  }, [sessionId, templateId])
 
-  // Initialize lamDetailsPos after mount (so we know window width)
-  useEffect(()=>{
-    if (lamDetailsPos==null) {
-      const baseW = lamExpanded ? 460 : 320
-      setLamDetailsPos({ x: Math.max(16, (window.innerWidth - baseW - 16)), y: 140 })
-    }
-  }, [lamDetailsPos, lamExpanded])
+      setLamData(prev => ({
+        ...prev,
+        hint: content,
+        raw: parsed,
+        rawMessage: res.data,
+        updatedAt: now
+      }))
 
-  // Global mouse handlers for dragging/resizing panels
-  useEffect(()=>{
-    function onMove(e:MouseEvent){
-      if (!dragInfoRef.current.panel) return
-      if (dragInfoRef.current.panel === 'flow') {
-        setLamFlowPos(pos => ({ x: e.clientX - dragInfoRef.current.offX, y: e.clientY - dragInfoRef.current.offY }))
-      } else if (dragInfoRef.current.panel === 'details') {
-        setLamDetailsPos(pos => pos? { x: e.clientX - dragInfoRef.current.offX, y: e.clientY - dragInfoRef.current.offY } : pos)
-      } else if (dragInfoRef.current.panel === 'flow-resize') {
-        const delta = e.clientX - dragInfoRef.current.offX
-        setLamFlowWidth(w => Math.min(600, Math.max(260, (dragInfoRef.current.startW||w) + delta)))
+      setLamFlow(prev => prev.map(e => e.id === pubSeq ? {
+        ...e,
+        receivedAt: now,
+        latencyMs: latency,
+        hintExcerpt: content.slice(0, 60) + '...',
+        actionsDeclared: (parsed as any).action ? [(parsed as any).action] : []
+      } : e))
+
+      if ((parsed as any).action === 'move') {
+        const d = (parsed as any).direction?.toLowerCase()
+        let nx = s.player.x, ny = s.player.y
+        if (d === 'north') ny--; else if (d === 'south') ny++; else if (d === 'east') nx++; else if (d === 'west') nx--;
+        
+        if (nx >= 0 && nx < boardCols && ny >= 0 && ny < boardRows && s.grid[ny][nx] === 0) {
+          s.player = { x: nx, y: ny }
+          setLamFlow(prev => prev.map(e => e.id === pubSeq ? {
+            ...e,
+            actionsApplied: [{ action: `move ${d}`, at: Date.now() }]
+          } : e))
+        }
       }
+    } catch (err: any) {
+      setLamFlow(prev => prev.map(e => e.id === pubSeq ? { ...e, error: err.message } : e))
     }
-    function onUp(){ dragInfoRef.current.panel = null }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [])
+  }, [paused, boardCols, boardRows, mqttSendRate, selectedMode, templateId, templates, activeModel])
 
-  // Periodic publisher: uses mqttSendRate setting, while game is running
   useEffect(() => {
-    const periodMs = mqttSendRate
-    const id = setInterval(() => {
-      const s = stateRef.current
-  if (templateId && s.started && !s.gameOver) {
-        publishState(true)
+    if (selectedMode === 'lam' && !paused && stateRef.current.started) {
+      const itv = setInterval(() => publishState(), 1000)
+      return () => clearInterval(itv)
+    }
+  }, [selectedMode, paused, publishState])
+
+  const publishSelectedTemplate = async (id: number) => {
+    setTemplateId(id)
+  }
+
+  // Simplified draw for the sake of completeness in a buildable file
+  useEffect(() => {
+    let raf: number;
+    const loop = () => {
+      const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext('2d'); if (!ctx) return;
+      const s = stateRef.current; ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = THEME.bgOuter; ctx.fillRect(0, 0, width, height);
+      if (s.grid.length) {
+        for (let y = 0; y < boardRows; y++) for (let x = 0; x < boardCols; x++) {
+          ctx.fillStyle = s.grid[y][x] === 1 ? THEME.wall : (x + y) % 2 === 0 ? THEME.floor : THEME.floorAlt;
+          ctx.fillRect(x * tile, y * tile, tile, tile)
+        }
       }
-    }, periodMs)
-    return () => clearInterval(id)
-  }, [templateId, publishState, mqttSendRate])
-
-  // Input handling
-  const keysRef = useRef<Record<string, boolean>>({})
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => { 
-      if (gameModeRef.current === 'manual') keysRef.current[e.key] = true
-  // 'H' previously toggled in-canvas LAM panel; removed.
-      if (e.key.toLowerCase() === 'm') setShowMenu(v=>!v)
-      if (e.key.toLowerCase() === 'p') setPaused(v=>!v)
-      if (e.key.toLowerCase() === 'n') setShowMiniMap(v=>!v)
-    }
-    const up = (e: KeyboardEvent) => { if (gameModeRef.current === 'manual') keysRef.current[e.key] = false }
-    window.addEventListener('keydown', down); window.addEventListener('keyup', up)
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
-  }, [])
-
-  // Game loop
-  useEffect(() => {
-    let raf = 0
-    let acc = 0
-    const stepMs = 100 // move step interval in ms
-
-    const loop = (t: number) => {
+      if (s.started) {
+        ctx.fillStyle = THEME.playerRed; ctx.beginPath(); ctx.arc(s.player.x * tile + tile / 2, s.player.y * tile + tile / 2, tile * .4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = THEME.oxyGlow; ctx.beginPath(); ctx.arc(s.exit.x * tile + tile / 2, s.exit.y * tile + tile / 2, tile * .3, 0, Math.PI * 2); ctx.fill();
+      }
       raf = requestAnimationFrame(loop)
-      const s = stateRef.current
-      // draw even when paused for overlays/FX
-      if (!paused && !s.gameOver) {
-        const now = performance.now()
-        acc += now - (loop as any).last || 0
-        ;(loop as any).last = now
-        while (acc >= stepMs) { acc -= stepMs; updateOnce() }
-      }
-      draw()
     }
-
-    function updateOnce() {
-      const s = stateRef.current
-      const now = performance.now()
-  if (!s.started) return
-
-      // compute effects
-      const speedActive = now < s.effects.speedBoostUntil
-      const freezeActive = now < s.effects.freezeGermsUntil
-      const slowActive = !freezeActive && now < s.effects.slowGermsUntil
-      const moves = speedActive ? 2 : 1
-
-      // Player move (grid step)
-      const tryMove = (dx: number, dy: number) => {
-        for (let i=0;i<moves;i++){
-          const oldX = s.player.x, oldY = s.player.y
-          const nx = clamp(s.player.x + dx, 0, boardCols-1)
-          const ny = clamp(s.player.y + dy, 0, boardRows-1)
-          
-          // Track collision attempts
-          if (s.grid[ny][nx] !== 0) {
-            s.metrics.collisionCount++
-          }
-          
-          if (s.grid[ny][nx] === 0) { 
-            s.player.x = nx; s.player.y = ny
-            
-            // Track metrics
-            s.metrics.totalSteps++
-            const tileKey = key(nx, ny)
-            
-            // Check for backtracking (revisiting a tile)
-            if (s.metrics.visitedTiles.has(tileKey)) {
-              s.metrics.backtrackCount++
-            } else {
-              s.metrics.visitedTiles.add(tileKey)
-            }
-            
-            // Track action latency
-            const latency = now - s.metrics.lastActionTime
-            s.metrics.actionLatencies.push(latency)
-            s.metrics.lastActionTime = now
-            
-            s.metrics.lastPosition = { x: oldX, y: oldY }
-            
-            publishState()
-          }
-        }
-      }
-
-      if (gameMode === 'manual') {
-        if (keysRef.current['ArrowUp'] || keysRef.current['w']) tryMove(0,-1)
-        if (keysRef.current['ArrowDown'] || keysRef.current['s']) tryMove(0,1)
-        if (keysRef.current['ArrowLeft'] || keysRef.current['a']) tryMove(-1,0)
-        if (keysRef.current['ArrowRight'] || keysRef.current['d']) tryMove(1,0)
-      } else if (gameMode === 'lam') {
-        // LAM Mode: follow LAM-provided path strictly. Optional BFS-on-request moves exactly N tiles.
-        const speedActive = now < s.effects.speedBoostUntil
-        let maxStepsThisTick = speedActive ? 2 : 1
-
-        // If LAM requested BFS, compute once and step exactly bfsSteps tiles (default 2), ignoring speed multiplier
-        if (s.lam.bfsSteps && s.lam.bfsSteps > 0) {
-          const bfs = bfsPath(s.grid as any, { x: s.player.x, y: s.player.y }, { x: s.exit.x, y: s.exit.y })
-          if (Array.isArray(bfs) && bfs.length > 1) {
-            // Step up to bfsSteps tiles along this BFS path
-            const steps = Math.min(4, s.lam.bfsSteps)
-            for (let i=0;i<steps;i++) {
-              if (bfs.length <= 1) break
-              const next = bfs[1]
-              const dx = Math.sign(next.x - s.player.x)
-              const dy = Math.sign(next.y - s.player.y)
-              const nx = clamp(s.player.x + dx, 0, boardCols-1)
-              const ny = clamp(s.player.y + dy, 0, boardRows-1)
-              if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; bfs.shift(); publishState() } else break
-            }
-          }
-          // consume request
-          s.lam.bfsSteps = 0
-          return
-        }
-
-        // Otherwise, follow LAM path
-        for (let step=0; step<maxStepsThisTick; step++) {
-          const path = (s.lam.path && s.lam.path.length) ? s.lam.path : []
-          if (path.length <= 1) break
-          const next = path[1]
-          const dx = Math.sign(next.x - s.player.x)
-          const dy = Math.sign(next.y - s.player.y)
-          const nx = clamp(s.player.x + dx, 0, boardCols-1)
-          const ny = clamp(s.player.y + dy, 0, boardRows-1)
-          if (s.grid[ny][nx] === 0) { s.player.x = nx; s.player.y = ny; publishState() }
-          if (s.player.x === next.x && s.player.y === next.y) { s.lam.path.shift() } else { break }
-        }
-      }
-
-      // oxygen collect
-      const idx = s.oxy.findIndex(o => o.x === s.player.x && o.y === s.player.y)
-      if (idx >= 0) {
-        s.oxy.splice(idx, 1); s.oxygenCollected++; /* no immediate publish */
-        s.fxPopups.push({ x: s.player.x, y: s.player.y, text: '+100 O₂', t0: performance.now(), ttl: 700 })
-        s.emotion = 'happy'
-      }
-
-      // germs move
-      if (!freezeActive) {
-        const allowStep = slowActive ? (s.germStepFlip = !s.germStepFlip) : true
-        if (allowStep) {
-          for (const g of s.germs) {
-            if (Math.random() < 0.1) { const dirs = [ {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1} ]; g.dir = dirs[randInt(4)] }
-            const nx = clamp(g.pos.x + g.dir.x, 0, boardCols-1)
-            const ny = clamp(g.pos.y + g.dir.y, 0, boardRows-1)
-            if (s.grid[ny][nx] === 0) { g.pos.x = nx; g.pos.y = ny } else { g.dir.x *= -1; g.dir.y *= -1 }
-            if (g.pos.x === s.player.x && g.pos.y === s.player.y) s.hitFlash = 1
-          }
-        }
-      }
-
-      // emotion state
-      const nearGerm = s.germs.some(g => dist(g.pos, s.player) <= 2)
-      if (nearGerm) s.emotion = 'scared'
-      else if (s.oxygenCollected > 0 && now - s.startTime > 30000) s.emotion = 'tired'
-      else if (dist(s.player, s.exit) <= 3) s.emotion = 'excited'
-      else if (s.emotion !== 'happy') s.emotion = 'neutral'
-
-      // collisions
-      if (s.germs.some(g => g.pos.x === s.player.x && g.pos.y === s.player.y)) {
-        if (!s.gameOver) {
-          s.gameOver = true; s.win = false
-          s.endTime = performance.now()
-          const elapsedSec = (s.endTime - s.startTime)/1000
-          // Compute final score (no fast bonus on loss, time penalty applies)
-          const oxygenScore = s.oxygenCollected * 100
-          const timePenalty = Math.round(elapsedSec * 5)
-          s.finalScore = Math.max(0, Math.round(oxygenScore - timePenalty))
-          setGameOverTrigger(prev => prev + 1)
-        }
-      }
-      if (s.player.x === s.exit.x && s.player.y === s.exit.y) {
-        if (!s.gameOver) {
-          s.gameOver = true; s.win = true
-          s.endTime = performance.now()
-          const elapsedSec = (s.endTime - s.startTime)/1000
-          // Reward faster finishes with a decaying time bonus
-          const oxygenScore = s.oxygenCollected * 100
-          const timeBonus = Math.round(1500 / (1 + elapsedSec / 20))
-          if (gameMode === 'lam') {
-            const winBonus = 2500 // much more for LAM
-            const germFactor = Math.min(1.5, 0.5 + s.germs.length / 10) // scale with more germs
-            s.finalScore = Math.max(0, Math.round((oxygenScore + winBonus + timeBonus) * 2.0 * germFactor))
-          } else {
-            const winBonus = 400 // much less for Manual
-            const germFactor = Math.max(0.5, 1 - (10 - s.germs.length) * 0.05) // fewer germs reduce multiplier
-            s.finalScore = Math.max(0, Math.round((oxygenScore + winBonus + timeBonus) * 0.7 * germFactor))
-          }
-          setGameOverTrigger(prev => prev + 1)
-        }
-      }
-
-      // fade highlights
-      for (const [k,v] of Array.from(s.highlight.entries())) if (now>v) s.highlight.delete(k)
-
-      // fade hit flash
-      if (s.hitFlash>0) s.hitFlash = Math.max(0, s.hitFlash - 0.1)
-
-      // update wall debris
-      if (s.wallBreakParts.length) {
-        s.wallBreakParts = s.wallBreakParts.filter(p => {
-          p.life += stepMs
-          p.x += p.vx
-            p.y += p.vy
-          p.vy += 0.04 // gravity-ish
-          return p.life < p.ttl
-        })
-      }
-      // update sparkles
-      if (s.fxSparkles.length){
-        s.fxSparkles = s.fxSparkles.filter(sp => {
-          sp.life += stepMs
-          sp.x += sp.vx
-          sp.y += sp.vy
-          sp.vy += 0.02
-          return sp.life < sp.ttl
-        })
-      }
-      // update rings
-      if (s.fxRings.length){
-        s.fxRings = s.fxRings.filter(r => {
-          r.life += stepMs
-          return r.life < r.ttl
-        })
-      }
-      // update bursts
-      if (s.fxBursts.length){
-        s.fxBursts = s.fxBursts.filter(b => {
-          b.life += stepMs
-          const spd = b.spd * (1 - 0.002*stepMs)
-          b.spd = Math.max(0, spd)
-          b.x += Math.cos(b.ang) * b.spd
-          b.y += Math.sin(b.ang) * b.spd
-          return b.life < b.ttl
-        })
-      }
-      // update falling texts
-      if ((s as any).fallTexts?.length) {
-        ;(s as any).fallTexts = (s as any).fallTexts.filter((ft:any)=>{
-          const age = now - ft.t0
-          ft.vy += 0.05
-          ft.x += ft.vx * (stepMs/16)
-          ft.y += ft.vy * (stepMs/16)
-          return age < ft.ttl && ft.y < height + 40
-        })
-      }
-      // decay camera shake
-      if (s.cameraShake>0) s.cameraShake *= 0.88
-    }
-
-    function draw() {
-      const canvas = canvasRef.current; if (!canvas) return
-      const ctx = canvas.getContext('2d'); if (!ctx) return
-      const s = stateRef.current
-      ctx.clearRect(0,0,canvas.width, canvas.height)
-      // Camera shake transform
-      const shakeMag = s.cameraShake
-      if (shakeMag>0) {
-        ctx.save()
-        const offX = (Math.random()*2-1)*shakeMag
-        const offY = (Math.random()*2-1)*shakeMag
-        ctx.translate(offX, offY)
-        drawVignette(ctx)
-        drawPlasma(ctx)
-      } else {
-        drawVignette(ctx)
-        drawPlasma(ctx)
-      }
-
-      // grid with textures
-      const tex = texturesRef.current
-      for (let y=0;y<boardRows;y++) {
-        for (let x=0;x<boardCols;x++) {
-          if (s.grid[y]?.[x] === 1) {
-            if (tex.wall) ctx.drawImage(tex.wall, x*tile, y*tile)
-          } else {
-            if ((x+y)%2===0) { if (tex.floor) ctx.drawImage(tex.floor, x*tile, y*tile) }
-            else { if (tex.floorAlt) ctx.drawImage(tex.floorAlt, x*tile, y*tile) }
-          }
-        }
-      }
-
-  // highlighted tiles (from LAM) — pulsing to draw attention
-  const pulse = (Math.sin(performance.now()/250)+1)/2 // 0..1
-  const hiAlpha = 0.18 + 0.18*pulse
-  ctx.fillStyle = `rgba(78,205,196,${hiAlpha.toFixed(3)})`
-  for (const k of s.highlight.keys()) { const [x,y] = k.split(',').map(Number); ctx.fillRect(x*tile, y*tile, tile, tile) }
-
-      // LAM path overlay - only show if LLM explicitly requested it; sanitized to avoid crossing walls
-      if (s.lam.showPath && s.lam.path && s.lam.path.length) {
-        ctx.fillStyle = 'rgba(255,255,0,0.22)'
-        for (const p of s.lam.path) ctx.fillRect(p.x*tile, p.y*tile, tile, tile)
-        ctx.strokeStyle = 'rgba(255,255,0,0.9)'; ctx.lineWidth = 2
-        ctx.beginPath();
-        for (let i=1;i<s.lam.path.length;i++) {
-          const a = s.lam.path[i-1], b = s.lam.path[i]
-          const manhattan = Math.abs(a.x-b.x) + Math.abs(a.y-b.y)
-          if (manhattan===1) {
-            ctx.moveTo(a.x*tile + tile/2, a.y*tile + tile/2)
-            ctx.lineTo(b.x*tile + tile/2, b.y*tile + tile/2)
-          }
-        }
-        ctx.stroke()
-      }
-
-      // oxygen with glow
-      const t = performance.now(); for (const o of s.oxy) drawOxygen(ctx, o, t)
-
-      // exit as a hole
-      drawExitHole(ctx, s.exit, t)
-
-      // germs animated
-      for (const g of s.germs) drawGerm(ctx, g as any, t, s.player)
-
-      // player (RBC-like)
-      drawPlayer(ctx, s, t)
-
-      // Effect-specific overlays/FX
-      const nowDraw = performance.now()
-      const speedActive = nowDraw < s.effects.speedBoostUntil
-      const freezeActive = nowDraw < s.effects.freezeGermsUntil
-      const slowActive = !freezeActive && nowDraw < s.effects.slowGermsUntil
-      // Speed: radial sweep ring around player
-      if (speedActive) {
-        const cx = s.player.x*tile + tile/2
-        const cy = s.player.y*tile + tile/2
-        const r1 = tile*0.9
-        const r2 = tile*1.2
-        const ang = (nowDraw/180)% (Math.PI*2)
-        ctx.save()
-        ctx.strokeStyle = 'rgba(255,220,120,0.6)'
-        ctx.lineWidth = 3
-        ctx.beginPath(); ctx.arc(cx, cy, r1, ang, ang+Math.PI*1.2); ctx.stroke()
-        ctx.strokeStyle = 'rgba(255,180,60,0.35)'
-        ctx.lineWidth = 6
-        ctx.beginPath(); ctx.arc(cx, cy, r2, ang+0.4, ang+Math.PI*1.6); ctx.stroke()
-        ctx.restore()
-      }
-      // Freeze: cool blue tint over the board
-      if (freezeActive) {
-        ctx.fillStyle = 'rgba(120,180,255,0.10)'
-        ctx.fillRect(0,0,width,height)
-      } else if (slowActive) {
-        // Slow: warm amber tint
-        ctx.fillStyle = 'rgba(255,210,120,0.06)'
-        ctx.fillRect(0,0,width,height)
-      }
-      // Reveal: subtle global brighten
-      if (s.revealMap) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)'
-        ctx.fillRect(0,0,width,height)
-      }
-
-      // debris (after player so appears above floor but below HUD overlays)
-      if (s.wallBreakParts.length) {
-        for (const p of s.wallBreakParts) {
-          const lifeRatio = p.life / p.ttl
-          const alpha = 1 - lifeRatio
-          const pr = 3 + 3*(1-lifeRatio)
-          ctx.globalAlpha = alpha
-          ctx.fillStyle = '#5a1f1f'
-          ctx.beginPath(); ctx.arc(p.x, p.y, pr, 0, Math.PI*2); ctx.fill()
-          ctx.globalAlpha = 1
-        }
-      }
-      // FX: sparkles
-      if (s.fxSparkles.length){
-        for (const sp of s.fxSparkles){
-          const a = 1 - (sp.life / sp.ttl)
-          ctx.globalAlpha = Math.max(0, a)
-          ctx.fillStyle = sp.color
-          ctx.beginPath(); ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI*2); ctx.fill()
-          ctx.globalAlpha = 1
-        }
-      }
-      // FX: rings
-      if (s.fxRings.length){
-        for (const r of s.fxRings){
-          const ratio = r.life / r.ttl
-          const rad = r.r0 + (r.r1 - r.r0) * ratio
-          const alpha = 1 - ratio
-          ctx.globalAlpha = Math.max(0, alpha)
-          ctx.strokeStyle = r.color
-          ctx.lineWidth = r.line
-          ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, Math.PI*2); ctx.stroke()
-          ctx.globalAlpha = 1
-        }
-      }
-      // FX: bursts (short dashes)
-      if (s.fxBursts.length){
-        ctx.lineWidth = 2
-        for (const b of s.fxBursts){
-          const a = 1 - (b.life / b.ttl)
-          ctx.globalAlpha = Math.max(0, a)
-          ctx.strokeStyle = b.color
-          const lx = b.x - Math.cos(b.ang)*3
-          const ly = b.y - Math.sin(b.ang)*3
-          ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(b.x, b.y); ctx.stroke()
-          ctx.globalAlpha = 1
-        }
-      }
-
-      // Popups
-      const now = performance.now()
-      s.fxPopups = s.fxPopups.filter(p => now - p.t0 < p.ttl)
-      for (const p of s.fxPopups) {
-        const ratio = (now - p.t0)/p.ttl
-        const alpha = 1 - ratio
-        const yOff = -10 - ratio*20
-        ctx.globalAlpha = alpha; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px Inter'
-        ctx.fillText(p.text, p.x*tile + tile/2 - 28, p.y*tile + yOff)
-        ctx.globalAlpha = 1
-      }
-      // Falling wall break texts
-      const fallTexts = (s as any).fallTexts || []
-      for (const ft of fallTexts) {
-        const age = now - ft.t0
-        const ratio = age / ft.ttl
-        const alpha = 1 - ratio
-        ctx.globalAlpha = alpha
-        ctx.fillStyle = '#ffd1d1'
-        ctx.font = 'bold 16px Inter'
-        ctx.fillText(ft.text, ft.x - 50, ft.y)
-        ctx.globalAlpha = 1
-      }
-
-      // HUD (freeze after game over)
-  const elapsed = s.started ? (s.gameOver && s.endTime ? (s.endTime - s.startTime)/1000 : (performance.now() - s.startTime)/1000) : 0
-  const liveBase = Math.round(s.oxygenCollected*100 - elapsed*5)
-  const liveMult = (gameMode==='lam') ? 2.0 : 0.5
-  const score = s.started ? (s.gameOver && s.finalScore!=null ? s.finalScore : Math.max(0, Math.round(liveBase * liveMult))) : 0
-      ctx.fillStyle = '#fff'; ctx.font = '16px Inter, system-ui, sans-serif'
-      ctx.fillText(`O₂: ${s.oxygenCollected}  Time: ${elapsed.toFixed(1)}s  Score: ${score}`, 10, 22)
-      // Active effects HUD badges
-      const effs: Array<{label:string;color:string;remaining:number}> = []
-      const rem = (until:number)=> Math.max(0, (until - performance.now())/1000)
-      const rSpeed = rem(s.effects.speedBoostUntil); if (rSpeed>0.05) effs.push({ label:`Speed ${rSpeed.toFixed(1)}s`, color:'#f59e0b', remaining:rSpeed })
-      const rFreeze = rem(s.effects.freezeGermsUntil); if (rFreeze>0.05) effs.push({ label:`Freeze ${rFreeze.toFixed(1)}s`, color:'#60a5fa', remaining:rFreeze })
-      const rSlow = rem(s.effects.slowGermsUntil); if (rSlow>0.05) effs.push({ label:`Slow ${rSlow.toFixed(1)}s`, color:'#fbbf24', remaining:rSlow })
-      if (s.revealMap) effs.push({ label:'Reveal', color:'#a3e635', remaining: 0 })
-      if (effs.length) {
-        let x = 10, y = 40
-        ctx.font = '12px Inter, system-ui, sans-serif'
-        for (const e of effs) {
-          const padX = 8, padY = 4
-          const w = ctx.measureText(e.label).width + padX*2
-          ctx.fillStyle = 'rgba(0,0,0,0.45)'
-          ctx.fillRect(x, y-12, w, 20)
-          ctx.strokeStyle = e.color; ctx.lineWidth = 1
-          ctx.strokeRect(x+0.5, y-11.5, w-1, 19)
-          ctx.fillStyle = e.color
-          ctx.fillText(e.label, x+padX, y+2)
-          x += w + 6
-        }
-      }
-
-      // LAM Panel (toggle)
-  // (In-canvas LAM panel removed)
-
-      // Mini-map
-      drawMiniMap(ctx, s)
-
-      // Hit flash
-      if (s.hitFlash>0) { ctx.fillStyle = `rgba(255,50,50,${(s.hitFlash*0.4).toFixed(2)})`; ctx.fillRect(0,0,width,height) }
-
-      // Pause/Menu overlay
-      if (paused || showMenu) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,width,height)
-        ctx.fillStyle = '#fff'; ctx.font = '20px Inter'
-        const title = paused ? 'Paused' : 'Menu'
-        ctx.fillText(title, width/2 - 40, height/2 - 40)
-  ctx.font = '14px Inter'
-  const modeLine = `Mode: ${gameMode==='lam' ? 'LAM (LLM controls)' : 'Manual (You control)'}`
-  ctx.fillText(modeLine, width/2 - ctx.measureText(modeLine).width/2, height/2 - 10)
-      }
-
-      if (s.gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0,0,width,height)
-        ctx.fillStyle = '#fff'; ctx.font = '32px Inter';
-        const winText = s.win ? 'You Win!' : 'Game Over'
-        ctx.fillText(winText, width/2 - ctx.measureText(winText).width/2, height/2 - 60)
-        
-        // Show final score
-        ctx.font = '20px Inter';
-  const scoreText = `Final Score: ${score}`
-        ctx.fillText(scoreText, width/2 - ctx.measureText(scoreText).width/2, height/2 - 20)
-        
-        // Show game stats
-        ctx.font = '16px Inter';
-  const statsText = `Oxygen: ${s.oxygenCollected} | Time: ${elapsed.toFixed(1)}s | Germs: ${s.germs.length}`
-        ctx.fillText(statsText, width/2 - ctx.measureText(statsText).width/2, height/2 + 10)
-        
-        // Show submission status
-        if (user && templateId) {
-          ctx.font = '14px Inter';
-          ctx.fillStyle = scoreSubmitted ? '#4ade80' : '#fbbf24';
-          const statusText = scoreSubmitted ? 'Score submitted to leaderboard!' : 'Submitting score...'
-          ctx.fillText(statusText, width/2 - ctx.measureText(statusText).width/2, height/2 + 40)
-        } else if (!user) {
-          ctx.font = '14px Inter';
-          ctx.fillStyle = '#f87171';
-          const loginText = 'Login to submit your score to leaderboard'
-          ctx.fillText(loginText, width/2 - ctx.measureText(loginText).width/2, height/2 + 40)
-        }
-      }
-      if (!s.started) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,width,height)
-        ctx.fillStyle = '#fff'; ctx.font = '24px Inter';
-        ctx.fillText('Click Start Game to Begin', width/2 - 170, height/2)
-      }
-
-  // restore after shake
-  if (shakeMag>0) ctx.restore()
-    }
-
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [gameMode, boardCols, boardRows, germCount, publishState, width, height, paused, showMiniMap])
-
-  // UI styles
-  const containerStyle = useMemo(() => ({ maxWidth: '1200px', margin: '0 auto', padding: '20px' }), [])
-  const panelStyle = useMemo(() => ({ background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }), [])
-  
-  // Theme configuration
-  const themeConfig = useMemo(() => ({
-    default: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      canvasBorder: 'rgba(255,255,255,0.15)',
-      canvasBackground: 'rgba(0,0,0,0.25)',
-      canvasShadow: '0 20px 60px rgba(220,38,38,0.25), inset 0 0 80px rgba(127,29,29,0.35)',
-      buttonPrimary: 'linear-gradient(45deg,#4ecdc4,#44a08d)',
-      buttonDanger: 'linear-gradient(45deg,#ff6b6b,#ee5a52)',
-      buttonSuccess: 'linear-gradient(45deg,#4caf50,#45a049)',
-      buttonSecondary: 'rgba(255,255,255,0.2)',
-      leaderboardButton: 'linear-gradient(45deg,#fbbf24,#f59e0b)',
-      restartButton: 'linear-gradient(45deg,#f59e0b,#ef4444)',
-      exitButton: 'linear-gradient(45deg,#6366f1,#7c3aed)'
-    },
-    orange: {
-      background: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 50%, #f7931e 100%)',
-      canvasBorder: 'rgba(255,255,255,0.2)',
-      canvasBackground: 'rgba(139,69,19,0.2)',
-      canvasShadow: '0 20px 60px rgba(255,140,0,0.25), inset 0 0 80px rgba(139,69,19,0.35)',
-      buttonPrimary: 'linear-gradient(45deg,#ff8c42,#ff6b35)',
-      buttonDanger: 'linear-gradient(45deg,#ff4757,#ff3742)',
-      buttonSuccess: 'linear-gradient(45deg,#2ed573,#1e90ff)',
-      buttonSecondary: 'rgba(255,255,255,0.25)',
-      leaderboardButton: 'linear-gradient(45deg,#ffa726,#ff9800)',
-      restartButton: 'linear-gradient(45deg,#ff7043,#ff5722)',
-      exitButton: 'linear-gradient(45deg,#8e24aa,#7b1fa2)'
-    }
-  }), [])
-
-  const currentTheme = themeConfig[theme]
-
-  const buttonStyle = useCallback((variant: 'primary'|'danger'|'secondary'|'success') => ({
-    background: {
-      primary: currentTheme.buttonPrimary,
-      danger: currentTheme.buttonDanger,
-      secondary: currentTheme.buttonSecondary,
-      success: currentTheme.buttonSuccess
-    }[variant],
-    color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600
-  }), [currentTheme])
+  }, [width, height, boardCols, boardRows])
 
   return (
-  <div style={{ minHeight: '100vh', background: currentTheme.background, color: 'white', WebkitUserSelect:'none', userSelect:'none' }}>
-      <div style={containerStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: '10px 0' }}>Play in Browser</h1>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#f8fafc', WebkitUserSelect: 'none', userSelect: 'none', paddingBottom: isMobile ? 100 : 40 }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: isMobile ? '16px' : '24px' }}>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} style={headerWrapperStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Theme Switcher */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '14px', opacity: 0.9 }}>Theme:</span>
-              <select 
-                value={theme} 
-                onChange={(e) => setTheme(e.target.value as 'default' | 'orange')}
-                style={{ 
-                  padding: '4px 8px', 
-                  borderRadius: '6px', 
-                  background: 'rgba(255,255,255,0.1)', 
-                  color: '#fff', 
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  fontSize: '14px'
+            <div style={{ padding: '10px', borderRadius: '14px', background: `${activeTheme.primary}15`, border: `1px solid ${activeTheme.primary}30` }}>
+              <Gamepad2 size={24} style={{ color: activeTheme.primary }} />
+            </div>
+            <h1 style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.025em' }}>Maze Arena</h1>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {activeModel && (
+              <div
+                title={activeModel.is_active ? "Model is active and responding" : "Model is currently offline"}
+                style={{
+                  ...badgeStyle,
+                  borderColor: activeModel.is_active ? 'rgba(78, 205, 196, 0.4)' : 'rgba(255, 107, 107, 0.4)',
+                  background: activeModel.is_active ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 107, 107, 0.1)',
+                  color: activeModel.is_active ? '#4ecdc4' : '#ff6b6b',
                 }}
               >
-                <option value="default" style={{ background: '#333' }}>Default Blue</option>
-                <option value="orange" style={{ background: '#333' }}>Orange Sunset</option>
-              </select>
-            </div>
-            <div style={{ fontSize: '14px', opacity: 0.9 }}>
-              {user ? (
-                <span style={{ color: '#4ade80' }}>✓ Logged in as {user.email} - Scores will be saved</span>
-              ) : (
-                <span style={{ color: '#fbbf24' }}>⚠ Not logged in - Scores won't be saved to leaderboard</span>
-              )}
+                <Bot size={14} />
+                <span style={{ fontWeight: 600 }}>{activeModel.name}</span>
+                <div style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: activeModel.is_active ? '#4ecdc4' : '#ff6b6b',
+                  boxShadow: activeModel.is_active ? '0 0 5px #4ecdc4' : '0 0 5px #ff6b6b'
+                }}></div>
+              </div>
+            )}
+            <div style={badgeStyle}>
+              {user ? <><Check size={14} className="text-green-400" /> <span>{user.email.split('@')[0]}</span></> : <><AlertTriangle size={14} className="text-amber-400" /> <span>Guest</span></>}
             </div>
           </div>
-        </div>
-        <div style={panelStyle as any}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: '100%', alignItems: 'end' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Template</label>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} style={controlPanelStyle}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, alignItems: 'end' }}>
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}><Bot size={14} /> Model</label>
               <select 
-                value={templateId ?? ''} 
-                onChange={(e)=>setTemplateId(parseInt(e.target.value))} 
-                style={{ 
-                  width:'100%', 
-                  padding:'8px', 
-                  borderRadius: 8, 
-                  background:'rgba(255,255,255,0.1)', 
-                  color:'#fff', 
-                  border:'1px solid rgba(255,255,255,0.3)',
-                  maxWidth: '100%',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
+                value={activeModel?.name ?? ''} 
+                onChange={async (e) => {
+                  const name = e.target.value;
+                  setActiveModel(prev => prev ? { ...prev, name } : { name, is_active: true });
+                  try {
+                    await modelsAPI.selectModel(name);
+                    checkLLMStatus();
+                  } catch (err) {
+                    console.error('Failed to switch model:', err);
+                  }
+                }} 
+                style={selectStyle}
               >
-                <option value="" disabled>Select a template</option>
-                {templates.map(t => <option key={t.id} value={t.id} style={{ background:'#333' }}>{t.title.length > 30 ? t.title.substring(0, 30) + '...' : t.title}</option>)}
+                {availableModels.map(m => <option key={m.name} value={m.name} style={{ background: '#1e293b' }}>{m.name}</option>)}
               </select>
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Session ID</label>
-              <div style={{ display:'flex', gap:8 }}>
-                <input value={sessionId} onChange={(e)=>setSessionId(e.target.value)} style={{ flex:1, padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }} />
-                <button onClick={()=>setSessionId('session-' + Math.random().toString(36).slice(2,8))} style={buttonStyle('secondary') as any}>New</button>
-              </div>
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}><FileCode size={14} /> Template</label>
+              <select value={templateId ?? ''} onChange={(e) => setTemplateId(parseInt(e.target.value))} style={selectStyle}>
+                <option value="" disabled>Select instruction set...</option>
+                {templates.map(t => <option key={t.id} value={t.id} style={{ background: '#1e293b' }}>{t.title}</option>)}
+              </select>
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Germs</label>
-              <input type="number" min={0} max={20} value={germCount} onChange={(e)=>setGermCount(parseInt(e.target.value||'0'))} style={{ width:'100%', padding:'8px', borderRadius: 8, background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }} />
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}><Zap size={14} /> Session Token</label>
+              <input value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={inputStyle} />
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>MQTT Send Rate (ms)</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input 
-                  type="range" 
-                  min={500} 
-                  max={60000} 
-                  step={500} 
-                  value={mqttSendRate} 
-                  onChange={(e)=>setMqttSendRate(parseInt(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.1)', fontSize: '12px', minWidth: '60px', textAlign: 'center' }}>{mqttSendRate}ms</span>
-              </div>
-              <div style={{ fontSize: '11px', opacity: 0.7, marginTop: 4 }}>0.5s - 60s</div>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Mode</label>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ padding: '6px 10px', borderRadius: 20, border:'1px solid rgba(255,255,255,0.3)', background: 'rgba(0,0,0,0.25)' }}>
-                  { (showTemplatePicker ? selectedMode : gameMode) === 'lam' ? 'LAM Mode (no user control)' : 'Manual Mode (user control + LAM hints)'}
-                </div>
-              </div>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Connection</label>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ padding: '6px 10px', borderRadius: 20, border:'1px solid rgba(255,255,255,0.3)', background: connected ? 'rgba(76,175,80,.3)' : 'rgba(255,107,107,.3)' }}>{connected ? 'WebSocket Connected' : 'Disconnected'}</div>
-                {!connected ? <button style={buttonStyle('success') as any} onClick={connectWS}>Connect</button> : <button style={buttonStyle('danger') as any} onClick={disconnectWS}>Disconnect</button>}
-              </div>
-            </div>
-            {/* New toggles */}
-            <div>
-              <label style={{ display:'block', marginBottom:6 }}>Panels</label>
-              <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-                {/* In-canvas LAM panel removed */}
-                <label><input type="checkbox" checked={showMiniMap} onChange={e=>setShowMiniMap(e.target.checked)} /> Mini-map</label>
-              </div>
-            </div>
-            <div>
-              <label style={{ display:'block', marginBottom:6 }}>In‑game</label>
-              <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-                <button onClick={()=>setPaused(p=>!p)} style={buttonStyle('secondary') as any}>{paused? 'Resume' : 'Pause'}</button>
-                <button onClick={()=>setShowMenu(m=>!m)} style={buttonStyle('secondary') as any}>{showMenu? 'Hide Menu' : 'Menu'}</button>
-              </div>
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}><Target size={14} /> Hazard Density</label>
+              <input type="number" value={germCount} onChange={(e) => setGermCount(parseInt(e.target.value))} style={inputStyle} />
             </div>
           </div>
-          {/* Sticky action bar ensures buttons remain visible even when content grows */}
-          <div style={{ position:'sticky', top: 0, zIndex: 2, background: 'transparent', marginTop: 12, display:'flex', gap: 10, flexWrap:'wrap', alignItems: 'center', justifyContent: 'flex-start', minHeight: '44px' }}>
-            <button onClick={startGame} style={buttonStyle('primary') as any}><i className="fas fa-play"/> Start Game</button>
-            <button onClick={()=>publishState(true)} style={buttonStyle('secondary') as any}>Publish State</button>
-            <button onClick={()=>startGame()} style={{ background: currentTheme.restartButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Restart</button>
-            <button onClick={()=>navigate('/leaderboard')} style={{ background: currentTheme.leaderboardButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>🏆 Leaderboard</button>
-            <button onClick={()=>navigate('/dashboard')} style={{ background: currentTheme.exitButton, color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:600 }}>Exit to Dashboard</button>
-            <span style={{ opacity:.85, flexShrink: 0 }}>{status}</span>
-          </div>
-          <div style={{ marginTop: 6, opacity: .8 }}>Controls: Arrow keys / WASD in Manual mode only. LAM Mode ignores user input. Hints come from LAM via MQTT. Walls may break.</div>
 
-          {/* Start Game Modal (two-step: Mode -> Template) */}
-          {showTemplatePicker && (
-            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 1000 }}>
-              <div style={{ background:'linear-gradient(165deg, #1f2937, #0f172a)', color:'#fff', borderRadius:16, padding:20, width: 'min(92vw, 620px)', boxShadow:'0 20px 60px rgba(0,0,0,.45)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                  <h3 style={{ margin:0, fontSize:18, letterSpacing:.3 }}>Start Game</h3>
-                  <div style={{ fontSize:12, opacity:.8 }}>Step {startStep==='mode'? '1':'2'} of 2</div>
-                </div>
-                {startStep === 'mode' ? (
-                  <div>
-                    <div style={{ fontWeight:600, marginBottom:8, opacity:.9 }}>Choose Mode</div>
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12 }}>
-                      <div onClick={()=>setSelectedMode('manual')} role="button" aria-label="Manual Mode" style={{ cursor:'pointer', border:'1px solid '+(selectedMode==='manual'?'#22c55e66':'rgba(255,255,255,0.12)'), borderRadius:12, padding:12, background: selectedMode==='manual'? 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05))':'rgba(255,255,255,0.04)' }}>
-                        <div style={{ fontWeight:700, marginBottom:4 }}>Manual Mode</div>
-                        <div style={{ fontSize:13, opacity:.8 }}>You move with WASD/Arrows. LAM gives hints and can take actions.</div>
-                      </div>
-                      <div onClick={()=>setSelectedMode('lam')} role="button" aria-label="LAM Mode" style={{ cursor:'pointer', border:'1px solid '+(selectedMode==='lam'?'#f59e0b66':'rgba(255,255,255,0.12)'), borderRadius:12, padding:12, background: selectedMode==='lam'? 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.06))':'rgba(255,255,255,0.04)' }}>
-                        <div style={{ fontWeight:700, marginBottom:4 }}>LAM Mode</div>
-                        <div style={{ fontSize:13, opacity:.8 }}>LLM controls movement (user input disabled). Higher scoring on win.</div>
-                      </div>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:16 }}>
-                      <button onClick={()=>{ setShowTemplatePicker(false) }} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Cancel</button>
-                      <button onClick={()=>setStartStep('template')} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:700 }}>Next</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <div style={{ fontSize:12, opacity:.8 }}>Mode: <strong>{selectedMode==='lam'? 'LAM (LLM controls)': 'Manual (You control)'}</strong></div>
-                    </div>
-                    <div style={{ maxHeight:320, overflowY:'auto', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10 }}>
-                      {templates.length === 0 ? (
-                        <div style={{ padding:16, opacity:.8 }}>No templates found. Please create one first.</div>
-                      ) : (
-                        <ul style={{ listStyle:'none', margin:0, padding:0 }}>
-                          {templates.map(t => (
-                            <li key={t.id} onClick={()=>setSelectedTemplateId(t.id)} style={{ padding:'10px 12px', borderBottom:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', background: selectedTemplateId===t.id? 'rgba(255,255,255,0.06)':'transparent' }}>
-                              <input type="radio" name="tpl" checked={selectedTemplateId===t.id} onChange={()=>setSelectedTemplateId(t.id)} />
-                              <div>
-                                <div style={{ fontWeight:700 }}>{t.title}</div>
-                                {t.description && <div style={{ opacity:.7, fontSize:'.9rem' }}>{t.description}</div>}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', gap:10, marginTop:14 }}>
-                      <div>
-                        <button onClick={()=>setStartStep('mode')} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Back</button>
-                      </div>
-                      <div style={{ display:'flex', gap:10 }}>
-                        <button onClick={()=>{ setShowTemplatePicker(false) }} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.25)', color:'#fff', padding:'8px 14px', borderRadius:8 }}>Cancel</button>
-            <button
-                          disabled={!selectedTemplateId}
-                          onClick={()=>{
-                            if (!selectedTemplateId) return
-                            setTemplateId(selectedTemplateId)
-                            setShowTemplatePicker(false)
-                            
-                            // Apply mode first, then publish and start
-                            const chosenMode = selectedMode
-                            setGameMode(chosenMode)
-                            
-                            publishSelectedTemplate(selectedTemplateId).finally(() => {
-                              const targetCols = (chosenMode === 'lam') ? 10 : 33
-                              const targetRows = (chosenMode === 'lam') ? 10 : 21
-                              // Pass mode explicitly to ensure it's used
-                              doStartGame(targetCols, targetRows)
-                            })
-                          }}
-                          style={{ background:'linear-gradient(45deg,#4ecdc4,#44a08d)', color:'#fff', border:'none', padding:'10px 16px', borderRadius:8, fontWeight:700 }}
-                        >
-                          Publish & Start
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Canvas with glow and border */}
-  <div ref={canvasWrapperRef} style={{ border: `1px solid ${currentTheme.canvasBorder}`, borderRadius: 16, overflow:'hidden', background: currentTheme.canvasBackground, boxShadow: currentTheme.canvasShadow, width: width*canvasScale, height: height*canvasScale, margin: '0 auto', position:'relative', touchAction:'none' }}>
-          <canvas
-            ref={canvasRef}
-            width={width}
-            height={height}
-            style={{ width: width*canvasScale, height: height*canvasScale, display:'block', background:'#0b0507' }}
-          />
-          {isMobile && (
-            <button
-              aria-label="Control Settings"
-              onClick={()=>setShowControlsSettings(s=>!s)}
-              style={{ position:'absolute', top:8, left:8, zIndex:5, background:'rgba(0,0,0,0.5)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'6px 10px', fontSize:12, cursor:'pointer' }}
-            >⚙</button>
-          )}
-          {isMobile && showControlsSettings && (
-            <div style={{ position:'absolute', top:48, left:8, zIndex:5, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(6px)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:12, padding:'10px 12px', width:180, fontSize:12, color:'#fff' }}>
-              <div style={{ fontWeight:600, marginBottom:6 }}>Controls Opacity</div>
-              <input
-                aria-label="Mobile controls opacity"
-                type="range"
-                min={0.2}
-                max={1}
-                step={0.05}
-                value={mobileControlsOpacity}
-                onChange={e=> setMobileControlsOpacity(parseFloat(e.target.value)) }
-                style={{ width:'100%' }}
-              />
-              <div style={{ textAlign:'right', marginTop:4 }}>{Math.round(mobileControlsOpacity*100)}%</div>
-              <button onClick={()=>setShowControlsSettings(false)} style={{ marginTop:8, width:'100%', background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', color:'#fff', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}>Close</button>
-            </div>
-          )}
-          {isMobile && (
-            <div style={{ position:'absolute', left:4, bottom:4, right:4, display:'flex', justifyContent:'space-between', gap:12, pointerEvents:'none', opacity: mobileControlsOpacity }}>
-              {/* D-Pad */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,56px)', gridTemplateRows:'repeat(3,56px)', gap:4, opacity: gameMode==='lam'? 0.4:0.95, pointerEvents: gameMode==='lam'? 'none':'auto' }}>
-                <div></div>
-                <button aria-label="Move Up" onPointerDown={()=>pressDir('up')} onPointerUp={()=>releaseDir('up')} onPointerLeave={()=>releaseDir('up')} style={mobileBtnStyle()}>▲</button>
-                <div></div>
-                <button aria-label="Move Left" onPointerDown={()=>pressDir('left')} onPointerUp={()=>releaseDir('left')} onPointerLeave={()=>releaseDir('left')} style={mobileBtnStyle()}>◀</button>
-                <div style={mobileCenterBtnStyle(false)}>{gameMode==='lam'? 'LAM':'MAN'}</div>
-                <button aria-label="Move Right" onPointerDown={()=>pressDir('right')} onPointerUp={()=>releaseDir('right')} onPointerLeave={()=>releaseDir('right')} style={mobileBtnStyle()}>▶</button>
-                <div></div>
-                <button aria-label="Move Down" onPointerDown={()=>pressDir('down')} onPointerUp={()=>releaseDir('down')} onPointerLeave={()=>releaseDir('down')} style={mobileBtnStyle()}>▼</button>
-                <div></div>
-              </div>
-              {/* Action Buttons */}
-              <div style={{ display:'flex', flexDirection:'column', gap:10, pointerEvents:'auto' }}>
-                <button onClick={()=>setPaused(p=>!p)} style={pillBtnStyle()}>{paused? 'Resume':'Pause'}</button>
-                <button onClick={()=>startGame()} style={pillBtnStyle(currentTheme.buttonPrimary)}>Restart</button>
-                <button onClick={()=>setShowMiniMap(m=>!m)} style={pillBtnStyle()}>{showMiniMap? 'Hide Map':'Show Map'}</button>
-              </div>
-            </div>
-          )}
-          {isMobile && (
-            <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.45)', color:'#fff', fontSize:10, padding:'4px 8px', borderRadius:12, pointerEvents:'none', letterSpacing:.5 }}>
-              Swipe inside board to move • Scroll outside to page
-            </div>
-          )}
-        </div>
-        {/* Legend for indicators */}
-        <div style={{ display:'flex', alignItems:'center', gap:16, marginTop:8, opacity:.9 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ width:14, height:14, borderRadius:14, display:'inline-block', background:'radial-gradient(circle at 40% 35%, #bff9ff 0%, #4ef0ff 60%, rgba(78,240,255,0) 100%)', boxShadow:'0 0 10px #4ef0ff' }}></span>
-            <span style={{ fontSize: 13 }}>Oxygen</span>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={startGame} style={{ ...primaryButtonStyle, background: activeTheme.primary }}>
+              <Play size={18} /> Start Simulation
+            </motion.button>
+            <motion.button whileHover={{ background: 'rgba(255,255,255,0.05)' }} onClick={() => navigate('/leaderboard')} style={secondaryButtonStyle}>
+              <Trophy size={16} /> Rankings
+            </motion.button>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ width:14, height:14, borderRadius:4, display:'inline-block', background:'#22c55e', boxShadow:'0 0 10px rgba(21,128,61,0.8)' }}></span>
-            <span style={{ fontSize: 13 }}>Germ</span>
-          </div>
-        </div>
+        </motion.div>
 
-        <div style={{ marginTop: 10, opacity: .85 }}>
-          MQTT topics: publishes maze/state; listens on maze/hint/{'{sessionId}'} via backend bridge.
+        <div style={{ position: 'relative', margin: '0 auto', borderRadius: '24px', overflow: 'hidden', boxShadow: `0 30px 60px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)`, width: width * canvasScale, height: height * canvasScale }}>
+          <canvas ref={canvasRef} width={width} height={height} style={{ width: width * canvasScale, height: height * canvasScale, display: 'block', background: '#0b0507' }} />
+          <AnimatePresence>
+            {!stateRef.current.started && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={canvasOverlayStyle}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Initialize Arena</h2>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={startGame} style={{ ...primaryButtonStyle, background: activeTheme.primary }}>Initialize System</motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-      {/* External LAM Output Panel */}
-  {showLamDetails && lamDetailsPos && (
-        <div
-          style={{ position:'fixed', left:lamDetailsPos.x, top:lamDetailsPos.y, width: lamExpanded? 460: 320, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(165deg, rgba(15,15,25,0.85) 0%, rgba(55,25,65,0.78) 100%)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:16, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)', zIndex:50, cursor:'move' }}
-          onMouseDown={e=>{ dragInfoRef.current.panel='details'; dragInfoRef.current.offX = e.clientX - lamDetailsPos.x; dragInfoRef.current.offY = e.clientY - lamDetailsPos.y }}
-        >
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-            <strong style={{ fontSize:15, letterSpacing:'.5px' }}>LAM Intelligence Output</strong>
-            <div style={{ display:'flex', gap:6 }}>
-              <button onClick={()=>setLamExpanded(e=>!e)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'4px 8px', borderRadius:6, cursor:'pointer', fontSize:11 }}>{lamExpanded? 'Collapse':'Expand'}</button>
-              <button onClick={()=>setShowLamDetails(false)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'4px 8px', borderRadius:6, cursor:'pointer', fontSize:11 }}>Hide</button>
-            </div>
-          </div>
-          {lamData.error && <div style={{ background:'linear-gradient(135deg, rgba(255,60,60,0.15), rgba(120,30,30,0.25))', border:'1px solid rgba(255,90,90,0.4)', padding:8, borderRadius:10, fontSize:12, marginBottom:10 }}><strong style={{ color:'#ffb3b3' }}>Error:</strong> {lamData.error}</div>}
-          <div style={{ fontSize:12, lineHeight:1.5, display:'flex', flexDirection:'column', gap:10 }}>
-            <section>
-              <div style={{ fontWeight:600, marginBottom:4, letterSpacing:'.5px', fontSize:12, opacity:.85 }}>Hint</div>
-              <div style={{ whiteSpace:'pre-wrap', background:'rgba(255,255,255,0.06)', padding:8, borderRadius:10 }}>{lamData.hint || '—'}</div>
-            </section>
-            {lamData.showPath && (
-            <section>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                <div style={{ fontWeight:600, letterSpacing:'.5px', opacity:.85 }}>Path <span style={{ opacity:.6 }}>({lamData.path.length})</span></div>
-                {lamData.path.length>0 && <div style={{ fontSize:11, opacity:.7 }}>Next: ({lamData.path[0].x},{lamData.path[0].y})</div>}
+
+      <AnimatePresence>
+        {showTemplatePicker && (
+          <div style={modalOverlayStyle} onClick={() => setShowTemplatePicker(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} style={modalContentStyle} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h3 style={{ margin: 0, fontWeight: 800 }}>Start Arena Session</h3>
+                <button onClick={() => setShowTemplatePicker(false)} style={iconButtonStyle}><X size={20} /></button>
               </div>
-              <div style={{ fontFamily:'monospace', fontSize:11, maxHeight: lamExpanded? 220: 80, overflow:'auto', padding:'6px 8px', background:'rgba(255,255,255,0.07)', borderRadius:8, lineHeight:1.35 }}>
-                {lamData.path.length? lamData.path.map((p,i)=> (i && i%8===0? `\n(${p.x},${p.y})`:`(${p.x},${p.y})`)).join(' → ') : '—'}
-              </div>
-            </section>
-            )}
-            <section>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Breaks</span>: {lamData.breaks}</div>
-                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Mode</span>: {gameMode==='lam'? 'LAM':'Manual'}</div>
-                <div style={{ background:'rgba(255,255,255,0.08)', padding:'6px 10px', borderRadius:20 }}><span style={{ opacity:.65 }}>Updated</span>: {lamData.updatedAt? `${((Date.now()-lamData.updatedAt)/1000).toFixed(1)}s ago`:'—'}</div>
-              </div>
-            </section>
-            <section>
-              <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Detected Actions</div>
-              {(() => {
-                const r = lamData.raw || {}
-                const keys: string[] = []
-                const push = (k:string,c:boolean)=>{ if(c) keys.push(k) }
-                push('break_wall', !!r.break_wall)
-                push('break_walls', Array.isArray(r.break_walls) && r.break_walls.length>0)
-                push('show_path', !!r.show_path)
-                push('speed_boost', !!r.speed_boost_ms)
-                push('slow_germs', !!r.slow_germs_ms)
-                push('freeze_germs', !!r.freeze_germs_ms)
-                push('teleport_player', !!r.teleport_player)
-                push('spawn_oxygen', Array.isArray(r.spawn_oxygen) && r.spawn_oxygen.length>0)
-                push('move_exit', !!r.move_exit)
-                push('highlight_zone', Array.isArray(r.highlight_zone) && r.highlight_zone.length>0)
-                push('toggle_autopilot', r.toggle_autopilot!==undefined)
-                push('reveal_map', r.reveal_map!==undefined)
-                return <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>{keys.length? keys.map(k=> <span key={k} style={{ background:'linear-gradient(135deg,#433,#655)', padding:'4px 8px', borderRadius:14, fontSize:11 }}>{k}</span>) : <span style={{ opacity:.6 }}>None</span>}</div>
-              })()}
-            </section>
-            {lamExpanded && (
-              <section>
-                <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Raw Hint JSON</div>
-                <pre style={{ margin:0, fontSize:11, lineHeight:1.3, maxHeight:200, overflow:'auto', background:'rgba(255,255,255,0.05)', padding:8, border:'1px solid rgba(255,255,255,0.12)', borderRadius:10 }}>{JSON.stringify(lamData.raw, null, 2)}</pre>
-              </section>
-            )}
-            {lamExpanded && (
-              <section>
-                <div style={{ fontWeight:600, marginBottom:4, opacity:.85 }}>Raw Message Envelope</div>
-                <pre style={{ margin:0, fontSize:11, lineHeight:1.3, maxHeight:200, overflow:'auto', background:'rgba(255,255,255,0.05)', padding:8, border:'1px solid rgba(255,255,255,0.12)', borderRadius:10 }}>{JSON.stringify(lamData.rawMessage, null, 2)}</pre>
-              </section>
-            )}
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.raw, null, 2))} style={{ background:'linear-gradient(45deg,#6366f1,#7c3aed)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Hint JSON</button>
-              {lamData.showPath && <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.path, null, 2))} style={{ background:'linear-gradient(45deg,#0ea5e9,#2563eb)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Path</button>}
-              <button onClick={()=>navigator.clipboard.writeText(JSON.stringify(lamData.rawMessage, null, 2))} style={{ background:'linear-gradient(45deg,#64748b,#475569)', color:'#fff', border:'none', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Copy Envelope</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {!showLamDetails && (
-        <div style={{ position:'fixed', left:16, top:16, zIndex:40 }}>
-          <button onClick={()=>setShowLamDetails(true)} style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Show LAM Output</button>
-        </div>
-      )}
-      {/* LAM Flow Timeline Panel */}
-  {showLamFlowPanel && (
-      <div
-        style={{ position:'fixed', left:lamFlowPos.x, top:lamFlowPos.y, width:lamFlowWidth, maxHeight:'70vh', overflow:'auto', background:'linear-gradient(160deg, rgba(10,20,30,0.85), rgba(40,15,55,0.8))', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:20, padding:14, boxShadow:'0 10px 40px -8px rgba(0,0,0,0.55)', zIndex:50, cursor:'move' }}
-        onMouseDown={e=>{ dragInfoRef.current.panel='flow'; dragInfoRef.current.offX = e.clientX - lamFlowPos.x; dragInfoRef.current.offY = e.clientY - lamFlowPos.y }}
-      >
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-          <strong style={{ fontSize:13, letterSpacing:'.5px' }}>LAM Prompt → Response Flow</strong>
-          <div style={{ display:'flex', gap:6 }}>
-            <button onClick={()=>setLamFlow([])} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', padding:'3px 8px', borderRadius:6, cursor:'pointer', fontSize:10 }}>Clear</button>
-            <button onClick={()=>setShowLamFlowPanel(false)} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', padding:'3px 8px', borderRadius:6, cursor:'pointer', fontSize:10 }}>Hide</button>
-          </div>
-        </div>
-        <div style={{ fontSize:10, opacity:.7, marginBottom:8 }}>Each state publish tracked until hint arrives; shows latency & action application timeline.</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {[...lamFlow].slice().reverse().map(evt => {
-            const lat = evt.latencyMs!=null? `${evt.latencyMs.toFixed(0)} ms` : '—'
-            return (
-              <div key={evt.id} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'8px 10px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                  <div style={{ fontWeight:600, fontSize:11 }}>Publish #{evt.id}</div>
-                  <div style={{ fontSize:10, opacity:.65 }}>{lat}</div>
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div onClick={() => setSelectedMode('manual')} style={{ ...modeCardStyle, borderColor: selectedMode === 'manual' ? activeTheme.primary : 'transparent', background: 'rgba(255,255,255,0.03)' }}>
+                  <UserIcon size={20} /> <strong>Manual Control</strong>
                 </div>
-                <div style={{ fontSize:10, lineHeight:1.4 }}>
-                  <div><span style={{ opacity:.6 }}>Declared:</span> {evt.actionsDeclared.length? evt.actionsDeclared.join(', ') : '—'}</div>
-                  <div><span style={{ opacity:.6 }}>Applied:</span> {evt.actionsApplied.length? evt.actionsApplied.map(a=>a.action).join(', ') : '—'}</div>
-                  <div><span style={{ opacity:.6 }}>Hint:</span> {evt.hintExcerpt || '—'}</div>
-                  {evt.error && <div style={{ color:'#ff9d9d' }}><span style={{ opacity:.6 }}>Error:</span> {evt.error}</div>}
+                <div onClick={() => setSelectedMode('lam')} style={{ ...modeCardStyle, borderColor: selectedMode === 'lam' ? activeTheme.primary : 'transparent', background: 'rgba(255,255,255,0.03)' }}>
+                  <Bot size={20} /> <strong>Autonomous Mode</strong>
                 </div>
-                {evt.actionsApplied.length>0 && (
-                  <div style={{ marginTop:6, display:'grid', gap:4 }}>
-                    {evt.actionsApplied.map((a,i)=> {
-                      const dt = evt.receivedAt? (a.at - evt.receivedAt) : 0
-                      return <div key={i} style={{ background:'rgba(255,255,255,0.05)', padding:'3px 6px', borderRadius:6, display:'flex', justifyContent:'space-between', fontSize:10 }}>
-                        <span style={{ fontFamily:'monospace' }}>{a.action}</span>
-                        <span style={{ opacity:.6 }}>{dt.toFixed(0)}ms</span>
-                      </div>
-                    })}
-                  </div>
-                )}
+                <button onClick={() => { doStartGame(boardCols, boardRows); setShowTemplatePicker(false); }} style={{ ...primaryButtonStyle, background: activeTheme.primary, width: '100%', justifyContent: 'center' }}>Launch Simulation</button>
               </div>
-            )
-          })}
-        </div>
-        {/* Resize handle */}
-        <div
-          style={{ position:'absolute', right:4, top:0, bottom:0, width:10, cursor:'ew-resize' }}
-          onMouseDown={e=>{ e.stopPropagation(); dragInfoRef.current.panel='flow-resize'; dragInfoRef.current.offX = e.clientX; dragInfoRef.current.startW = lamFlowWidth }}
-        />
-      </div>
-      )}
-      {!showLamFlowPanel && (
-        <div style={{ position:'fixed', left:16, top:16, zIndex:40 }}>
-          <button onClick={()=>setShowLamFlowPanel(true)} style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', padding:'6px 12px', borderRadius:8, fontSize:12, cursor:'pointer' }}>Show Flow</button>
-        </div>
-      )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
- }
+}
 
-// ===== Reusable mobile button styles (module scope so they're stable) =====
-function mobileBtnStyle(){
-  return { width:56, height:56, borderRadius:12, border:'1px solid rgba(255,255,255,0.25)', background:'rgba(0,0,0,0.45)', color:'#fff', fontSize:22, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600, backdropFilter:'blur(4px)', boxShadow:'0 4px 12px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
-}
-function mobileCenterBtnStyle(active:boolean){
-  return { width:56, height:56, borderRadius:28, border:'2px solid '+(active? '#4ade80':'rgba(255,255,255,0.35)'), background: active? 'linear-gradient(135deg,#059669,#10b981)':'rgba(0,0,0,0.55)', color:'#fff', fontSize:11, letterSpacing:'.5px', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, lineHeight:1.1, padding:4, textAlign:'center', backdropFilter:'blur(6px)', boxShadow: active? '0 0 14px -2px rgba(16,185,129,0.7)':'0 4px 12px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
-}
-function pillBtnStyle(grad?:string){
-  return { minWidth:120, padding:'12px 16px', borderRadius:30, border:'1px solid rgba(255,255,255,0.25)', background: grad || 'rgba(0,0,0,0.55)', color:'#fff', fontSize:14, fontWeight:600, backdropFilter:'blur(6px)', boxShadow:'0 4px 10px -2px rgba(0,0,0,0.5)', touchAction:'none' } as React.CSSProperties
-}
+const headerWrapperStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }
+const badgeStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', fontSize: '0.85rem' }
+const controlPanelStyle: CSSProperties = { background: 'rgba(30, 41, 59, 0.4)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px', padding: '24px', marginBottom: '24px' }
+const inputGroupStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '8px' }
+const labelStyle: CSSProperties = { fontSize: '0.7rem', fontWeight: 800, color: 'rgba(148, 163, 184, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }
+const inputStyle: CSSProperties = { padding: '10px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', fontSize: '0.9rem', outline: 'none' }
+const selectStyle: CSSProperties = { ...inputStyle, cursor: 'pointer', appearance: 'none' }
+const primaryButtonStyle: CSSProperties = { padding: '12px 24px', borderRadius: '14px', border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }
+const secondaryButtonStyle: CSSProperties = { padding: '10px 16px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(255, 255, 255, 0.03)', color: '#cbd5e1', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }
+const iconButtonStyle: CSSProperties = { background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '8px' }
+const canvasOverlayStyle: CSSProperties = { position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px' }
+const modalOverlayStyle: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(8px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }
+const modalContentStyle: CSSProperties = { background: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '28px', padding: '32px', width: '100%', maxWidth: '480px' }
+const modeCardStyle: CSSProperties = { padding: '16px', borderRadius: '16px', border: '2px solid transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }

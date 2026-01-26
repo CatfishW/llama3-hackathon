@@ -28,7 +28,7 @@
         "timeout": 300,
         "temperature": 0.6,
         "top_p": 0.9,
-        "max_tokens": 512
+    "max_tokens": 4096,
     }
 }
 

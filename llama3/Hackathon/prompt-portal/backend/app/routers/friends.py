@@ -29,26 +29,41 @@ def search_users(
         )
     ).limit(20).all()
     
+    # Fetch friendship statuses in bulk to avoid per-user queries
+    user_ids = [user.id for user in users]
+    friendship_map = {}
+    if user_ids:
+        friendships = db.query(Friendship).filter(
+            or_(
+                and_(
+                    Friendship.requester_id == current_user.id,
+                    Friendship.requested_id.in_(user_ids)
+                ),
+                and_(
+                    Friendship.requested_id == current_user.id,
+                    Friendship.requester_id.in_(user_ids)
+                )
+            )
+        ).all()
+        for friendship in friendships:
+            other_id = friendship.requested_id if friendship.requester_id == current_user.id else friendship.requester_id
+            friendship_map[other_id] = friendship.status
+    
     # Check for pending requests and add the field
     result = []
     for user in users:
-        # Check if there's a pending request from current user to this user
-        pending_request = db.query(Friendship).filter(
-            and_(
-                Friendship.requester_id == current_user.id,
-                Friendship.requested_id == user.id,
-                Friendship.status == FriendshipStatus.PENDING
-            )
-        ).first()
-        
+        status = friendship_map.get(user.id)
         user_dict = {
             "id": user.id,
             "email": user.email,
             "full_name": user.full_name,
+            "display_name": user.display_name or user.full_name,
+            "school": user.school,
             "profile_picture": user.profile_picture,
             "level": user.level,
             "is_online": user.is_online,
-            "has_pending_request": pending_request is not None
+            "has_pending_request": status == FriendshipStatus.PENDING,
+            "is_friend": status == FriendshipStatus.ACCEPTED
         }
         result.append(user_dict)
     
@@ -280,7 +295,10 @@ def get_friends(
     current_user: User = Depends(get_current_user)
 ):
     """Get list of accepted friends"""
-    friendships = db.query(Friendship).filter(
+    friendships = db.query(Friendship).options(
+        joinedload(Friendship.requester),
+        joinedload(Friendship.requested)
+    ).filter(
         and_(
             or_(
                 Friendship.requester_id == current_user.id,
@@ -292,11 +310,14 @@ def get_friends(
     
     friends = []
     for friendship in friendships:
-        if friendship.requester_id == current_user.id:
-            friend = friendship.requested
-        else:
-            friend = friendship.requester
-        friends.append(friend)
+        friend = friendship.requested if friendship.requester_id == current_user.id else friendship.requester
+        friends.append(
+            FriendOut(
+                friendship_id=friendship.id,
+                user=friend,
+                created_at=friendship.created_at
+            )
+        )
     
     return friends
 

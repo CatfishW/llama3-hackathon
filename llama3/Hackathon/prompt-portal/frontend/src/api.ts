@@ -20,15 +20,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token is invalid or expired, clear it and redirect to login
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      // Only redirect if we're not already on login/register pages
-      if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register') && window.location.pathname !== '/') {
-        window.location.href = '/login'
-      }
-    }
     return Promise.reject(error)
   }
 )
@@ -70,7 +61,7 @@ export const friendsAPI = {
 // Messages API
 export const messagesAPI = {
   getConversations: () => api.get('/api/messages/conversations'),
-  getConversationMessages: (userId: number, limit = 50, offset = 0) => 
+  getConversationMessages: (userId: number, limit = 50, offset = 0) =>
     api.get(`/api/messages/conversation/${userId}?limit=${limit}&offset=${offset}`),
   sendMessage: (data: any) => api.post('/api/messages/send', data),
   markMessageRead: (messageId: number) => api.put(`/api/messages/mark-read/${messageId}`),
@@ -97,7 +88,7 @@ export const settingsAPI = {
 // Leaderboard API (Maze Game only - LAM/Manual modes)
 export const leaderboardAPI = {
   submitScore: (data: any) => api.post('/api/leaderboard/submit', data),
-  getLeaderboard: async (limit: number = 20, skip: number = 0, mode?: 'lam'|'manual') => {
+  getLeaderboard: async (limit: number = 20, skip: number = 0, mode?: 'lam' | 'manual') => {
     const q = new URLSearchParams({ limit: String(limit), skip: String(skip) })
     if (mode) q.set('mode', mode)
     const url = `/api/leaderboard/?${q.toString()}`
@@ -128,8 +119,8 @@ export const drivingStatsAPI = {
     return api.post('/api/driving/submit', data)
   },
   getLeaderboard: async (limit: number = 50, skip: number = 0) => {
-    const q = new URLSearchParams({ 
-      limit: String(limit), 
+    const q = new URLSearchParams({
+      limit: String(limit),
       skip: String(skip)
     })
     const url = `/api/driving/leaderboard?${q.toString()}`
@@ -158,7 +149,7 @@ export const drivingStatsAPI = {
 
 // Templates API
 export const templatesAPI = {
-  getTemplates: (skip: number = 0, limit: number = 50, mine: boolean = true) => 
+  getTemplates: (skip: number = 0, limit: number = 50, mine: boolean = true) =>
     api.get(`/api/templates?skip=${skip}&limit=${limit}&mine=${mine}`),
   getTemplate: (id: number) => api.get(`/api/templates/${id}`),
   getTemplatePublic: (id: number) => api.get(`/api/templates/public/${id}`),
@@ -176,7 +167,7 @@ export const chatbotAPI = {
   deleteSession: (id: number) => api.delete(`/api/chatbot/sessions/${id}`),
   getMessages: (id: number, limit = 200) => api.get(`/api/chatbot/sessions/${id}/messages?limit=${limit}`),
   sendMessage: (data: any) => api.post('/api/chatbot/messages', data),
-  
+
   // Document upload support
   uploadDocument: (file: File) => {
     const formData = new FormData()
@@ -185,7 +176,7 @@ export const chatbotAPI = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
-  
+
   uploadImage: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -193,18 +184,27 @@ export const chatbotAPI = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
-  
-  // Streaming chat - works in both MQTT and SSE modes
+
+  uploadVideo: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/chatbot/upload-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  // Streaming chat via SSE
   sendMessageStream: async (
     data: any,
     onMetadata: (metadata: any) => void,
     onChunk: (chunk: string) => void,
     onComplete: (fullContent: string, assistantMessageId: number) => void,
-    onError: (error: any) => void
+    onError: (error: any) => void,
+    signal?: AbortSignal
   ) => {
     const token = localStorage.getItem('token')
     const url = API_BASE ? `${API_BASE}/api/chatbot/messages/stream` : '/api/chatbot/messages/stream'
-    
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -212,7 +212,8 @@ export const chatbotAPI = {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        signal
       })
 
       if (!response.ok) {
@@ -234,7 +235,7 @@ export const chatbotAPI = {
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        
+
         // Keep last incomplete line in buffer
         buffer = lines.pop() || ''
 
@@ -242,7 +243,7 @@ export const chatbotAPI = {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
-              
+
               if (data.type === 'metadata') {
                 onMetadata(data)
               } else if (data.type === 'chunk') {
@@ -267,15 +268,16 @@ export const chatbotAPI = {
 // LLM API (Direct inference endpoints)
 export const llmAPI = {
   // Standard (non-streaming) chat
-  chat: (data: any) => api.post('/api/llm/chat', data),
-  chatSession: (data: any) => api.post('/api/llm/chat/session', data),
-  
+  chat: (data: any, signal?: AbortSignal) => api.post('/api/llm/chat', data, { signal }),
+  chatSession: (data: any, signal?: AbortSignal) => api.post('/api/llm/chat/session', data, { signal }),
+
   // Streaming chat - returns EventSource for Server-Sent Events
   chatStream: async (
     data: any,
     onChunk: (chunk: string) => void,
     onComplete: () => void,
-    onError: (error: any) => void
+    onError: (error: any) => void,
+    signal?: AbortSignal
   ) => {
     const token = localStorage.getItem('token')
     const url = API_BASE ? `${API_BASE}/api/llm/chat/stream` : '/api/llm/chat/stream'
@@ -285,7 +287,8 @@ export const llmAPI = {
         'Content-Type': 'application/json',
         'Authorization': token ? `Bearer ${token}` : ''
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
 
     if (!response.ok) {
@@ -330,7 +333,8 @@ export const llmAPI = {
     data: any,
     onChunk: (chunk: string) => void,
     onComplete: () => void,
-    onError: (error: any) => void
+    onError: (error: any) => void,
+    signal?: AbortSignal
   ) => {
     const token = localStorage.getItem('token')
     const url = API_BASE ? `${API_BASE}/api/llm/chat/session/stream` : '/api/llm/chat/session/stream'
@@ -340,7 +344,8 @@ export const llmAPI = {
         'Content-Type': 'application/json',
         'Authorization': token ? `Bearer ${token}` : ''
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
 
     if (!response.ok) {
@@ -379,18 +384,41 @@ export const llmAPI = {
       onError(error)
     }
   },
-  
+
   // Session management
   getSessionHistory: (sessionId: string) => api.get(`/api/llm/chat/session/${sessionId}/history`),
   getSessionHistoryPost: (sessionId: string) => api.post('/api/llm/chat/session/history', { session_id: sessionId }),
   clearSession: (sessionId: string) => api.delete(`/api/llm/chat/session/${sessionId}`),
-  healthCheck: () => api.get('/api/llm/health')
+  healthCheck: () => api.get('/api/llm/health'),
+
+  // Optimized Maze Agent - Uses hierarchical memory management
+  mazeAgent: (data: {
+    session_id: string
+    system_prompt?: string
+    position: [number, number]
+    exit_position: [number, number]
+    energy: number
+    oxygen?: number
+    score?: number
+    minimap: string
+    surroundings: { north: string; south: string; east: string; west: string }
+    available_skills?: Array<{ id: string; name: string; description: string; energyCost: number; ready: boolean }>
+    last_action?: { action: string; direction?: string; skill?: string }
+    last_result?: string
+    temperature?: number
+    max_tokens?: number
+    model?: string
+  }, signal?: AbortSignal) => api.post('/api/llm/maze/agent', data, { signal }),
+
+  // Maze memory management
+  getMazeMemoryStats: (sessionId: string) => api.get(`/api/llm/maze/memory/${sessionId}`),
+  clearMazeMemory: (sessionId: string) => api.delete(`/api/llm/maze/memory/${sessionId}`)
 }
 
 // WebSocket connection helper
 export const createWebSocketConnection = (token: string) => {
   // Use relative WebSocket URL if no API_BASE, otherwise convert http to ws
-  const wsURL = API_BASE 
+  const wsURL = API_BASE
     ? API_BASE.replace('http', 'ws') + `/ws/${token}`
     : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${token}`
   return new WebSocket(wsURL)
@@ -415,7 +443,10 @@ export const modelsAPI = {
   getModelConfig: (modelName: string) => api.get(`/api/models/config/${modelName}`),
   addModel: (data: any) => api.post('/api/models/add', data),
   updateModel: (modelName: string, data: any) => api.put(`/api/models/update/${modelName}`, data),
-  deleteModel: (modelName: string) => api.delete(`/api/models/delete/${modelName}`)
+  deleteModel: (modelName: string) => api.delete(`/api/models/delete/${modelName}`),
+  testConnectivity: (apiBase: string, apiKey: string, model?: string) =>
+    api.post('/api/models/test', { api_base: apiBase, api_key: apiKey, model }),
+  getStatus: () => api.get('/api/models/status')
 }
 
 // Text-to-Speech API
@@ -426,9 +457,9 @@ export const ttsAPI = {
     lang_code?: string
     speed?: number
   }) => api.post('/api/tts/synthesize', data),
-  
+
   getAvailableVoices: () => api.get('/api/tts/voices'),
-  
+
   synthesizeAndStream: async (
     text: string,
     voice: string = 'af_heart',
@@ -443,4 +474,3 @@ export const ttsAPI = {
     return response.data
   }
 }
-

@@ -42,11 +42,6 @@ public:
     int count_scores();
     int count_participants();
     
-    // Driving Game Score operations
-    DrivingGameScore create_driving_score(const DrivingGameScore& score);
-    std::vector<DrivingGameLeaderboardEntry> get_driving_leaderboard(int limit = 20, int skip = 0);
-    int count_driving_scores();
-    
     // Announcement operations
     Announcement create_announcement(const Announcement& announcement);
     std::vector<Announcement> list_announcements(bool active_only = true, int limit = 20);
@@ -65,7 +60,6 @@ private:
     User row_to_user(SQLite::Statement& query);
     PromptTemplate row_to_template(SQLite::Statement& query);
     Score row_to_score(SQLite::Statement& query);
-    DrivingGameScore row_to_driving_score(SQLite::Statement& query);
     Announcement row_to_announcement(SQLite::Statement& query);
 };
 

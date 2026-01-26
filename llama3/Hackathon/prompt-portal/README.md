@@ -3,12 +3,9 @@
 🌐 **Live at: [lammp.agaii.org](https://lammp.agaii.org)**
 
 This repository contains a full-stack web application to manage and evaluate **prompt templates** for a LAM-powered Maze Game.
-It supports **user registration/login (JWT)**, **prompt template CRUD**, **leaderboard**, and **real-time MQTT hint monitoring** with a **FastAPI** backend and a **React (Vite + TypeScript)** frontend.
+It supports **user registration/login (JWT)**, **prompt template CRUD**, **leaderboard**, and **SSE-based LLM streaming** with a **FastAPI** backend and a **React (Vite + TypeScript)** frontend.
 
 > **Security Note**: All logging has been disabled in this application to protect user privacy and prevent data storage on the server.
-
-> MQTT is brokered by the backend (paho-mqtt). Clients connect to a WebSocket to receive `maze/hint/{sessionId}` updates.
-> The backend also provides an endpoint to publish game `maze/state` messages that include the selected **prompt template** content.
 
 ---
 
@@ -17,14 +14,7 @@ It supports **user registration/login (JWT)**, **prompt template CRUD**, **leade
 - User registration & login (JWT)
 - Prompt template CRUD (title, description, content, versioning, active flag)
 - Leaderboard submissions and ranking
-- MQTT integration:
-  - Backend subscribes to `MQTT_TOPIC_HINT` (default `maze/hint/+`) and forwards messages to clients via WebSocket `/api/mqtt/ws/hints/{sessionId}`
-  - Backend publishes state to `MQTT_TOPIC_STATE` (default `maze/state`) with the selected prompt template embedded
-- Test & Monitor page (frontend) to:
-  - Select one of your templates
-  - Enter a `sessionId`
-  - Connect to live hints
-  - Publish a dummy state to test end-to-end plumbing
+- SSE-based LLM chat and streaming responses
 
 All configuration is environment-driven for easy maintenance and extension.
 
@@ -33,18 +23,16 @@ All configuration is environment-driven for easy maintenance and extension.
 ## Tech Stack
 
 **Backend (Python / FastAPI)**
-- FastAPI, SQLAlchemy (SQLite default), paho-mqtt
+- FastAPI, SQLAlchemy (SQLite default)
 - JWT auth (`python-jose`, `passlib`)
-- WebSocket stream for per-session hints
-- REST APIs for auth, templates, leaderboard, and MQTT bridge
-- **LLM Integration**: Dual communication modes (MQTT / SSE)
-  - Direct HTTP/SSE communication with llama.cpp server
-  - OpenAI-compatible API client for LLM inference
+- REST APIs for auth, templates, leaderboard
+- **LLM Integration**: SSE streaming to a llama.cpp-compatible server
+- OpenAI-compatible API client for LLM inference
 
 **Frontend (React + Vite + TypeScript)**
 - Axios for HTTP
 - React Router for navigation
-- Simple, clean UI with pages for Register/Login/Dashboard/Templates/Leaderboard/Test&Monitor
+- Simple, clean UI with pages for Register/Login/Dashboard/Templates/Leaderboard/Chat
 
 ---
 
@@ -63,14 +51,13 @@ prompt-portal/
 │       ├── models.py
 │       ├── schemas.py
 │       ├── deps.py
-│       ├── mqtt.py
 │       ├── utils/
 │       │   └── security.py
 │       └── routers/
 │           ├── auth.py
 │           ├── templates.py
 │           ├── leaderboard.py
-│           └── mqtt_bridge.py
+│           └── llm.py
 └── frontend/
     ├── index.html
     ├── package.json
@@ -91,31 +78,20 @@ prompt-portal/
             ├── Login.tsx
             ├── Templates.tsx
             ├── NewTemplate.tsx
-            ├── TemplateEdit.tsx
-            ├── Leaderboard.tsx
-            └── TestMQTT.tsx
+        ├── TemplateEdit.tsx
+        ├── Leaderboard.tsx
+        └── ChatStudio.tsx
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### LLM Communication Modes
+### LLM Communication (SSE)
 
-The framework supports two modes for communicating with LLM servers:
+The backend uses direct HTTP/SSE to communicate with the LLM server.
 
-#### **MQTT Mode** (Traditional)
-- Uses MQTT broker for pub/sub communication
-- Ideal for distributed systems and multiple services
-- Requires MQTT broker with public IP
-
-#### **SSE Mode** (Simplified - **NEW!**)
-- Direct HTTP/SSE communication with llama.cpp server
-- **Perfect for 2-machine setups** (GPU server + web server)
-- Works with reverse SSH tunneling for private networks
-- Lower latency, easier debugging
-
-**📚 See [SSE_QUICK_REFERENCE.md](./SSE_QUICK_REFERENCE.md) for quick setup**
+**📚 See [SSE_QUICK_REFERENCE.md](./SSE_QUICK_REFERENCE.md) for quick setup**  
 **📘 See [TWO_MACHINE_SETUP.md](./TWO_MACHINE_SETUP.md) for complete 2-machine guide**
 
 ### Production Deployment with Custom Domain
@@ -140,10 +116,6 @@ For general server deployment without custom domain:
 chmod +x deploy.sh
 ./deploy.sh
 
-# During deployment, choose:
-# - MQTT mode: Traditional with broker
-# - SSE mode: Direct connection (new!)
-
 # Or production deployment with Nginx
 chmod +x deploy-production.sh
 ./deploy-production.sh
@@ -164,8 +136,7 @@ pip install -r requirements.txt
 
 # Create .env from example and adjust
 cp .env.example .env
-# Edit .env to set SECRET_KEY and MQTT settings.
-# If your broker supports only TCP (1883), keep defaults.
+# Edit .env to set SECRET_KEY and LLM server settings.
 # If you host frontend at a different origin, update CORS_ORIGINS accordingly.
 
 # Start the API
@@ -174,7 +145,7 @@ uvicorn app.main:app --reload --port 8000
 
 The backend will:
 - Create the SQLite DB `app.db` automatically
-- Start the MQTT client and subscribe to `MQTT_TOPIC_HINT`
+- Initialize the LLM client for SSE streaming
 - Expose REST and WebSocket endpoints
 
 **Key endpoints (base http://localhost:8000):**
@@ -186,23 +157,7 @@ The backend will:
 - `DELETE /api/templates/{id}` (auth) delete
 - `GET /api/leaderboard?limit=20`
 - `POST /api/leaderboard/submit` (auth) submit a score
-- `POST /api/mqtt/publish_state` (auth) publish a state JSON **including your selected template** to the broker
-- `GET /api/mqtt/last_hint?session_id=...`
-- `WS /api/mqtt/ws/hints/{sessionId}` receive per-session hints in real time
-
-> The `publish_state` endpoint enriches your payload with the selected prompt template:
-> ```json
-> {
->   "sessionId": "...",
->   "prompt_template": {
->     "title": "...",
->     "content": "...",
->     "version": 1,
->     "user_id": 123
->   },
->   "... other state fields ..."
-> }
-> ```
+- `POST /api/llm/chat/stream` stream chat responses over SSE
 
 ### 2) Frontend
 
@@ -219,18 +174,9 @@ Open http://localhost:5173
 
 - Register a new account
 - Create a prompt template
-- Go to **Test & Monitor**
-  - Enter a `sessionId`
-  - Connect to WS
-  - Click **Publish Dummy State** to publish to MQTT via backend
-  - If your LAM / game responds to `maze/state` by publishing to `maze/hint/{sessionId}`, you’ll see messages stream in
-
 ### Environment Notes
 
-- **MQTT**: configured via backend `.env`. Default topics:
-  - `MQTT_TOPIC_STATE=maze/state`
-  - `MQTT_TOPIC_HINT=maze/hint/+` (subscribes to all sessionIds)
-- If your MQTT broker requires TLS or auth, update the `mqtt.py` to set TLS and credentials.
+- Configure the LLM server URL via `.env` (`LLM_SERVER_URL`).
 
 ---
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, templatesAPI } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useTemplates } from '../contexts/TemplateContext'
+import { useTutorial } from '../contexts/TutorialContext'
 
 type Template = {
   id: number
@@ -20,6 +21,22 @@ export default function Templates() {
   const isMobile = useIsMobile()
   const { templates: items, loading, refreshTemplates, removeTemplate } = useTemplates()
   const [err, setErr] = useState<string | null>(null)
+  const { runTutorial } = useTutorial()
+
+  useEffect(() => {
+    const hasSeenTemplatesTutorial = localStorage.getItem('tutorial_seen_templates')
+    if (!hasSeenTemplatesTutorial && !loading) {
+      runTutorial([
+        { target: '#new-template-btn', title: 'Start Creating', content: 'Ready to build something awesome? Click here to create your first prompt template.', position: 'left' },
+        { target: '#design-criteria-panel', title: 'Best Practices', content: 'Not sure what makes a good prompt? We\'ve compiled a list of design criteria to help you out.', position: 'bottom' },
+        { target: '#criteria-toggle-btn', title: 'Toggle Visibility', content: 'Minimize this panel to clear up your workspace once you are familiar with the concepts.', position: 'bottom' },
+        { target: '#quantified-metrics-panel', title: 'Measure Performance', content: 'Use these concrete metrics and formulas to scientifically evaluate your agent\'s performance.', position: 'bottom' },
+        { target: '#metrics-toggle-btn', title: 'Metric Details', content: 'Click here to expand or collapse the comprehensive metric definitions.', position: 'bottom' },
+        { target: '#template-list-container', title: 'Your Repository', content: 'All your saved templates are listed here. You can view, edit, or delete them anytime.', position: 'top' },
+      ]);
+      localStorage.setItem('tutorial_seen_templates', 'true');
+    }
+  }, [loading, runTutorial]);
   // Criteria panel toggle
   const [showCriteria, setShowCriteria] = useState(() => !window.matchMedia || window.innerWidth > 900) // hide large panels by default on mobile
   // Metrics panel toggle
@@ -120,249 +137,249 @@ export default function Templates() {
       example?: string
     }
   }> = [
-    {
-      name: 'Success Rate (SR)',
-      formula: 'SR = (1/N) · ∑ 𝟙[episode i reached goal]',
-      good: '≥ 85% (across ≥20 seeds)',
-      bad: '< 60%',
-      icon: 'fa-star',
-      tip: 'Average across diverse mazes/seeds.',
-      details: {
-        what: 'Share of episodes where the agent reaches the goal under a template.',
-        how: 'Run N episodes, count successes, divide by N. Report mean ± std across randomized seeds.',
-        improve: [
-          'Tighten goal definition and stop condition.',
-          'Clarify invalid actions and recovery paths.',
-          'Add explicit heuristics for dead-ends and loops.'
-        ],
-        pitfalls: [
-          'Small N inflates SR; use ≥20 seeds.',
-          'Overfitting to a single maze layout.'
-        ],
-        example: 'If 18 of 20 runs succeed: SR = 18/20 = 0.90'
+      {
+        name: 'Success Rate (SR)',
+        formula: 'SR = (1/N) · ∑ 𝟙[episode i reached goal]',
+        good: '≥ 85% (across ≥20 seeds)',
+        bad: '< 60%',
+        icon: 'fa-star',
+        tip: 'Average across diverse mazes/seeds.',
+        details: {
+          what: 'Share of episodes where the agent reaches the goal under a template.',
+          how: 'Run N episodes, count successes, divide by N. Report mean ± std across randomized seeds.',
+          improve: [
+            'Tighten goal definition and stop condition.',
+            'Clarify invalid actions and recovery paths.',
+            'Add explicit heuristics for dead-ends and loops.'
+          ],
+          pitfalls: [
+            'Small N inflates SR; use ≥20 seeds.',
+            'Overfitting to a single maze layout.'
+          ],
+          example: 'If 18 of 20 runs succeed: SR = 18/20 = 0.90'
+        }
+      },
+      {
+        name: 'Path Efficiency (PE)',
+        formula: 'PE = optimal_steps / actual_steps',
+        good: '≥ 0.85',
+        bad: '< 0.60',
+        icon: 'fa-route',
+        tip: 'Closer to 1.0 means near-optimal paths.',
+        details: {
+          what: 'How close the agent’s path length is to the shortest known path.',
+          how: 'Compute optimal shortest path length (BFS on grid). Divide by agent steps to goal.',
+          improve: [
+            'Bias to forward progress (avoid revisits).',
+            'Penalize cycles and repeated cells.',
+            'Use “lookahead” prompts before committing to a long move.'
+          ],
+          pitfalls: [
+            'Unknown optimal path approximation can skew PE.',
+            'Counting thinking steps instead of movement steps.'
+          ],
+          example: 'Optimal=30, Actual=36 → PE = 30/36 = 0.83'
+        }
+      },
+      {
+        name: 'Backtrack Ratio (BR)',
+        formula: 'BR = backtrack_steps / total_steps',
+        good: '≤ 10%',
+        bad: '≥ 25%',
+        icon: 'fa-arrows-rotate',
+        tip: 'High BR signals dithering; tighten planning.',
+        details: {
+          what: 'Share of steps that undo previous progress (returning to recently visited cells).',
+          how: 'Detect moves to an immediately previous cell or within a short visit window and divide by total steps.',
+          improve: [
+            'Require a Perceive → Plan → Act loop with explicit rationale.',
+            'Cache visited states and discourage re-entry without new info.',
+            'Add "commit window" to avoid flip-flopping decisions.'
+          ],
+          pitfalls: [
+            'Legitimate detours may be miscounted as backtracks.',
+            'Too strict rules can block necessary retreats around obstacles.'
+          ],
+          example: 'If 12 of 140 steps were backtracks → BR = 12/140 = 8.6%'
+        }
+      },
+      {
+        name: 'Collision Rate (CR)',
+        formula: 'CR = collisions / total_steps',
+        good: '≈ 0',
+        bad: '≥ 5%',
+        icon: 'fa-circle-xmark',
+        tip: 'Use guardrails and recovery playbooks.',
+        details: {
+          what: 'Frequency of invalid moves into walls/obstacles.',
+          how: 'Count invalid action attempts (engine rejects) over total steps.',
+          improve: [
+            'Validate actions against observed map before output.',
+            'Add preflight checks: “If wall ahead, choose alternate”.',
+            'Provide a fallback recovery macro after a collision.'
+          ],
+          pitfalls: [
+            'Loose parsing of model outputs can send unintended actions.',
+            'Ambiguous observation descriptions increase errors.'
+          ]
+        }
+      },
+      {
+        name: 'Dead-end Entries (DE)',
+        formula: 'DE = dead_end_entries / total_steps',
+        good: '≤ 2%',
+        bad: '≥ 10%',
+        icon: 'fa-ban',
+        tip: 'Improve local lookahead and pruning.',
+        details: {
+          what: 'How often the agent enters cul-de-sacs requiring backtracking.',
+          how: 'Mark dead-end cells via local topology or post-hoc trace; divide entries by total steps.',
+          improve: [
+            'Use micro-planning to evaluate branches before entering.',
+            'Prefer unexplored paths with higher exit potential.',
+            'Add rule: avoid depth-1 branches unless necessary.'
+          ],
+          pitfalls: [
+            'Incorrect dead-end labeling skews metric.'
+          ]
+        }
+      },
+      {
+        name: 'Steps Variability (σ)',
+        formula: 'σ = sqrt((1/N) · ∑(s_i − s̄)^2)',
+        good: 'Low (stable across seeds)',
+        bad: 'High (erratic)',
+        icon: 'fa-chart-line',
+        tip: 'Lower variance → more consistent behavior.',
+        details: {
+          what: 'Standard deviation of steps-to-goal across seeds.',
+          how: 'Record steps for each successful episode; compute standard deviation.',
+          improve: [
+            'Reduce randomness in exploration steps.',
+            'Strengthen deterministic tie-breaking in choices.'
+          ],
+          pitfalls: [
+            'Mixing failures with successes in σ calculation.'
+          ]
+        }
+      },
+      {
+        name: 'Latency per Step (L)',
+        formula: 'L = mean(response_time_ms_per_action)',
+        good: '≤ 400 ms',
+        bad: '≥ 1000 ms',
+        icon: 'fa-hourglass-half',
+        tip: 'Constrain output and context to reduce thinking time.',
+        details: {
+          what: 'Average model response time to produce an action.',
+          how: 'Measure time from observation to first valid action token; average over steps.',
+          improve: [
+            'Reduce prompt verbosity; remove non-essential context.',
+            'Use compact output schemas with few tokens.',
+            'Cache static instructions; stream only deltas.'
+          ],
+          pitfalls: [
+            'Network latency interfering with measurement.'
+          ]
+        }
+      },
+      {
+        name: 'Tokens per Decision (TPD)',
+        formula: 'TPD = output_tokens_per_action',
+        good: '≤ 80',
+        bad: '≥ 200',
+        icon: 'fa-feather',
+        tip: 'Use strict formats and concise rationales.',
+        details: {
+          what: 'Average number of output tokens generated per action.',
+          how: 'Count tokens in the model’s action message. Mean over steps.',
+          improve: [
+            'Replace prose with structured JSON or terse commands.',
+            'Make rationale optional or bounded in length.',
+            'Enforce a maximum token budget per step.'
+          ],
+          pitfalls: [
+            'Verbose logging mingled with the action payload.'
+          ]
+        }
+      },
+      {
+        name: 'Action Validity (AV)',
+        formula: 'AV = valid_actions / total_actions',
+        good: '≈ 100%',
+        bad: '≤ 95%',
+        icon: 'fa-list-check',
+        tip: 'Disallow unsupported commands and no-ops.',
+        details: {
+          what: 'Share of outputs that parse and map to allowed game actions.',
+          how: 'Validate each action against schema and game mechanics; divide valid by total.',
+          improve: [
+            'Schema-lock outputs with enums for actions.',
+            'Reject/reprompt on invalid format with a brief reminder.'
+          ],
+          pitfalls: [
+            'Silent coercion of malformed outputs hides errors.'
+          ]
+        }
+      },
+      {
+        name: 'Format Compliance (FC)',
+        formula: 'FC = parse_success / total_responses',
+        good: '≥ 99%',
+        bad: '≤ 95%',
+        icon: 'fa-code',
+        tip: 'Schema-locked outputs avoid parse errors.',
+        details: {
+          what: 'How often the model returns exactly the expected schema.',
+          how: 'Attempt to parse each response; count successes over total.',
+          improve: [
+            'Provide a minimal example of valid output.',
+            'Use explicit JSON schema and forbidden fields list.'
+          ],
+          pitfalls: [
+            'Permissive parser hides non-compliance.'
+          ]
+        }
+      },
+      {
+        name: 'Recovery Time (RT)',
+        formula: 'RT = mean(steps_to_recover_from_stuck)',
+        good: '≤ 3 steps',
+        bad: '≥ 8 steps',
+        icon: 'fa-life-ring',
+        tip: 'Have explicit stuck detection and recovery macro.',
+        details: {
+          what: 'Average steps needed to resume progress after stuck/collision.',
+          how: 'Detect stuck state (no progress for K steps); count steps until forward progress.',
+          improve: [
+            'Add a recovery subroutine with clear triggers.',
+            'Reset local memory of visited nodes after recovery.'
+          ],
+          pitfalls: [
+            'Vague stuck criteria cause noisy RT.'
+          ]
+        }
+      },
+      {
+        name: 'Robustness Pass Rate (RPR)',
+        formula: 'RPR = passes_under_noise / trials',
+        good: '≥ 80%',
+        bad: '≤ 50%',
+        icon: 'fa-shield-halved',
+        tip: 'Test with perturbed observations and random seeds.',
+        details: {
+          what: 'How often the agent maintains success under noise/perturbations.',
+          how: 'Add observation noise or randomize layouts; count passes over trials.',
+          improve: [
+            'Write fallback branches for partial observability.',
+            'Discourage reliance on spurious text cues.'
+          ],
+          pitfalls: [
+            'Testing with unrealistic noise distributions.'
+          ]
+        }
       }
-    },
-    {
-      name: 'Path Efficiency (PE)',
-      formula: 'PE = optimal_steps / actual_steps',
-      good: '≥ 0.85',
-      bad: '< 0.60',
-      icon: 'fa-route',
-      tip: 'Closer to 1.0 means near-optimal paths.',
-      details: {
-        what: 'How close the agent’s path length is to the shortest known path.',
-        how: 'Compute optimal shortest path length (BFS on grid). Divide by agent steps to goal.',
-        improve: [
-          'Bias to forward progress (avoid revisits).',
-          'Penalize cycles and repeated cells.',
-          'Use “lookahead” prompts before committing to a long move.'
-        ],
-        pitfalls: [
-          'Unknown optimal path approximation can skew PE.',
-          'Counting thinking steps instead of movement steps.'
-        ],
-        example: 'Optimal=30, Actual=36 → PE = 30/36 = 0.83'
-      }
-    },
-    {
-      name: 'Backtrack Ratio (BR)',
-      formula: 'BR = backtrack_steps / total_steps',
-      good: '≤ 10%',
-      bad: '≥ 25%',
-      icon: 'fa-arrows-rotate',
-      tip: 'High BR signals dithering; tighten planning.',
-      details: {
-        what: 'Share of steps that undo previous progress (returning to recently visited cells).',
-        how: 'Detect moves to an immediately previous cell or within a short visit window and divide by total steps.',
-        improve: [
-          'Require a Perceive → Plan → Act loop with explicit rationale.',
-          'Cache visited states and discourage re-entry without new info.',
-          'Add "commit window" to avoid flip-flopping decisions.'
-        ],
-        pitfalls: [
-          'Legitimate detours may be miscounted as backtracks.',
-          'Too strict rules can block necessary retreats around obstacles.'
-        ],
-        example: 'If 12 of 140 steps were backtracks → BR = 12/140 = 8.6%'
-      }
-    },
-    {
-      name: 'Collision Rate (CR)',
-      formula: 'CR = collisions / total_steps',
-      good: '≈ 0',
-      bad: '≥ 5%',
-      icon: 'fa-circle-xmark',
-      tip: 'Use guardrails and recovery playbooks.',
-      details: {
-        what: 'Frequency of invalid moves into walls/obstacles.',
-        how: 'Count invalid action attempts (engine rejects) over total steps.',
-        improve: [
-          'Validate actions against observed map before output.',
-          'Add preflight checks: “If wall ahead, choose alternate”.',
-          'Provide a fallback recovery macro after a collision.'
-        ],
-        pitfalls: [
-          'Loose parsing of model outputs can send unintended actions.',
-          'Ambiguous observation descriptions increase errors.'
-        ]
-      }
-    },
-    {
-      name: 'Dead-end Entries (DE)',
-      formula: 'DE = dead_end_entries / total_steps',
-      good: '≤ 2%',
-      bad: '≥ 10%',
-      icon: 'fa-ban',
-      tip: 'Improve local lookahead and pruning.',
-      details: {
-        what: 'How often the agent enters cul-de-sacs requiring backtracking.',
-        how: 'Mark dead-end cells via local topology or post-hoc trace; divide entries by total steps.',
-        improve: [
-          'Use micro-planning to evaluate branches before entering.',
-          'Prefer unexplored paths with higher exit potential.',
-          'Add rule: avoid depth-1 branches unless necessary.'
-        ],
-        pitfalls: [
-          'Incorrect dead-end labeling skews metric.'
-        ]
-      }
-    },
-    {
-      name: 'Steps Variability (σ)',
-      formula: 'σ = sqrt((1/N) · ∑(s_i − s̄)^2)',
-      good: 'Low (stable across seeds)',
-      bad: 'High (erratic)',
-      icon: 'fa-chart-line',
-      tip: 'Lower variance → more consistent behavior.',
-      details: {
-        what: 'Standard deviation of steps-to-goal across seeds.',
-        how: 'Record steps for each successful episode; compute standard deviation.',
-        improve: [
-          'Reduce randomness in exploration steps.',
-          'Strengthen deterministic tie-breaking in choices.'
-        ],
-        pitfalls: [
-          'Mixing failures with successes in σ calculation.'
-        ]
-      }
-    },
-    {
-      name: 'Latency per Step (L)',
-      formula: 'L = mean(response_time_ms_per_action)',
-      good: '≤ 400 ms',
-      bad: '≥ 1000 ms',
-      icon: 'fa-hourglass-half',
-      tip: 'Constrain output and context to reduce thinking time.',
-      details: {
-        what: 'Average model response time to produce an action.',
-        how: 'Measure time from observation to first valid action token; average over steps.',
-        improve: [
-          'Reduce prompt verbosity; remove non-essential context.',
-          'Use compact output schemas with few tokens.',
-          'Cache static instructions; stream only deltas.'
-        ],
-        pitfalls: [
-          'Network latency interfering with measurement.'
-        ]
-      }
-    },
-    {
-      name: 'Tokens per Decision (TPD)',
-      formula: 'TPD = output_tokens_per_action',
-      good: '≤ 80',
-      bad: '≥ 200',
-      icon: 'fa-feather',
-      tip: 'Use strict formats and concise rationales.',
-      details: {
-        what: 'Average number of output tokens generated per action.',
-        how: 'Count tokens in the model’s action message. Mean over steps.',
-        improve: [
-          'Replace prose with structured JSON or terse commands.',
-          'Make rationale optional or bounded in length.',
-          'Enforce a maximum token budget per step.'
-        ],
-        pitfalls: [
-          'Verbose logging mingled with the action payload.'
-        ]
-      }
-    },
-    {
-      name: 'Action Validity (AV)',
-      formula: 'AV = valid_actions / total_actions',
-      good: '≈ 100%',
-      bad: '≤ 95%',
-      icon: 'fa-list-check',
-      tip: 'Disallow unsupported commands and no-ops.',
-      details: {
-        what: 'Share of outputs that parse and map to allowed game actions.',
-        how: 'Validate each action against schema and game mechanics; divide valid by total.',
-        improve: [
-          'Schema-lock outputs with enums for actions.',
-          'Reject/reprompt on invalid format with a brief reminder.'
-        ],
-        pitfalls: [
-          'Silent coercion of malformed outputs hides errors.'
-        ]
-      }
-    },
-    {
-      name: 'Format Compliance (FC)',
-      formula: 'FC = parse_success / total_responses',
-      good: '≥ 99%',
-      bad: '≤ 95%',
-      icon: 'fa-code',
-      tip: 'Schema-locked outputs avoid parse errors.',
-      details: {
-        what: 'How often the model returns exactly the expected schema.',
-        how: 'Attempt to parse each response; count successes over total.',
-        improve: [
-          'Provide a minimal example of valid output.',
-          'Use explicit JSON schema and forbidden fields list.'
-        ],
-        pitfalls: [
-          'Permissive parser hides non-compliance.'
-        ]
-      }
-    },
-    {
-      name: 'Recovery Time (RT)',
-      formula: 'RT = mean(steps_to_recover_from_stuck)',
-      good: '≤ 3 steps',
-      bad: '≥ 8 steps',
-      icon: 'fa-life-ring',
-      tip: 'Have explicit stuck detection and recovery macro.',
-      details: {
-        what: 'Average steps needed to resume progress after stuck/collision.',
-        how: 'Detect stuck state (no progress for K steps); count steps until forward progress.',
-        improve: [
-          'Add a recovery subroutine with clear triggers.',
-          'Reset local memory of visited nodes after recovery.'
-        ],
-        pitfalls: [
-          'Vague stuck criteria cause noisy RT.'
-        ]
-      }
-    },
-    {
-      name: 'Robustness Pass Rate (RPR)',
-      formula: 'RPR = passes_under_noise / trials',
-      good: '≥ 80%',
-      bad: '≤ 50%',
-      icon: 'fa-shield-halved',
-      tip: 'Test with perturbed observations and random seeds.',
-      details: {
-        what: 'How often the agent maintains success under noise/perturbations.',
-        how: 'Add observation noise or randomize layouts; count passes over trials.',
-        improve: [
-          'Write fallback branches for partial observability.',
-          'Discourage reliance on spurious text cues.'
-        ],
-        pitfalls: [
-          'Testing with unrealistic noise distributions.'
-        ]
-      }
-    }
-  ]
+    ]
 
   async function remove(id: number, title: string) {
     if (!confirm(`Delete template "${title}"? This action cannot be undone.`)) return
@@ -384,7 +401,7 @@ export default function Templates() {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: isMobile ? '28px':'40px',
+    marginBottom: isMobile ? '28px' : '40px',
     flexWrap: 'wrap' as const,
     gap: '20px'
   }
@@ -410,7 +427,7 @@ export default function Templates() {
   const criteriaGridStyle = {
     display: 'grid',
     gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: isMobile ? '12px':'16px'
+    gap: isMobile ? '12px' : '16px'
   }
 
   const pillStyle = {
@@ -474,15 +491,16 @@ export default function Templates() {
       {/* Header */}
       <div style={headerStyle}>
         <div>
-          <h1 style={{ fontSize: isMobile ? '2rem':'2.5rem', fontWeight: '700', marginBottom: '10px', lineHeight:1.2 }}>
+          <h1 style={{ fontSize: isMobile ? '2rem' : '2.5rem', fontWeight: '700', marginBottom: '10px', lineHeight: 1.2 }}>
             <i className="fas fa-file-code" style={{ marginRight: '15px' }}></i>
             My Templates
           </h1>
-          <p style={{ opacity: '0.8', fontSize: isMobile ? '1rem':'1.1rem' }}>
+          <p style={{ opacity: '0.8', fontSize: isMobile ? '1rem' : '1.1rem' }}>
             Manage your prompt templates for the LAM Maze Game
           </p>
         </div>
         <Link
+          id="new-template-btn"
           to="/templates/new"
           style={buttonStyle}
           onMouseOver={(e) => {
@@ -500,18 +518,14 @@ export default function Templates() {
       </div>
 
       {/* Criteria Panel: displayed under Templates navbar/header */}
-      <div
-        style={{
-          ...cardStyle,
-          border: '1px solid rgba(255,255,255,0.25)'
-        }}
+      <div id="design-criteria-panel" style={{ ...cardStyle, border: '1px solid rgba(255,255,255,0.25)' }}
         onMouseOver={(e) => {
-          ;(e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'
-          ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'
+          ; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'
+            ; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'
         }}
         onMouseOut={(e) => {
-          ;(e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
-          ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'
+          ; (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
+            ; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'
         }}
       >
         <div style={criteriaHeaderStyle}>
@@ -520,7 +534,7 @@ export default function Templates() {
               <i className="fas fa-lightbulb"></i>
               Design Criteria
             </div>
-            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem':'1.6rem', fontWeight: 700, lineHeight:1.25 }}>
+            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem' : '1.6rem', fontWeight: 700, lineHeight: 1.25 }}>
               What makes a good LAM prompt template (beyond final score)
             </h2>
             <p style={{ opacity: 0.8, margin: 0 }}>
@@ -528,6 +542,7 @@ export default function Templates() {
             </p>
           </div>
           <button
+            id="criteria-toggle-btn"
             onClick={() => setShowCriteria(v => !v)}
             style={{
               ...actionButtonStyle,
@@ -605,18 +620,14 @@ export default function Templates() {
       </div>
 
       {/* Quantified Metrics Panel: concrete formulas and thresholds */}
-      <div
-        style={{
-          ...cardStyle,
-          border: '1px solid rgba(255,255,255,0.25)'
-        }}
+      <div id="quantified-metrics-panel" style={{ ...cardStyle, border: '1px solid rgba(255,255,255,0.25)' }}
         onMouseOver={(e) => {
-          ;(e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'
-          ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'
+          ; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'
+            ; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'
         }}
         onMouseOut={(e) => {
-          ;(e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
-          ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'
+          ; (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
+            ; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'
         }}
       >
         <div style={criteriaHeaderStyle}>
@@ -625,7 +636,7 @@ export default function Templates() {
               <i className="fas fa-calculator"></i>
               Quantified Metrics & Formulas
             </div>
-            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem':'1.6rem', fontWeight: 700, lineHeight:1.25 }}>
+            <h2 style={{ margin: '10px 0 4px', fontSize: isMobile ? '1.3rem' : '1.6rem', fontWeight: 700, lineHeight: 1.25 }}>
               Measure template quality beyond end score
             </h2>
             <p style={{ opacity: 0.8, margin: 0 }}>
@@ -633,6 +644,7 @@ export default function Templates() {
             </p>
           </div>
           <button
+            id="metrics-toggle-btn"
             onClick={() => setShowMetrics(v => !v)}
             style={{
               ...actionButtonStyle,
@@ -698,11 +710,11 @@ export default function Templates() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 10px', borderRadius:999, background: 'rgba(46, 204, 113, 0.2)', border: '1px solid rgba(46, 204, 113, 0.5)', color: '#2ecc71' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: 'rgba(46, 204, 113, 0.2)', border: '1px solid rgba(46, 204, 113, 0.5)', color: '#2ecc71' }}>
                     <i className="fas fa-thumbs-up"></i>
                     Good: {m.good}
                   </span>
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 10px', borderRadius:999, background: 'rgba(255, 107, 107, 0.2)', border: '1px solid rgba(255, 107, 107, 0.5)', color: '#ff6b6b' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: 'rgba(255, 107, 107, 0.2)', border: '1px solid rgba(255, 107, 107, 0.5)', color: '#ff6b6b' }}>
                     <i className="fas fa-thumbs-down"></i>
                     Bad: {m.bad}
                   </span>
@@ -806,7 +818,7 @@ export default function Templates() {
           </Link>
         </div>
       ) : (
-        <div>
+        <div id="template-list-container">
           {items.map(template => (
             <div
               key={template.id}
@@ -853,7 +865,7 @@ export default function Templates() {
                       </span>
                     )}
                   </h3>
-                  
+
                   {template.description && (
                     <p style={{
                       opacity: '0.8',
@@ -864,7 +876,7 @@ export default function Templates() {
                       {template.description}
                     </p>
                   )}
-                  
+
                   <div style={{
                     display: 'flex',
                     gap: '15px',
@@ -903,7 +915,7 @@ export default function Templates() {
                     <i className="fas fa-edit"></i>
                     Edit
                   </Link>
-                  
+
                   <button
                     onClick={() => remove(template.id, template.title)}
                     style={deleteButtonStyle}

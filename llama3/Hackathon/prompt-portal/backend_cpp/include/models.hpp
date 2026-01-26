@@ -178,37 +178,6 @@ struct Score {
     }
 };
 
-// Driving Game Score model
-struct DrivingGameScore {
-    int id = 0;
-    int user_id = 0;
-    int template_id = 0;
-    std::string session_id;
-    double score = 0.0;
-    bool consensus_reached = true;
-    int message_count = 0;
-    double duration_seconds = 0.0;
-    std::string player_option;
-    std::string agent_option;
-    std::string created_at;
-    
-    nlohmann::json to_json() const {
-        nlohmann::json j;
-        j["id"] = id;
-        j["user_id"] = user_id;
-        j["template_id"] = template_id;
-        j["session_id"] = session_id;
-        j["score"] = score;
-        j["consensus_reached"] = consensus_reached;
-        j["message_count"] = message_count;
-        j["duration_seconds"] = duration_seconds;
-        j["player_option"] = player_option;
-        j["agent_option"] = agent_option;
-        j["created_at"] = created_at;
-        return j;
-    }
-};
-
 // Leaderboard entry
 struct LeaderboardEntry {
     int rank = 0;
@@ -234,33 +203,6 @@ struct LeaderboardEntry {
         j["created_at"] = created_at;
         j["total_steps"] = total_steps.value_or(0);
         j["collision_count"] = collision_count.value_or(0);
-        return j;
-    }
-};
-
-// Driving Game Leaderboard entry
-struct DrivingGameLeaderboardEntry {
-    int rank = 0;
-    std::string user_email;
-    int template_id = 0;
-    std::string template_title;
-    double score = 0.0;
-    int message_count = 0;
-    double duration_seconds = 0.0;
-    std::string session_id;
-    std::string created_at;
-    
-    nlohmann::json to_json() const {
-        nlohmann::json j;
-        j["rank"] = rank;
-        j["user_email"] = user_email;
-        j["template_id"] = template_id;
-        j["template_title"] = template_title;
-        j["score"] = score;
-        j["message_count"] = message_count;
-        j["duration_seconds"] = duration_seconds;
-        j["session_id"] = session_id;
-        j["created_at"] = created_at;
         return j;
     }
 };

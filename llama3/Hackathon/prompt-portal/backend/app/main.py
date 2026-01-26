@@ -6,8 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ALLOWED_ORIGINS, settings
 from .database import Base, engine
 from . import models
-from .routers import auth, templates, leaderboard, mqtt_bridge, profile, friends, messages, settings as settings_router, users, chatbot, announcements, driving, llm, health, models as models_router
-from .mqtt import start_mqtt, stop_mqtt
+from .routers import auth, templates, leaderboard, profile, friends, messages, settings as settings_router, users, chatbot, announcements, llm, health, models as models_router
 from .websocket import websocket_endpoint
 from .services.llm_client import init_llm_service
 import os
@@ -38,8 +37,6 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(templates.router)
 app.include_router(leaderboard.router)
-app.include_router(driving.router)  # Driving game - separate from leaderboard
-app.include_router(mqtt_bridge.router)
 app.include_router(profile.router)
 app.include_router(friends.router)
 app.include_router(messages.router)
@@ -74,38 +71,22 @@ async def options_preflight(full_path: str, request: Request):
 
 @app.on_event("startup")
 def startup_event():
-    """Initialize services based on communication mode"""
-    comm_mode = settings.LLM_COMM_MODE.lower()
-    
-    if comm_mode == "mqtt":
-        logger.info("Starting in MQTT mode...")
-        start_mqtt()
-    elif comm_mode == "sse":
-        logger.info("Starting in SSE (Direct HTTP) mode...")
-        # Initialize LLM service for direct HTTP communication
-        init_llm_service(
-            server_url=settings.LLM_SERVER_URL,
-            timeout=settings.LLM_TIMEOUT,
-            temperature=settings.LLM_TEMPERATURE,
-            top_p=settings.LLM_TOP_P,
-            max_tokens=settings.LLM_MAX_TOKENS,
-            skip_thinking=settings.LLM_SKIP_THINKING,
-            max_history_tokens=settings.LLM_MAX_HISTORY_TOKENS,
-            backend_type=settings.LLM_BACKEND_TYPE
-        )
-        logger.info(f"LLM service initialized with server: {settings.LLM_SERVER_URL} (backend: {settings.LLM_BACKEND_TYPE})")
-    else:
-        logger.warning(f"Unknown LLM_COMM_MODE: {comm_mode}. Defaulting to MQTT.")
-        start_mqtt()
+    """Initialize SSE-based LLM service."""
+    init_llm_service(
+        server_url=settings.LLM_SERVER_URL,
+        timeout=settings.LLM_TIMEOUT,
+        temperature=settings.LLM_TEMPERATURE,
+        top_p=settings.LLM_TOP_P,
+        max_tokens=settings.LLM_MAX_TOKENS,
+        skip_thinking=settings.LLM_SKIP_THINKING,
+        max_history_tokens=settings.LLM_MAX_HISTORY_TOKENS,
+        backend_type=settings.LLM_BACKEND_TYPE
+    )
+    logger.info(f"LLM service initialized with server: {settings.LLM_SERVER_URL} (backend: {settings.LLM_BACKEND_TYPE})")
 
 @app.on_event("shutdown")
 def shutdown_event():
     """Cleanup services"""
-    comm_mode = settings.LLM_COMM_MODE.lower()
-    
-    if comm_mode == "mqtt":
-        stop_mqtt()
-    # SSE mode doesn't require explicit shutdown
     logger.info("Shutdown complete")
 
 if __name__ == "__main__":
